@@ -261,4 +261,55 @@ public struct Store: Sendable {
         var trigger = trigger
         try database.write { db in try trigger.save(db) }
     }
+
+    // MARK: - Routines
+    //
+    // Stored in `triggers`, since a routine is the cron kind of trigger. Email and webhook
+    // triggers will share the table rather than needing one of their own.
+
+    public func routines() throws -> [Routine] {
+        try triggers().filter { $0.kind == "cron" }.compactMap(Routine.init(record:))
+    }
+
+    public func save(_ routine: Routine) throws {
+        try save(routine.record())
+    }
+
+    public func deleteRoutine(id: String) throws {
+        _ = try database.write { db in try TriggerRecord.deleteOne(db, key: id) }
+    }
+}
+
+extension Routine {
+    /// Packs the routine-specific fields into the trigger's `config` blob, so adding a field
+    /// later needs no migration.
+    func record() -> TriggerRecord {
+        let config: [String: Any] = [
+            "name": name, "prompt": prompt, "cron": cron, "tier": tier.rawValue,
+            "lastFiredAt": lastFiredAt?.timeIntervalSince1970 ?? 0,
+        ]
+        let encoded = (try? String(
+            data: JSONSerialization.data(withJSONObject: config, options: [.sortedKeys]),
+            encoding: .utf8)) ?? "{}"
+        return TriggerRecord(
+            id: id, botID: botID, kind: "cron", config: encoded, enabled: enabled,
+            installedOnMachine: tier == .machine,
+            nextFireAt: (try? CronExpression(cron))?.nextFire(after: Date()))
+    }
+
+    init?(record: TriggerRecord) {
+        guard let data = record.config.data(using: .utf8),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let name = config["name"] as? String,
+              let prompt = config["prompt"] as? String,
+              let cron = config["cron"] as? String
+        else { return nil }
+
+        let fired = (config["lastFiredAt"] as? NSNumber)?.doubleValue ?? 0
+        self.init(
+            id: record.id, botID: record.botID, name: name, prompt: prompt, cron: cron,
+            enabled: record.enabled,
+            tier: Tier(rawValue: config["tier"] as? String ?? "") ?? .appOpen,
+            lastFiredAt: fired > 0 ? Date(timeIntervalSince1970: fired) : nil)
+    }
 }

@@ -9,7 +9,15 @@ struct BupsyApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
-                .task { await model.refreshEngineStatus() }
+                .task {
+                    // launchd starts us with this flag when a routine is due. Run it before
+                    // anything slow, so a 7am briefing is not waiting on an auth probe.
+                    if CommandLine.arguments.contains("--run-due-routines") {
+                        model.runDueRoutines()
+                    }
+                    model.startRoutineTimer()
+                    await model.refreshEngineStatus()
+                }
         }
         .defaultSize(width: 1000, height: 680)
         .windowToolbarStyle(.unified)

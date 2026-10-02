@@ -5,6 +5,7 @@ struct ThreadView: View {
     @Environment(AppModel.self) private var model
     let bot: Bot
     @State private var draft = ""
+    @State private var showsRoutines = false
 
     private var thread: Thread { model.thread(for: bot.id) }
 
@@ -23,8 +24,17 @@ struct ThreadView: View {
         .navigationTitle(bot.name)
         .navigationSubtitle(subtitle)
         .toolbar {
-            if let limits = thread.latestLimits { LimitsGauge(limits: limits) }
+            ToolbarItem {
+                if let limits = thread.latestLimits { LimitsGauge(limits: limits) }
+            }
+            ToolbarItem {
+                Button { showsRoutines = true } label: {
+                    Label("Routines", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                }
+                .help("Jobs \(bot.name) does on a schedule")
+            }
         }
+        .sheet(isPresented: $showsRoutines) { RoutinesSheet(bot: bot) }
     }
 
     /// Says plainly what the bot can and cannot do unattended, rather than hiding it in settings.
