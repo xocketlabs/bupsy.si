@@ -274,39 +274,111 @@ signing, hardened runtime, notarization, Sparkle for updates. Budget an Apple De
 
 ---
 
-## 4. Always-on: the VM-side scheduler
+## 4. Always-on: three tiers, honestly priced
 
-The single most important design decision, and our answer to Dots.
+The most important design decision, and our answer to Dots. The first draft of this plan was
+**wrong**, and boat's own documentation says so:
 
-A local harness is dead when the Mac sleeps. Grokbot and Dots feel magical precisely because the
-work continues overnight. We get that without operating any server:
+> Stopped sandboxes do NOT automatically wake for scheduled work […] processes you ran by hand
+> (dev servers, background jobs, tunnels, browser sessions) do not survive a reboot.
+
+So "snapshot the VM between runs and let cron wake it" does not work — a stopped sandbox is a
+disk image, and a hand-installed crontab does not survive a reboot anyway. There is no free
+lunch where a sleeping machine wakes itself. Something must be awake to start work.
+
+That leaves exactly three mechanisms. We ship all three and let the user pick per routine, because
+they trade cost against independence and only the user knows which they want.
+
+### Tier 1 — Mac awake · free
+
+The bot has no machine. Routines run on `LocalHost` while the Mac is awake and are simply skipped
+otherwise. Correct for most bots, costs nothing, and is the default because the default bot has no
+machine.
+
+### Tier 2 — Scheduled wake · free · **native-only**
+
+macOS can wake itself from sleep for a scheduled event (`pmset schedule`, `repeat wakeorpoweron`).
+The app registers a wake a minute before each routine, the Mac wakes, runs it, and goes back to
+sleep.
+
+This is a genuine advantage of being native, and worth building for that reason alone: an Electron
+app cannot schedule system power events this cleanly, so a local-harness competitor has the same
+sleeping-Mac problem and no comparable answer.
+
+Honest limits, which the UI must state: a Mac on battery with the lid closed may not wake reliably,
+a powered-off Mac never does, and `pmset` needs the right authorisation. So tier 2 is "usually
+works" — good enough for a 7am briefing, not good enough for something that must never be missed.
+
+### Tier 3 — Always-on machine · ~$13/month · actually independent
+
+Create the machine with `ttlSeconds: null` to disable auto-stop, and schedule work inside it with
+**systemd timers** — not cron. boat's docs are specific: services enabled with
+`systemctl enable --now` restart after resume and fork and survive agent restarts, while
+hand-started processes do not.
+
+The machine simply stays up. Nothing needs to wake anything, and routines fire whether the Mac is
+asleep, shut, or at the bottom of a bag.
 
 ```
-user creates a routine ("every weekday 7am, brief me on my inbox")
-  → app compiles it to a persona + prompt + schedule
-  → installTrigger() writes a crontab entry INSIDE the user's VM:
-        0 7 * * 1-5  /usr/local/bin/bupsy-run <bot> <routine-id>
-  → `bupsy-run` is our small static binary, installed in the VM:
-        invokes the engine CLI with the user's in-VM credentials
-        appends canonical events to /home/user/.bupsy/events/<run>.ndjson
-        parks anything needing approval in /home/user/.bupsy/pending/
-  → Mac asleep, closed, or off. Routine runs anyway.
-  → Mac wakes → app reconciles: tails new NDJSON, imports runs,
-    raises approvals into the attention inbox, posts notifications
+small (2 vCPU / 4 GB) running continuously
+  = 2,592,000 wall seconds × 0.5 rate = 1,296,000 billed VM-seconds/month
+  ≈ $12.96 — fits inside boat's $20 minimum with ~35% headroom
+default (4 vCPU / 8 GB) ≈ $25.92  ·  large ≈ $51.84 — both exceed the minimum
 ```
 
-Consequences worth being explicit about:
+**This is where the machine-pool model pays for itself.** One always-on `small` machine serves every
+bot assigned to it, so the cost is per *machine*, not per bot. "$20/month buys one always-on machine
+and as many bots as you like on it" is a clean thing to say, and it is roughly what Dots charges
+$500/month for.
 
-- **The VM is the source of truth for cloud runs.** The Mac is a viewer that catches up. Design the
-  store for reconciliation from day one — idempotent run ids, last-synced watermarks.
-- **`bupsy-run` is a real deliverable**, not a script. Single Swift or Go static binary, versioned,
-  installed into the VM template, upgraded on connect. Keep it tiny and boring.
-- **Approvals must degrade.** A routine at 3am that needs permission cannot block forever. Per
-  routine: *park and wait* (default), *skip the step*, or *proceed under allowlist*.
-- **Sleep the VM between runs.** Wake on cron, work, snapshot, pause billing. boat's own platform
-  guide prices this pattern at **$1–5/month** — paid by the user, to boat, directly.
-- `survivesSleep` is on `ExecutionHost` so the UI can be honest: a routine assigned to a local bot
-  shows "only runs while your Mac is awake," with one click to move it to the cloud.
+### What this costs us, stated plainly
+
+| | Tier 1 | Tier 2 | Tier 3 |
+|---|---|---|---|
+| Cost/month | $0 | $0 | ~$13 per machine |
+| Mac asleep | skipped | wakes it | irrelevant |
+| Mac off | skipped | skipped | still runs |
+| Reliability | exact | usually | exact |
+
+PLAN.md previously claimed $1–5/month for always-on. That figure was for **wake-on-demand**
+(12 runs/day × 10 min ≈ $1.08/month) which remains the right way to run *interactive* cloud work —
+the user is at the Mac, so the Mac can resume the machine. It was never achievable for unattended
+overnight work, and §8 is corrected.
+
+### `bupsy-run` and reconciliation
+
+```
+routine created → compiled to persona + prompt + schedule
+  tier 1 → kept on the Mac
+  tier 2 → pmset wake registered, run stays on the Mac
+  tier 3 → systemd service + timer installed in the machine:
+             /etc/systemd/system/bupsy-<routine>.service   (oneshot, runs bupsy-run)
+             /etc/systemd/system/bupsy-<routine>.timer     (OnCalendar=…)
+             systemctl enable --now bupsy-<routine>.timer
+```
+
+`bupsy-run` is a small static Go binary installed in the machine. It invokes the engine CLI with the
+user's own in-machine credentials, appends canonical events to `~/.bupsy/events/<run>.ndjson`, and
+parks anything needing a decision in `~/.bupsy/pending/`.
+
+Consequences to design for from the start:
+
+- **The machine is the source of truth for tier-3 runs.** The Mac is a viewer that catches up on
+  wake — idempotent run ids, last-synced watermarks, reconciliation as a first-class path.
+- **`ttlSeconds` counts from creation, not last activity.** The default is one hour. A machine meant
+  to stay up must be created or updated with `ttlSeconds: null`, or it will vanish mid-afternoon.
+  This is an easy and expensive bug.
+- **Approvals must degrade.** A 3am routine that needs permission cannot block forever. Per routine:
+  *park and wait* (default), *skip the step*, or *proceed under allowlist*.
+- **`survivesSleep` drives the UI.** A routine on a machine-less bot shows "only runs while your Mac
+  is awake", with one click to schedule a wake (tier 2) or assign an always-on machine (tier 3).
+
+### Still unverified
+
+Everything above tier 3 is read from boat's documentation, not yet run. [docs/01-spikes.md](docs/01-spikes.md)
+spike 2 remains open on three points: that a systemd timer really does survive stop/resume, the real
+cost of a month of always-on `small`, and whether `pmset` wake fires reliably with the lid closed on
+battery.
 
 ### Objectives — the Dots concept
 
@@ -411,7 +483,7 @@ Free to use, source-available, no accounts, no backend, nothing metered by us.
 |---|---|
 | Our infra cost | **$0** — we operate nothing |
 | Our fixed cost | $99/yr Apple Developer |
-| User's compute | their own boat key, $1–5/mo on the wake-on-cron pattern |
+| User's compute | their own boat key. $0 with no machine · ~$1/mo wake-on-demand for interactive work · ~$13/mo per always-on machine (shared by all its bots) |
 | User's models | subscriptions they already hold |
 | Monetisation | **None.** No pricing, no Sponsors, no paid tier. BSL keeps commercial licensing available later without promising it now |
 | Telemetry | **None.** Update checks only, and verifiable by anyone watching the network |
