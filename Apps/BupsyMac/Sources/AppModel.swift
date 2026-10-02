@@ -10,6 +10,10 @@ final class AppModel {
     var selectedBotID: BotID?
     var engineStatus: [EngineID: AuthStatus] = [:]
     var routines: [Routine] = []
+    var machines: [MachineRecord] = []
+    /// Set when a machine operation failed. Shown rather than logged — a machine that did not
+    /// start is money not being spent, or work not being done, and either way the user should know.
+    var machineProblem: String?
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?
     /// Set when a schedule could not be installed, so the UI can say a routine will not fire.
@@ -20,6 +24,7 @@ final class AppModel {
     private var gates: [BotID: ApprovalGate] = [:]
     private var awake: [BotID: PowerAssertion] = [:]
     private var routineTimer: Task<Void, Never>?
+    private let keychain = KeychainStore()
     private let store: Store?
 
     private let host: any ExecutionHost = LocalHost()
@@ -50,7 +55,121 @@ final class AppModel {
         selectedBotID = bots.first?.id
         // Sync at launch, not only when a routine changes. Otherwise an agent removed by hand,
         // or a database restored onto a different Mac, leaves routines that quietly never fire.
+        machines = (try? self.store?.machines()) ?? []
         syncLaunchAgent()
+    }
+
+    // MARK: - Machines
+    //
+    // Machines are rented on the *user's* boat.dev account with the *user's* key. bupsy holds no
+    // compute key of its own, and the UI says so, because a surprise charge from a company
+    // someone did not knowingly sign up with would be worse than any bug in here.
+
+    var hasComputeKey: Bool { keychain.has(.boatAPIKey) }
+
+    func setComputeKey(_ key: String) {
+        do {
+            try keychain.set(key, for: .boatAPIKey)
+            machineProblem = nil
+        } catch {
+            machineProblem = error.localizedDescription
+        }
+    }
+
+    private func api() -> BoatAPI? {
+        keychain.get(.boatAPIKey).map { BoatAPI(apiKey: $0) }
+    }
+
+    func createMachine(name: String, size: MachineSize, alwaysOn: Bool) {
+        guard let api = api() else {
+            machineProblem = "Add your boat.dev key first."
+            return
+        }
+
+        // Recorded locally before the call, so a machine created remotely is never invisible
+        // here — an orphan on someone's bill that bupsy does not know about is the worst
+        // possible outcome of a failed create.
+        var record = MachineRecord(
+            name: name, state: "creating", size: size.rawValue,
+            ttlSeconds: alwaysOn ? nil : 3600)
+        machines.append(record)
+        try? store?.save(record)
+
+        Task { [record] in
+            do {
+                let options = alwaysOn
+                    ? CreateOptions.alwaysOn(size: size)
+                    : CreateOptions(size: size, ttlSeconds: 3600)
+                let sandbox = try await api.create(options)
+                var updated = record
+                updated.providerID = sandbox.id
+                updated.state = sandbox.state ?? "running"
+                updated.lastActiveAt = Date()
+                self.replace(updated)
+            } catch {
+                var failed = record
+                failed.state = "failed"
+                self.replace(failed)
+                self.machineProblem = error.localizedDescription
+            }
+        }
+    }
+
+    func toggleMachine(_ machine: MachineRecord) {
+        guard let api = api(), let providerID = machine.providerID else {
+            machineProblem = "This machine was never created on boat.dev."
+            return
+        }
+        let wantsRunning = machine.state != "running"
+        Task {
+            do {
+                let sandbox = wantsRunning
+                    ? try await api.resume(providerID)
+                    : try await api.stop(providerID)
+                var updated = machine
+                updated.state = sandbox.state ?? (wantsRunning ? "running" : "archived")
+                updated.lastActiveAt = Date()
+                self.replace(updated)
+            } catch {
+                self.machineProblem = error.localizedDescription
+            }
+        }
+    }
+
+    /// Removes it here and on boat. Bots assigned to it become machine-less, which is an
+    /// ordinary state — they go back to running on this Mac rather than breaking.
+    func deleteMachine(_ machine: MachineRecord) {
+        machines.removeAll { $0.id == machine.id }
+        for index in bots.indices where bots[index].machineID == machine.id {
+            bots[index].machineID = nil
+            try? store?.save(bots[index].record(sortIndex: index))
+        }
+        try? store?.deleteMachine(id: machine.id)
+    }
+
+    func assign(_ bot: Bot, to machineID: String?) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].machineID = machineID
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    func setAutonomy(_ bot: Bot, _ level: Autonomy) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].autonomy = level
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    func setKeepAwake(_ bot: Bot, _ setting: KeepAwake) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].keepAwake = setting
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    private func replace(_ machine: MachineRecord) {
+        if let index = machines.firstIndex(where: { $0.id == machine.id }) {
+            machines[index] = machine
+        }
+        try? store?.save(machine)
     }
 
     // MARK: - Routines
