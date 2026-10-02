@@ -26,6 +26,8 @@ public enum AgentEvent: Sendable, Equatable {
     /// How much of the user's own subscription window they have burned. The engine volunteers
     /// this; we only display it. See `RateLimit`.
     case rateLimit(RateLimit)
+    /// Which connectors actually came up, reported by the engine at the start of a run.
+    case connectors([ConnectorState])
     case done(Outcome)
     case failed(EngineFailure)
     /// A line we recognised as valid JSON but whose shape we do not model yet.
@@ -125,6 +127,32 @@ public struct RateLimit: Sendable, Equatable, Codable {
         windows.max { $0.value.utilization < $1.value.utilization }
             .map { (name: $0.key, window: $0.value) }
     }
+}
+
+/// A connector as the engine found it, not as we configured it.
+///
+/// Discovered in M0: Claude Code's init line carries an `mcp_servers` array with a live status
+/// per server. That is worth far more than inferring readiness from whether an environment
+/// variable is set — a server can be configured perfectly and still fail to start, and the user
+/// should see "failed" rather than a tick next to something that is about to break a run.
+public struct ConnectorState: Sendable, Equatable, Codable, Identifiable {
+    public enum Status: String, Sendable, Codable {
+        case connected
+        case failed
+        case needsAuth = "needs-auth"
+        case pending
+        case unknown
+    }
+
+    public var id: String { name }
+    public var name: String
+    public var status: Status
+
+    public init(name: String, status: Status) {
+        self.name = name; self.status = status
+    }
+
+    public var isUsable: Bool { status == .connected }
 }
 
 public struct Outcome: Sendable, Equatable, Codable {

@@ -27,6 +27,17 @@ public enum AutonomyPolicy {
         "Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch",
     ]
 
+    /// Whether an allowlist covers a tool.
+    ///
+    /// An entry ending in `__` is a prefix, so allowing `mcp__github__` covers every GitHub tool
+    /// without listing them — which matters because a connector's tool names are the server's to
+    /// choose and change. Anything else is an exact match, so `Bash` never accidentally allows
+    /// `BashOutput`.
+    static func covers(_ allowlist: Set<String>, tool: String) -> Bool {
+        if allowlist.contains(tool) { return true }
+        return allowlist.contains { $0.hasSuffix("__") && tool.hasPrefix($0) }
+    }
+
     public static func decide(
         tool: String,
         autonomy: Autonomy,
@@ -38,14 +49,14 @@ public enum AutonomyPolicy {
 
         case .trusted:
             if readOnlyTools.contains(tool) { return .allow(rule: "read-only tool") }
-            if allowlist.contains(tool) { return .allow(rule: "on this bot's allowlist") }
+            if covers(allowlist, tool: tool) { return .allow(rule: "on this bot's allowlist") }
             if isMCP(tool) || outboundTools.contains(tool) {
                 return .ask(reason: "\(tool) can act outside this machine")
             }
             return .allow(rule: "autonomy: trusted")
 
         case .allowlist:
-            if allowlist.contains(tool) { return .allow(rule: "on this bot's allowlist") }
+            if covers(allowlist, tool: tool) { return .allow(rule: "on this bot's allowlist") }
             if readOnlyTools.contains(tool) { return .allow(rule: "read-only tool") }
             return .ask(reason: "\(tool) is not on this bot's allowlist")
 

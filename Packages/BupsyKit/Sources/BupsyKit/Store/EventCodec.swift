@@ -31,6 +31,9 @@ public enum EventCodec {
             ("usage", json([
                 "inputTokens": usage.inputTokens.map(String.init) ?? "",
                 "outputTokens": usage.outputTokens.map(String.init) ?? ""]))
+        case .connectors(let states):
+            ("connectors", json(Dictionary(
+                uniqueKeysWithValues: states.map { ($0.name, $0.status.rawValue) })))
         case .rateLimit(let limit):
             ("rateLimit", json(limit.windows.mapValues { String($0.utilization) }))
         case .done(let outcome):

@@ -126,6 +126,7 @@ final class Thread {
     /// Resume handle, captured from `.started` so a thread stays resumable even if a run fails.
     var conversationID: ConversationID?
     var latestLimits: RateLimit?
+    var connectorStates: [ConnectorState] = []
 
     init(botID: BotID) { self.botID = botID }
 
@@ -169,6 +170,11 @@ final class Thread {
 
         case .rateLimit(let limit):
             latestLimits = limit
+
+        case .connectors(let states):
+            // The engine's own view of what came up, which beats inferring readiness from
+            // whether an environment variable happens to be set.
+            connectorStates = states
 
         case .approvalRequired(let request):
             entries.append(TranscriptEntry(kind: .approval(PendingApproval(
