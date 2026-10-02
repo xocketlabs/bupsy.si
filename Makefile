@@ -36,3 +36,7 @@ spike-deny:
 
 spike-allow:
 	swift run --package-path $(PKG) spike-stream --gate allow "Run the shell command: echo GATE-ALLOWED"
+
+# Build a signed, notarized DMG. Needs the environment in docs/05-release.md.
+package:
+	./scripts/package.sh $(VERSION)

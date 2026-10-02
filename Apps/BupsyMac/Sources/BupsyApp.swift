@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct BupsyApp: App {
     @State private var model = AppModel()
+    @StateObject private var updater = Updater()
 
     var body: some Scene {
         WindowGroup {
@@ -21,6 +22,7 @@ struct BupsyApp: App {
         }
         .defaultSize(width: 1000, height: 680)
         .windowToolbarStyle(.unified)
+        .commands { UpdaterCommands(updater: updater) }
     }
 }
 

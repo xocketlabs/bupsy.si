@@ -109,9 +109,12 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [x] One place showing everything waiting on you, with a count in the toolbar
 - [x] Never claims a goal is handled when it isn't sure
 
-### 6. Ship it ← **doing next**
-- [ ] Signed app you can actually download
-- [ ] Auto-updates
+### 6. Ship it ← **written, waiting on your Apple account**
+- [x] Build, sign, notarize and package script — runs locally and in CI
+- [x] One-command release: push a tag
+- [x] Auto-updates, with every update signature-checked
+- [x] Step-by-step release guide
+- [ ] **Needs your Apple Developer account ($99/yr) and five secrets** — docs/05-release.md
 - [ ] Website
 
 ---
