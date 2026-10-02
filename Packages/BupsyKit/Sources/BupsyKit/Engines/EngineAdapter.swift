@@ -10,15 +10,20 @@ public struct RunRequest: Sendable {
     public var autonomy: Autonomy
     /// Paths to MCP server config, passed through to engines that speak MCP.
     public var mcpConfigPaths: [String]
+    /// Settings file installing the approval hook, from `GateInstaller`. When absent the engine
+    /// runs ungated, which is only correct for a probe.
+    public var gateSettingsPath: String?
 
     public init(prompt: String, workingDirectory: URL? = nil, resume: ConversationID? = nil,
-                model: String? = nil, autonomy: Autonomy = .ask, mcpConfigPaths: [String] = []) {
+                model: String? = nil, autonomy: Autonomy = .ask, mcpConfigPaths: [String] = [],
+                gateSettingsPath: String? = nil) {
         self.prompt = prompt
         self.workingDirectory = workingDirectory
         self.resume = resume
         self.model = model
         self.autonomy = autonomy
         self.mcpConfigPaths = mcpConfigPaths
+        self.gateSettingsPath = gateSettingsPath
     }
 }
 

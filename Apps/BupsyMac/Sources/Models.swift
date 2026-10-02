@@ -14,6 +14,8 @@ struct Bot: Identifiable, Hashable, Sendable {
     var autonomy: Autonomy = .ask
     var machineID: String?
     var personaPrompt: String?
+    /// Tools this bot may use without asking, above whatever its autonomy level already allows.
+    var toolAllowlist: Set<String> = []
     var avatarHue: Double
 
     /// Deterministic from the name, so a bot keeps its colour between launches without
@@ -81,6 +83,7 @@ struct TranscriptEntry: Identifiable, Sendable {
         case assistantText(String)
         case thinking(String)
         case tool(name: String, arguments: String, result: String?, failed: Bool)
+        case approval(PendingApproval)
         case limits(RateLimit)
         case failure(EngineFailure)
         case finished(Outcome)
@@ -89,6 +92,25 @@ struct TranscriptEntry: Identifiable, Sendable {
     let id = UUID()
     var kind: Kind
     var at = Date()
+}
+
+/// A tool call waiting on the user, as the UI holds it.
+struct PendingApproval: Identifiable, Sendable, Equatable {
+    let id: String
+    let tool: String
+    let summary: String
+    let inputJSON: String
+    /// Why the policy decided this needed a person — shown on the card so the user is not
+    /// guessing why they are being interrupted.
+    let reason: String
+    var decided: Decision?
+
+    enum Decision: Sendable, Equatable {
+        case allowed
+        case denied
+        /// Nobody answered and the gate denied it to fail closed.
+        case expired
+    }
 }
 
 /// The live state of one bot's conversation.
@@ -145,10 +167,10 @@ final class Thread {
         case .rateLimit(let limit):
             latestLimits = limit
 
-        case .approvalRequired:
-            // The approval gate lands in M3. Until then nothing is auto-allowed: engines run
-            // under their own narrowest policy, so there is nothing to silently permit here.
-            break
+        case .approvalRequired(let request):
+            entries.append(TranscriptEntry(kind: .approval(PendingApproval(
+                id: request.id, tool: request.tool, summary: request.summary,
+                inputJSON: request.argumentsJSON, reason: request.summary))))
 
         case .usage:
             break
@@ -164,6 +186,21 @@ final class Thread {
             // Never surfaced to the user, but never dropped either — it reaches the log.
             break
         }
+    }
+
+    /// Marks a waiting approval as decided, in place, so the card settles rather than vanishing.
+    /// A decided card stays in the transcript because it is part of the record of what happened.
+    func resolveApproval(id: String, as decision: PendingApproval.Decision) {
+        guard let index = entries.lastIndex(where: {
+            if case .approval(let approval) = $0.kind { return approval.id == id }
+            return false
+        }), case .approval(var approval) = entries[index].kind else { return }
+        approval.decided = decision
+        entries[index].kind = .approval(approval)
+    }
+
+    func raiseApproval(_ approval: PendingApproval) {
+        entries.append(TranscriptEntry(kind: .approval(approval)))
     }
 
     /// Replays a stored row. `userMessage` is written as its own type so a reloaded transcript
