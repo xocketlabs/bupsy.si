@@ -27,6 +27,33 @@ public struct RunRequest: Sendable {
     }
 }
 
+/// Whether a bot holds the Mac awake while it works.
+///
+/// Per bot rather than global: a research bot grinding for ten minutes is exactly the case worth
+/// protecting from idle sleep, while a quick chat bot has no business touching power management.
+public enum KeepAwake: String, Sendable, Codable, CaseIterable {
+    /// Never hold the Mac awake. Runs may be cut short by idle sleep.
+    case never
+    /// Hold it only while this bot is actually working, released the moment it finishes.
+    case whileWorking
+
+    public var label: String {
+        switch self {
+        case .never: "Let the Mac sleep"
+        case .whileWorking: "Stay awake while working"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .never:
+            "A long run may be cut short if your Mac goes to sleep."
+        case .whileWorking:
+            "Stops idle sleep from interrupting a run. Closing the lid still sleeps."
+        }
+    }
+}
+
 /// The trust ladder. `ask` is the default for every new bot, and `auto` requires a typed
 /// confirmation — an agent holding real logins is dangerous in proportion to its usefulness.
 public enum Autonomy: String, Sendable, Codable, CaseIterable, Comparable {

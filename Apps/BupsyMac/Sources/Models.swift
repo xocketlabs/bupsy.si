@@ -16,6 +16,9 @@ struct Bot: Identifiable, Hashable, Sendable {
     var personaPrompt: String?
     /// Tools this bot may use without asking, above whatever its autonomy level already allows.
     var toolAllowlist: Set<String> = []
+    /// Whether this bot holds the Mac awake while it works. Per bot because a research bot
+    /// grinding for ten minutes is worth protecting from idle sleep and a quick chat bot is not.
+    var keepAwake: KeepAwake = .whileWorking
     var avatarHue: Double
 
     /// Deterministic from the name, so a bot keeps its colour between launches without
