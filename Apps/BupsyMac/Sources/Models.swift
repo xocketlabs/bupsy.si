@@ -19,6 +19,13 @@ struct Bot: Identifiable, Hashable, Sendable {
     /// Whether this bot holds the Mac awake while it works. Per bot because a research bot
     /// grinding for ten minutes is worth protecting from idle sleep and a quick chat bot is not.
     var keepAwake: KeepAwake = .whileWorking
+    /// The folder this bot works in.
+    ///
+    /// Until this existed a bot ran in whatever directory the app happened to launch from, which
+    /// meant it could not see any of the user's work — the single largest gap between this being
+    /// a chat window and being a tool. nil still means "no folder", which is right for a bot that
+    /// only talks.
+    var workdir: String?
     var avatarHue: Double
 
     /// Deterministic from the name, so a bot keeps its colour between launches without
@@ -48,6 +55,7 @@ struct Bot: Identifiable, Hashable, Sendable {
         self.autonomy = Autonomy(rawValue: record.autonomy) ?? .ask
         self.machineID = record.machineID
         self.personaPrompt = record.personaPrompt
+        self.workdir = record.workdir
         self.avatarHue = record.avatarHue
     }
 
@@ -55,7 +63,8 @@ struct Bot: Identifiable, Hashable, Sendable {
         BotRecord(
             id: id.rawValue, name: name, engine: engine.rawValue, model: model,
             machineID: machineID, autonomy: autonomy.rawValue,
-            personaPrompt: personaPrompt, avatarHue: avatarHue, sortIndex: sortIndex)
+            personaPrompt: personaPrompt, workdir: workdir,
+            avatarHue: avatarHue, sortIndex: sortIndex)
     }
 }
 

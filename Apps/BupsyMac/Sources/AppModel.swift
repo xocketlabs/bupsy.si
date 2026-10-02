@@ -1,3 +1,4 @@
+import AppKit
 import BupsyKit
 import Foundation
 import Observation
@@ -30,6 +31,7 @@ final class AppModel {
     private var awake: [BotID: PowerAssertion] = [:]
     private var routineTimer: Task<Void, Never>?
     private let keychain = KeychainStore()
+    private let notifier = Notifier()
     private let store: Store?
 
     private let host: any ExecutionHost = LocalHost()
@@ -261,6 +263,26 @@ final class AppModel {
         try? store?.save(bots[index].record(sortIndex: index))
     }
 
+    /// Picks the folder a bot works in.
+    func chooseWorkdir(for bot: Bot) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Use folder"
+        panel.message = "\(bot.name) will be able to read and work in this folder."
+        if let current = bot.workdir { panel.directoryURL = URL(fileURLWithPath: current) }
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        setWorkdir(bot, url.path)
+    }
+
+    func setWorkdir(_ bot: Bot, _ path: String?) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].workdir = path
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
     func setKeepAwake(_ bot: Bot, _ setting: KeepAwake) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         bots[index].keepAwake = setting
@@ -349,7 +371,13 @@ final class AppModel {
                 ? "\n\n(Running late — this was scheduled for "
                     + due.scheduledFor.formatted(date: .omitted, time: .shortened) + ".)"
                 : ""
-            send(due.routine.prompt + note, to: bot)
+            let name = due.routine.name
+            send(due.routine.prompt + note, to: bot) { [weak self] reply in
+                // Unattended work that finishes silently may as well not have run.
+                self?.notifier.routineFinished(
+                    bot: bot.name, routine: name,
+                    summary: reply.split(separator: "\n").first.map(String.init))
+            }
         }
     }
 
@@ -402,7 +430,11 @@ final class AppModel {
                   let index = self.objectives.firstIndex(where: { $0.id == objective.id })
             else { return }
 
-            self.objectives[index].lastOutcome = ObjectiveCheck.outcome(from: reply)
+            let outcome = ObjectiveCheck.outcome(from: reply)
+            if case .needsYou(let question) = outcome {
+                self.notifier.objectiveNeedsYou(bot: bot.name, question: question)
+            }
+            self.objectives[index].lastOutcome = outcome
             self.objectives[index].notes = ObjectiveCheck.updatedNotes(
                 self.objectives[index].notes,
                 adding: ObjectiveCheck.learnings(from: reply))
@@ -595,6 +627,7 @@ final class AppModel {
 
         let request = RunRequest(
             prompt: bot.personaPrompt.map { "\($0)\n\n\(prompt)" } ?? prompt,
+            workingDirectory: bot.workdir.map { URL(fileURLWithPath: $0) },
             resume: thread.conversationID,
             model: bot.model,
             autonomy: bot.autonomy,
@@ -701,6 +734,10 @@ final class AppModel {
                     thread.raiseApproval(PendingApproval(
                         id: request.id, tool: request.tool, summary: request.summary,
                         inputJSON: request.inputJSON, reason: reason))
+                    // The whole point of a gate that waits is that someone finds out it is
+                    // waiting. A run blocked at 3am with nothing said is a run that never ran.
+                    self.notifier.needsApproval(
+                        bot: bot.name, tool: request.tool, summary: request.summary)
                 }
             }
         }

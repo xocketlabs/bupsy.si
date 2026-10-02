@@ -102,4 +102,53 @@ struct LocalHostTests {
             try BinaryResolver.resolve("/definitely/not/here")
         }
     }
+
+    /// The standard system locations, including the ones a login shell cannot help with because
+    /// the name is also a builtin.
+    @Test("finds binaries in the usual system folders")
+    func findsSystemBinaries() throws {
+        for name in ["sh", "cat", "pwd", "env"] {
+            let resolved = try BinaryResolver.resolve(name)
+            #expect(FileManager.default.isExecutableFile(atPath: resolved.path),
+                    "\(name) resolved to something that is not executable")
+        }
+    }
+}
+
+@Suite("Working folder")
+struct WorkingDirectoryTests {
+    /// The feature that turns a bot from a chat window into a tool: it runs *somewhere*. Before
+    /// this, every bot ran in whatever directory the app happened to launch from and could not
+    /// see any of the user's work.
+    @Test("a run happens in the folder it was given")
+    func runsInTheGivenFolder() async throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bupsy-wd-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        // `sh -c pwd` rather than `pwd`: the latter is also a shell builtin, so resolving it
+        // through a login shell answers with the builtin's name and no path — which is how this
+        // test found that /bin was missing from the resolver's search list.
+        var output: [String] = []
+        for try await chunk in try await LocalHost().spawn(EngineInvocation(
+            executable: "sh", arguments: ["-c", "pwd"], workingDirectory: folder))
+        {
+            if case .stdout(let line) = chunk { output.append(line) }
+        }
+
+        // /var and /private/var are the same place; compare what the filesystem resolves to.
+        let reported = URL(fileURLWithPath: output.first ?? "").resolvingSymlinksInPath().path
+        #expect(reported == folder.resolvingSymlinksInPath().path)
+    }
+
+    @Test("the folder reaches the invocation from a run request")
+    func folderReachesInvocation() {
+        let folder = URL(fileURLWithPath: "/tmp/somewhere")
+        for adapter: any EngineAdapter in [ClaudeAdapter(), CodexAdapter()] {
+            let invocation = adapter.invocation(
+                for: RunRequest(prompt: "x", workingDirectory: folder))
+            #expect(invocation.workingDirectory == folder, "\(adapter.id) dropped the folder")
+        }
+    }
 }
