@@ -1,0 +1,8 @@
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1790955000,"rateLimitType":"five_hour","overageStatus":"rejected","isUsingOverage":false,"unifiedWindows":{"five_hour":{"utilization":0.03,"resetsAt":1790955000},"seven_day":{"utilization":0.01,"resetsAt":1791453600}}},"uuid":"52702498","session_id":"sess-abc123"}
+{"type":"system","subtype":"init","cwd":"/Users/x/project","session_id":"sess-abc123","tools":["Bash","Read","Edit"],"model":"claude-opus-5"}
+{"type":"assistant","message":{"model":"claude-opus-5","id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"Let me look at the files."}],"stop_reason":null,"usage":{"input_tokens":2,"output_tokens":1}},"parent_tool_use_id":null,"session_id":"sess-abc123"}
+{"type":"assistant","message":{"id":"msg_2","content":[{"type":"tool_use","id":"call_1","name":"Bash","input":{"command":"ls -la"}}]},"session_id":"sess-abc123"}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"call_1","content":"PLAN.md\ndocs\n","is_error":false}]},"session_id":"sess-abc123"}
+{"type":"assistant","message":{"id":"msg_3","content":[{"type":"text","text":"Two entries: PLAN.md and docs."}]},"session_id":"sess-abc123"}
+{"type":"result","subtype":"success","stop_reason":"end_turn","result":"Two entries: PLAN.md and docs.","duration_ms":4210,"duration_api_ms":3076,"usage":{"input_tokens":1200,"output_tokens":48,"cache_creation_input_tokens":35908},"total_cost_usd":0.0131,"session_id":"sess-abc123"}
+{"type":"some_future_event","payload":{"unmodelled":true}}

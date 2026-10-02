@@ -1,0 +1,218 @@
+import Foundation
+
+/// Drives the published `claude` binary in print mode.
+///
+/// We shell out rather than embedding the Agent SDK: Anthropic does not permit third-party
+/// products to use claude.ai login or subscription rate limits through the SDK, while an end
+/// user signing into the unmodified binary on a host we provide is expressly allowed.
+/// See docs/00-compliance-and-auth.md §4.
+///
+/// Flag set and stream schema are confirmed by M0 spike 3 — see docs/01-spikes.md. Treat the
+/// mappings below as fixture-driven, not as documented API.
+public struct ClaudeAdapter: EngineAdapter {
+    public let id: EngineID = .claude
+    public var binaryName: String { overrideBinary ?? "claude" }
+
+    /// Settings → Engines lets the user point at a specific build or wrapper. Never hide this.
+    private let overrideBinary: String?
+
+    public init(binary: String? = nil) { self.overrideBinary = binary }
+
+    /// Claude Code exposes `PreToolUse` hooks that can block and return a decision, which is
+    /// what lets us honestly offer autonomy above `.ask`. Confirmed by spike 4.
+    public var maximumEnforceableAutonomy: Autonomy { .auto }
+
+    public func loginCommand() -> LoginCommand {
+        LoginCommand(
+            command: "claude",
+            hint: "Type /login and complete sign-in in your browser. "
+                + "bupsy never sees the result — only that it worked."
+        )
+    }
+
+    public func authStatus(on host: any ExecutionHost) async -> AuthStatus {
+        // A trivial prompt is the cheapest honest probe. We deliberately do not read
+        // ~/.claude to inspect expiry: reading a credential file is the line we do not cross.
+        let probe = EngineInvocation(
+            executable: binaryName,
+            arguments: ["-p", "ok", "--output-format", "json"]
+        )
+        do {
+            var sawOutput = false
+            var stderr = ""
+            for try await output in try await host.spawn(probe) {
+                switch output {
+                case .stdout(let line) where !line.isEmpty: sawOutput = true
+                case .stderr(let line): stderr += line + "\n"
+                case .exit(let code):
+                    if code == 0 && sawOutput { return .signedIn(method: .subscription) }
+                    if Self.looksLikeSignedOut(stderr) { return .signedOut }
+                    return .unknown(stderr.isEmpty ? "exit \(code)" : stderr)
+                default: break
+                }
+            }
+            return .unknown("probe ended without an exit status")
+        } catch {
+            return .unknown(error.localizedDescription)
+        }
+    }
+
+    public func invocation(for request: RunRequest) -> EngineInvocation {
+        var arguments = [
+            "-p", request.prompt,
+            "--output-format", "stream-json",
+            "--verbose",
+        ]
+        if let resume = request.resume {
+            arguments += ["--resume", resume.rawValue]
+        }
+        if let model = request.model {
+            arguments += ["--model", model]
+        }
+        for path in request.mcpConfigPaths {
+            arguments += ["--mcp-config", path]
+        }
+        // Permission flags are intentionally absent until spike 4 confirms which mechanism
+        // actually blocks. Gating belongs in a PreToolUse hook, not in a flag that merely
+        // widens what runs unattended.
+        return EngineInvocation(
+            executable: binaryName,
+            arguments: arguments,
+            workingDirectory: request.workingDirectory
+        )
+    }
+
+    public func normalise(_ output: HostOutput) -> [AgentEvent] {
+        switch output {
+        case .stderr(let line):
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return [] }
+            if Self.looksLikeSignedOut(trimmed) {
+                return [.failed(EngineFailure(kind: .notSignedIn, message: trimmed))]
+            }
+            return []
+
+        case .exit(let code):
+            guard code != 0 else { return [] }
+            return [.failed(EngineFailure(kind: .nonZeroExit, message: "claude exited \(code)"))]
+
+        case .stdout(let line):
+            guard let json = JSONLine(line) else { return [] }
+            return Self.events(from: json)
+        }
+    }
+
+    // MARK: - Stream mapping
+
+    static func events(from json: JSONLine) -> [AgentEvent] {
+        switch json.string("type") {
+        case "system":
+            // init banners carry session id, cwd and the tool list; nothing user-visible.
+            return []
+
+        case "rate_limit_event":
+            // Undocumented, and valuable: the engine volunteers how much of the user's own
+            // subscription window they have burned. Observed in M0 spike 3. Every field is
+            // treated as optional because an undocumented shape can change without notice.
+            guard let info = json.dictionary("rate_limit_info") else {
+                return [.unknown(raw: json.raw)]
+            }
+            var windows: [String: RateLimit.Window] = [:]
+            for (name, value) in (info["unifiedWindows"] as? [String: [String: Any]] ?? [:]) {
+                guard let utilization = (value["utilization"] as? NSNumber)?.doubleValue
+                else { continue }
+                let resetsAt = (value["resetsAt"] as? NSNumber)
+                    .map { Date(timeIntervalSince1970: $0.doubleValue) }
+                windows[name] = RateLimit.Window(utilization: utilization, resetsAt: resetsAt)
+            }
+            return [.rateLimit(RateLimit(
+                status: info["status"] as? String,
+                windows: windows,
+                isUsingOverage: info["isUsingOverage"] as? Bool ?? false
+            ))]
+
+        case "assistant":
+            guard let message = json.dictionary("message") else { return [.unknown(raw: json.raw)] }
+            var events: [AgentEvent] = []
+            for block in (message["content"] as? [[String: Any]] ?? []) {
+                switch block["type"] as? String {
+                case "text":
+                    if let text = block["text"] as? String, !text.isEmpty {
+                        events.append(.text(text))
+                    }
+                case "thinking":
+                    if let thinking = block["thinking"] as? String, !thinking.isEmpty {
+                        events.append(.thinking(thinking))
+                    }
+                case "tool_use":
+                    events.append(.toolCall(ToolCall(
+                        id: block["id"] as? String ?? UUID().uuidString,
+                        name: block["name"] as? String ?? "unknown",
+                        argumentsJSON: JSONLine.encode(block["input"])
+                    )))
+                default:
+                    events.append(.unknown(raw: json.raw))
+                }
+            }
+            return events
+
+        case "user":
+            guard let message = json.dictionary("message") else { return [.unknown(raw: json.raw)] }
+            return (message["content"] as? [[String: Any]] ?? []).compactMap { block in
+                guard block["type"] as? String == "tool_result" else { return nil }
+                return .toolResult(ToolResult(
+                    callID: block["tool_use_id"] as? String ?? "",
+                    content: Self.flatten(block["content"]),
+                    isError: block["is_error"] as? Bool ?? false
+                ))
+            }
+
+        case "result":
+            let usage = Usage(
+                inputTokens: (json.dictionary("usage")?["input_tokens"] as? NSNumber)?.intValue,
+                outputTokens: (json.dictionary("usage")?["output_tokens"] as? NSNumber)?.intValue,
+                costUSD: json.double("total_cost_usd"),
+                durationMS: json.int("duration_ms")
+            )
+            let conversation = json.string("session_id").map { ConversationID($0) }
+            if json.string("subtype") != "success" || json.bool("is_error") == true {
+                return [
+                    .usage(usage),
+                    .failed(EngineFailure(
+                        kind: .unknown,
+                        message: json.string("result") ?? json.string("subtype") ?? "run failed"
+                    )),
+                ]
+            }
+            return [
+                .usage(usage),
+                .done(Outcome(
+                    summary: json.string("result"),
+                    conversationID: conversation,
+                    usage: usage
+                )),
+            ]
+
+        default:
+            return [.unknown(raw: json.raw)]
+        }
+    }
+
+    /// Tool results arrive as a string or as content blocks depending on the tool.
+    private static func flatten(_ content: Any?) -> String {
+        if let text = content as? String { return text }
+        if let blocks = content as? [[String: Any]] {
+            return blocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        }
+        return JSONLine.encode(content)
+    }
+
+    /// Heuristic, and only ever used to produce a friendlier message — never to make a
+    /// security decision. Kept narrow on purpose so it fails as "unknown" rather than lying.
+    static func looksLikeSignedOut(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        let signals = ["not logged in", "please run /login", "authentication", "unauthorized",
+                       "invalid api key", "no credentials"]
+        return signals.contains { lowered.contains($0) }
+    }
+}
