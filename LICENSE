@@ -1,20 +1,12 @@
 License text copyright (c) 2020 MariaDB Corporation Ab, All Rights Reserved.
 "Business Source License" is a trademark of MariaDB Corporation Ab.
 
--------------------------------------------------------------------------------
-ACTION REQUIRED BEFORE THIS REPOSITORY IS MADE PUBLIC OR ANY BUILD IS
-DISTRIBUTED: replace <LICENSOR> below with the legal entity that owns bupsy.si
-(an individual's legal name or a registered company), and have a lawyer read
-this file. A Business Source License is only enforceable by a named licensor,
-and a parameter block is not boilerplate. See docs/02-licence.md.
--------------------------------------------------------------------------------
-
 Parameters
 
-Licensor:             <LICENSOR>
+Licensor:             Xocket Labs Inc., a Delaware corporation
 
 Licensed Work:        bupsy.si, all versions. The Licensed Work is
-                      (c) 2026 <LICENSOR>.
+                      (c) 2026 Xocket Labs Inc.
 
 Additional Use Grant: You may use the Licensed Work, without charge, for your
                       own personal purposes and for the internal business

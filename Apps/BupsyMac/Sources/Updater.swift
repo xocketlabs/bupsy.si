@@ -1,40 +1,57 @@
+import AppKit
 import Sparkle
 import SwiftUI
 
-/// Auto-updates.
+/// Updates.
 ///
-/// Sparkle verifies every update against an EdDSA public key baked into the app, so a compromised
-/// download host — or anyone who can intercept the feed — still cannot push a modified build. For
-/// an app that runs agent CLIs with the user's credentials, that signature is the difference
-/// between an update channel and an attack surface.
+/// **Distribution is GitHub Releases only for now**, so there is no appcast feed and Sparkle's
+/// automatic checking stays off. "Check for Updates" opens the releases page instead.
 ///
-/// Checks are **not** automatic on first launch. An app that phones home before the user has
-/// agreed to anything contradicts the thing bupsy says about itself, so the first check happens
-/// after they have had a chance to turn it off.
+/// That is a deliberate choice rather than an omission: Sparkle polling a feed URL that does not
+/// resolve fails quietly in the background forever, and a broken update channel is worse than an
+/// honest absence of one. The machinery is all here — `scripts/appcast.sh` produces a signed
+/// feed, and the release workflow signs every build — so switching on is a feed URL and a host.
+///
+/// When it is switched on, Sparkle verifies each update against an EdDSA key baked into the app.
+/// For something that runs agent CLIs under the user's own credentials, that signature is the
+/// difference between an update channel and an attack surface: a compromised download host, or
+/// anyone able to intercept the feed, still cannot push a modified build.
 @MainActor
 final class Updater: ObservableObject {
-    private let controller: SPUStandardUpdaterController
+    /// Where people get builds while there is no feed.
+    static let releasesURL = URL(string: "https://github.com/vanshpatelx/bupsy.si/releases/latest")!
 
-    @Published var automaticallyChecks: Bool {
-        didSet { controller.updater.automaticallyChecksForUpdates = automaticallyChecks }
-    }
+    private let controller: SPUStandardUpdaterController?
+
+    /// True once an appcast feed exists in the bundle.
+    let hasFeed: Bool
 
     init() {
-        controller = SPUStandardUpdaterController(
+        hasFeed = (Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String)?
+            .isEmpty == false
+
+        guard hasFeed else {
+            controller = nil
+            return
+        }
+
+        let controller = SPUStandardUpdaterController(
             startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
-        automaticallyChecks = controller.updater.automaticallyChecksForUpdates
         // Daily is plenty for a desktop app and keeps the network quiet.
         controller.updater.updateCheckInterval = 60 * 60 * 24
-        // Never without being asked. bupsy promises not to phone home, and a silent usage ping
-        // dressed as an update check would make that promise false.
+        // Never without being asked. bupsy promises not to phone home, and a usage ping dressed
+        // as an update check would make that promise false.
         controller.updater.sendsSystemProfile = false
+        self.controller = controller
     }
 
     func checkForUpdates() {
-        controller.updater.checkForUpdates()
+        if let controller {
+            controller.updater.checkForUpdates()
+        } else {
+            NSWorkspace.shared.open(Self.releasesURL)
+        }
     }
-
-    var canCheck: Bool { controller.updater.canCheckForUpdates }
 }
 
 struct UpdaterCommands: Commands {
@@ -42,12 +59,11 @@ struct UpdaterCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
-            Button("Check for Updates…") { updater.checkForUpdates() }
-                .disabled(!updater.canCheck)
-            Toggle("Check Automatically", isOn: Binding(
-                get: { updater.automaticallyChecks },
-                set: { updater.automaticallyChecks = $0 }
-            ))
+            // Named for what it actually does. "Check for Updates…" that opens a web page would
+            // be a small lie, and the whole product is built on not telling those.
+            Button(updater.hasFeed ? "Check for Updates…" : "Releases on GitHub…") {
+                updater.checkForUpdates()
+            }
         }
     }
 }

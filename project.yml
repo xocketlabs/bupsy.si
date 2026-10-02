@@ -36,11 +36,12 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-        # Sparkle reads both from Info.plist. The public key is safe to publish — it is how a
-        # user's copy verifies an update really came from us.
-        INFOPLIST_KEY_SUFeedURL: https://vanshpatelx.github.io/bupsy.si/appcast.xml
-        INFOPLIST_KEY_SUPublicEDKey: REPLACE_WITH_YOUR_SPARKLE_PUBLIC_KEY
-        INFOPLIST_KEY_SUEnableInstallerLauncherService: NO
+        # No SUFeedURL yet, on purpose. Distribution is GitHub Releases only for now, and
+        # Sparkle polling a feed that does not exist would fail quietly in the background
+        # forever — a broken update channel is worse than an honest absence of one. Until a
+        # public appcast is hosted, "Check for Updates" opens the releases page instead.
+        # scripts/appcast.sh already produces the feed; turning this on is one line plus a host.
+        INFOPLIST_KEY_SUEnableAutomaticChecks: NO
         # App Sandbox is OFF, and must stay off: a sandboxed app cannot spawn the
         # user-installed `claude` / `codex` binaries, which is the entire premise.
         # This is why Bupsy ships via Developer ID rather than the Mac App Store.

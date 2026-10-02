@@ -111,10 +111,11 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 
 ### 6. Ship it ← **written, waiting on your Apple account**
 - [x] Build, sign, notarize and package script — runs locally and in CI
-- [x] One-command release: push a tag
-- [x] Auto-updates, with every update signature-checked
+- [x] One-command release: push a tag, get a DMG on GitHub
 - [x] Step-by-step release guide
-- [ ] **Needs your Apple Developer account ($99/yr) and five secrets** — docs/05-release.md
+- [x] Licence set to Xocket Labs Inc., a Delaware corporation
+- [ ] **Needs your Apple Developer account ($99/yr)** — docs/05-release.md
+- [ ] Auto-updates — deliberately off until there's somewhere to host the feed
 - [ ] Website
 
 ---
@@ -125,7 +126,7 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 |---|---|
 | **Click Send once** | I can't test the app's own buttons — needs a permission that's yours to give |
 | **A boat.dev key** | Turns the cloud machine code from written to working |
-| **`<LICENSOR>` in LICENSE** | Blocks going public or shipping anything |
+| **A lawyer on the Use Grant** | Not blocking, but worth an hour before the first public build |
 | **Apple Developer account** ($99/yr) | Blocks a downloadable app, and the wake helper |
 | **Which ChatGPT plan has Codex?** | Yours signs in but can't run a model |
 

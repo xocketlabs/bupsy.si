@@ -12,7 +12,7 @@ Reversing one is fine. Reversing one without reading why it was made is not.
 | 1 | Relationship to OpenMausBot | Build fresh, no fork | Clean-room rule in CONTRIBUTING.md §2 |
 | 2 | Product shape | Chat-first, Grokbot-like | Dots-style objectives layer on top at M5 |
 | 3 | Platform | **Native macOS first** (SwiftUI) | Not Electron. The primary differentiator |
-| 4 | Licence | **BSL 1.1 → Apache-2.0 after 4 years** | [02-licence.md](02-licence.md). `<LICENSOR>` still open |
+| 4 | Licence | **BSL 1.1 → Apache-2.0 after 4 years** | Licensor: Xocket Labs Inc. (Delaware). [02-licence.md](02-licence.md) |
 | 5 | Differentiators | **Three**, not four | Openness claim retired with the licence change |
 | 6 | Team | 3–5 → three parallel tracks | Core / App / VM, PLAN.md §9 |
 | 7 | Region | EU-only compute is fine | Freestyle stays a hedge at M7, not pulled forward |
@@ -34,6 +34,8 @@ Reversing one is fine. Reversing one without reading why it was made is not.
 | 23 | Always-on mechanism | **Three tiers** (app open / LaunchAgent / always-on machine) | Corrected twice — see below. PLAN.md §4 |
 | 24 | Keeping the Mac awake during a run | **Per bot**, `whileWorking` by default | Free, unprivileged. Prevents idle sleep killing a long run |
 | 25 | Privileged wake helper (tier 2b) | **Yes, opt-in in onboarding — post-certificate** | Root daemon with a one-call interface. Threat model in [04-wake-helper.md](04-wake-helper.md) |
+| 26 | Distribution | **GitHub Releases only, for now** | Auto-updates deliberately off until a feed has a home — a dead feed is worse than none |
+| 27 | Licensor | **Xocket Labs Inc., a Delaware corporation** | Named in LICENSE and NOTICE; a BSL is only enforceable by a named licensor |
 
 ### Always-on is three tiers, not one (#23)
 
@@ -106,7 +108,7 @@ softened — a padded list of four reads weaker than a tight list of three.
 
 | Question | Blocks | Owner |
 |---|---|---|
-| `<LICENSOR>` legal entity in `LICENSE` | repo going public, any distributed build | founder |
+| Lawyer review of the Additional Use Grant | not blocking; worth an hour before the first public build | founder |
 | **Developer ID certificate** | notarized releases **and** the tier 2b wake helper | founder |
 | Lawyer review of the Additional Use Grant | same | founder |
 | Change Date: 4 years or 3? | nothing yet | founder |

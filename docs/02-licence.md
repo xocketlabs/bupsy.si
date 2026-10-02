@@ -1,8 +1,8 @@
 # Licence: Business Source License 1.1
 
 > Not legal advice. A licence is a legal instrument, and the parameter block below is the part
-> that actually binds. Have a lawyer read [LICENSE](../LICENSE) before the repository is public or
-> any build is distributed.
+> that actually binds. The licensor is now named, which is what makes it enforceable at all; a
+> lawyer should still read the Additional Use Grant before the first public build.
 
 ## What we chose, and what it means
 
@@ -86,8 +86,11 @@ shut down.
 
 ## Before the repo goes public
 
-- [ ] **Replace `<LICENSOR>` in [LICENSE](../LICENSE)** with the owning legal entity. Two places.
-- [ ] Have a lawyer review the parameter block, especially the Additional Use Grant.
+- [x] **Licensor set: Xocket Labs Inc., a Delaware corporation.** Both places in
+      [LICENSE](../LICENSE), and the copyright line in [NOTICE](../NOTICE).
+- [ ] Have a lawyer review the parameter block, especially the Additional Use Grant. Worth an
+      hour of someone's time before the first public build: the grant decides what a competitor
+      may do, and it is the clause that would actually be argued over.
 - [ ] Decide whether the Change Date is four years (HashiCorp) or shorter (Sentry uses three).
       Shorter is a stronger good-faith signal; four is more protective.
 - [ ] Add `CLA.md` and a bot or checklist to record agreement.
