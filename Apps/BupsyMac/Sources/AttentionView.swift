@@ -19,69 +19,103 @@ struct AttentionItem: Identifiable, Hashable {
 /// will inevitably reach something only a person can settle, and without a single list those
 /// land scattered across threads nobody is reading. A count on the sidebar is the difference
 /// between autonomy and things quietly stalling.
+/// One page for everything waiting on a person.
+///
+/// Decisions are made *here* rather than only linked from here. Sending someone to another screen
+/// to answer a question they are already looking at is the kind of friction that turns "two things
+/// need you" into a number nobody clears.
 struct AttentionInbox: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.palette) private var palette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Waiting on you").font(.headline)
-                Spacer()
-            }
-            .padding(16)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Space.section) {
+                SectionHeader(
+                    icon: "hand.raised",
+                    title: "Waiting on you",
+                    badge: model.attentionItems.isEmpty ? nil : "\(model.attentionItems.count)",
+                    subtitle: "Approvals and goals that cannot move without a decision"
+                ) { EmptyView() }
 
-            Divider()
-
-            if model.attentionItems.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.green)
-                    Text("Nothing needs you").font(.callout)
-                    Text("Approvals and stuck goals turn up here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(40)
-            } else {
-                List {
-                    ForEach(model.attentionItems) { item in
-                        HStack(alignment: .top, spacing: 10) {
-                            BotFace(hue: item.hue, mood: .waitingForYou, size: 24)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title).fontWeight(.medium)
-                                if !item.detail.isEmpty {
-                                    Text(item.detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Text(item.botName)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                            Spacer(minLength: 0)
-                            Button("Open") { model.selectedBotID = botID(for: item) }
-                                .controlSize(.small)
+                if model.attentionItems.isEmpty {
+                    CardRow {
+                        IconTile(systemName: "checkmark.circle")
+                    } content: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Nothing needs you")
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(palette.foreground)
+                            Text("Approvals and stuck goals turn up here.")
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(palette.mutedForeground)
                         }
-                        .padding(.vertical, 3)
+                    } trailing: { EmptyView() }
+                } else {
+                    VStack(spacing: Theme.Space.snug) {
+                        ForEach(model.attentionItems) { item in
+                            AttentionRow(item: item)
+                        }
                     }
                 }
-                .listStyle(.inset)
-            }
 
-            Divider()
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                Spacer(minLength: 0)
             }
-            .padding(12)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 28)
+            .frame(maxWidth: Theme.Size.contentMaxWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(width: 540, height: 400)
+    }
+}
+
+struct AttentionRow: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    let item: AttentionItem
+
+    private var bot: Bot? { model.bots.first { $0.name == item.botName } }
+
+    var body: some View {
+        CardRow {
+            BotFace(hue: item.hue, mood: .waitingForYou, size: Theme.Size.tile)
+        } content: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                    .lineLimit(2)
+                if !item.detail.isEmpty {
+                    Text(item.detail)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                        .lineLimit(2)
+                }
+                Text(item.botName)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.sidebarMuted)
+            }
+        } trailing: {
+            // An approval can be settled from here; a stuck goal needs its thread, so that one
+            // links out instead of pretending to offer a decision.
+            if item.kind == .approval, let bot, let approval = pendingApproval(for: bot) {
+                HStack(spacing: Theme.Space.tight) {
+                    Button("Allow") { model.decide(approval, allow: true, for: bot) }
+                        .buttonStyle(QuietButton(compact: true))
+                    Button("Deny") { model.decide(approval, allow: false, for: bot) }
+                        .buttonStyle(QuietButton(compact: true))
+                }
+            } else {
+                Button("Open") { model.selectedBotID = bot?.id }
+                    .buttonStyle(QuietButton(compact: true))
+            }
+        }
     }
 
-    private func botID(for item: AttentionItem) -> BotID? {
-        model.bots.first { $0.name == item.botName }?.id
+    private func pendingApproval(for bot: Bot) -> PendingApproval? {
+        model.thread(for: bot.id).entries.compactMap {
+            if case .approval(let approval) = $0.kind, approval.id == item.id { return approval }
+            return nil
+        }.first
     }
 }

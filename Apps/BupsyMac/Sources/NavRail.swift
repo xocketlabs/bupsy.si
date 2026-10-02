@@ -23,6 +23,7 @@ struct NavRail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.section) {
             brand
+            attention
 
             group("Bots") {
                 ForEach(model.bots) { bot in
@@ -36,6 +37,7 @@ struct NavRail: View {
                         trailing(for: bot)
                     }
                     .contextMenu { BotMenu(bot: bot) }
+                    .keyboardShortcut(shortcut(for: bot), modifiers: .command)
                 }
 
                 NavItem(selected: false, action: { isAddingBot = true }) {
@@ -43,6 +45,7 @@ struct NavRail: View {
                     Text("New bot")
                     Spacer(minLength: 0)
                 }
+                .keyboardShortcut("n", modifiers: .command)
             }
 
             group("Setup") {
@@ -75,6 +78,36 @@ struct NavRail: View {
         .frame(width: 276)
         .background(palette.sidebar)
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
+    }
+
+    /// Appears only when something is waiting.
+    ///
+    /// Previously this was a permanent tray with a count that was usually zero — furniture people
+    /// stop seeing, which is the opposite of what a thing called "needs you" should be. Absent
+    /// until it matters, it gets noticed the one time it does.
+    @ViewBuilder
+    private var attention: some View {
+        let items = model.attentionItems
+        if !items.isEmpty {
+            Button { destination = .attention } label: {
+                HStack(spacing: Theme.Space.snug) {
+                    Image(systemName: "hand.raised.fill").font(.system(size: 11))
+                    Text(items.count == 1 ? "1 needs you" : "\(items.count) need you")
+                        .font(Theme.Typography.body)
+                        .fontWeight(.medium)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.system(size: 9))
+                }
+                .foregroundStyle(palette.primary)
+                .padding(.horizontal, Theme.Space.step)
+                .frame(height: 38)
+                .frame(maxWidth: .infinity)
+                .background(palette.primary.opacity(0.13),
+                            in: .rect(cornerRadius: Theme.Radius.control))
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var brand: some View {
@@ -138,6 +171,16 @@ struct NavRail: View {
     private var engineSummary: String {
         let ready = EngineID.allCases.filter { model.engineStatus[$0]?.isUsable == true }
         return ready.isEmpty ? "No engine signed in" : ready.map(\.displayName).joined(separator: " · ")
+    }
+
+    /// ⌘1 … ⌘9 for the first nine bots, in the order they appear.
+    private func shortcut(for bot: Bot) -> KeyEquivalent {
+        guard let index = model.bots.firstIndex(where: { $0.id == bot.id }), index < 9 else {
+            // No shortcut rather than a wrong one: KeyEquivalent has no "none", so a bot past
+            // the ninth gets a key nobody presses.
+            return KeyEquivalent("\u{0}")
+        }
+        return KeyEquivalent(Character("\(index + 1)"))
     }
 
     private func mood(for bot: Bot) -> BotMood {

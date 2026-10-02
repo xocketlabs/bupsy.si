@@ -95,6 +95,11 @@ downloadable app is an Apple Developer certificate.
 - [x] Topbar with breadcrumbs
 - [x] Page header, meta chips, section headers with badges, card rows with icon tiles
 - [x] The chips *are* the controls — engine, model, machine and trust change from the page
+- [x] Conversation scrolls in its own box, so goals and routines stay reachable in a long thread
+- [x] "Needs you" appears in the rail only when something is actually waiting
+- [x] Approvals can be settled from the tray, without going to the bot first
+- [x] ⌘1–9 to switch bots, ⌘N for a new one
+- [x] Machines, Apps and the tray are pages with the same chrome, not sheets in disguise
 - [x] Colours ported exactly from watermelon.sh's Agndex dashboard (oklch → sRGB, not eyeballed)
 - [x] Sidebar darker than content, cards lifted above it — depth without borders or shadows
 - [x] Everything on a 44pt control height and an 8/12/16/24/40 spacing scale
