@@ -5,7 +5,7 @@ import GRDB
 ///
 /// A user may own zero machines, which is the common case — see PLAN.md §3. Machines are rented
 /// with the user's own boat key; nothing here is ours.
-public struct MachineRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
+public struct MachineRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable, Identifiable {
     public static let databaseTableName = "machines"
 
     public var id: String
@@ -32,7 +32,7 @@ public struct MachineRecord: Codable, FetchableRecord, MutablePersistableRecord,
     }
 }
 
-public struct BotRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable {
+public struct BotRecord: Codable, FetchableRecord, MutablePersistableRecord, Sendable, Identifiable {
     public static let databaseTableName = "bots"
 
     public var id: String

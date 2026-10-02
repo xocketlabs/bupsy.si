@@ -33,6 +33,12 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [x] A stop button that halts everything
 - [x] Bots can keep your Mac awake while working, so long jobs don't die
 
+### Machines
+- [x] Your key, your account, your bill — bupsy has no cloud of its own
+- [x] Key lives in the Mac's Keychain, never leaves this Mac
+- [x] Cost shown before you create anything
+- [x] Deleting a machine doesn't delete its bots
+
 ### Routines
 - [x] Create one: pick a bot, write the job, choose when
 - [x] Runs with the app closed — launchd starts it
@@ -54,15 +60,17 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [x] Choose where it runs, and see honestly what that means
 - [x] App starts itself to run them, even when closed
 
-### 2. Add a cloud machine ← **doing next**
-- [ ] Paste your own boat key, kept in the Mac's Keychain
-- [ ] Create a machine and name it
-- [ ] Assign bots to it
-- [ ] Sign a bot's engine in *on that machine*
-- [ ] See what it's costing you
+### 2. Add a cloud machine ← **mostly done**
+- [x] Paste your own boat key, kept in the Mac's Keychain
+- [x] Create a machine and name it
+- [x] Start and stop it
+- [x] Assign bots to it — right-click a bot
+- [x] See what it's costing you, before you create it
+- [ ] Sign a bot's engine in *on that machine* — needs a terminal window
 - [ ] Watch its screen
+- [ ] **Needs your boat key to prove it works against the real service**
 
-### 3. Make it look good
+### 3. Make it look good ← **doing next**
 - [ ] Proper animated bot faces
 - [ ] Nicer waiting animation
 - [ ] First-run walkthrough

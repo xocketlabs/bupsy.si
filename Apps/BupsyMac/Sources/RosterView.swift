@@ -6,6 +6,7 @@ import SwiftUI
 struct RosterView: View {
     @Environment(AppModel.self) private var model
     @State private var isAddingBot = false
+    @State private var showsMachines = false
 
     var body: some View {
         List(selection: Binding(
@@ -16,6 +17,7 @@ struct RosterView: View {
                 ForEach(model.bots) { bot in
                     BotRow(bot: bot, isRunning: model.isRunning(bot.id))
                         .tag(bot.id)
+                        .contextMenu { BotMenu(bot: bot) }
                 }
             }
         }
@@ -28,8 +30,78 @@ struct RosterView: View {
                 }
                 .help("New bot")
             }
+            ToolbarItem {
+                Button { showsMachines = true } label: {
+                    Label("Machines", systemImage: "server.rack")
+                }
+                .help("Cloud machines your bots can use")
+            }
         }
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
+        .sheet(isPresented: $showsMachines) { MachinesSheet() }
+    }
+}
+
+/// Right-click a bot. Assigning a machine lives here rather than behind a settings screen,
+/// because it is the one setting that changes what a bot can actually promise.
+struct BotMenu: View {
+    @Environment(AppModel.self) private var model
+    let bot: Bot
+
+    var body: some View {
+        Menu("Machine") {
+            Button {
+                model.assign(bot, to: nil)
+            } label: {
+                Label("This Mac", systemImage: bot.machineID == nil ? "checkmark" : "")
+            }
+            if model.machines.isEmpty {
+                Text("No machines yet")
+            } else {
+                Divider()
+                ForEach(model.machines) { machine in
+                    Button {
+                        model.assign(bot, to: machine.id)
+                    } label: {
+                        Label(machine.name,
+                              systemImage: bot.machineID == machine.id ? "checkmark" : "")
+                    }
+                }
+            }
+        }
+
+        Menu("Trust") {
+            ForEach(Autonomy.allCases, id: \.self) { level in
+                Button {
+                    model.setAutonomy(bot, level)
+                } label: {
+                    Label(label(for: level),
+                          systemImage: bot.autonomy == level ? "checkmark" : "")
+                }
+            }
+        }
+
+        Menu("While working") {
+            ForEach(KeepAwake.allCases, id: \.self) { setting in
+                Button {
+                    model.setKeepAwake(bot, setting)
+                } label: {
+                    Label(setting.label, systemImage: bot.keepAwake == setting ? "checkmark" : "")
+                }
+            }
+        }
+
+        Divider()
+        Button("Delete bot", role: .destructive) { model.deleteBot(bot) }
+    }
+
+    private func label(for level: Autonomy) -> String {
+        switch level {
+        case .ask: "Ask me everything"
+        case .allowlist: "Ask unless I've allowed it"
+        case .trusted: "Ask before anything leaves this machine"
+        case .auto: "Never ask"
+        }
     }
 }
 
