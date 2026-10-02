@@ -6,6 +6,14 @@ import Foundation
 /// once. Every engine and host plugs in beneath it. Adding a case here is a deliberate act:
 /// it means every consumer must handle it.
 public enum AgentEvent: Sendable, Equatable {
+    /// The run has a resumable handle.
+    ///
+    /// Engines disagree on when this is knowable: Codex emits `thread.started` before any work,
+    /// Claude reports `session_id` on its init banner and again in the final result. Emitting it
+    /// as its own event means a thread stays resumable even if the run then fails — which is the
+    /// case that matters, because a failed 3am routine is exactly what someone wants to retry.
+    case started(conversationID: ConversationID)
+
     /// Assistant prose intended for the user.
     case text(String)
     /// Visible reasoning, where the engine exposes it.

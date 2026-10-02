@@ -202,6 +202,60 @@ the UI must say so rather than imply a guarantee we cannot keep.
 Also: for cloud runs, how does a gate in the VM reach the Mac? Confirm the shape — pending-file in
 `~/.bupsy/pending/` plus polling is the simplest thing that works offline.
 
+### Spike 4b findings — Codex enforces differently, and it matters
+
+**Codex's gate is a sandbox policy, not a blocking hook.** `codex exec` takes
+`--sandbox read-only | workspace-write | danger-full-access`, fixed before the run and enforced by
+the OS. There is no mid-run callback that can pause and ask a human, the way Claude's `PreToolUse`
+hook can.
+
+That is not weaker enforcement — an OS sandbox is arguably stronger than a hook. It is *different*,
+and the difference is user-visible: on Codex, `ask` cannot mean "stop and ask me". It can only mean
+"run narrowly". The UI must not promise otherwise, so `EngineAdapter` now carries:
+
+```swift
+public enum GateMechanism { case blockingHook, sandboxPolicy, none }
+// .canAskMidRun is true only for .blockingHook
+```
+
+and the ladder maps onto policies: `ask → read-only`, `allowlist/trusted → workspace-write`,
+`auto → danger-full-access` plus `--dangerously-bypass-approvals-and-sandbox`. A test asserts the
+bypass flag is unreachable below `.auto`.
+
+**Still open:** whether Codex's `config.toml` hooks (implied by `--dangerously-bypass-hook-trust`)
+can block. If they can, Codex gets interactive gating too. Worth an hour.
+
+### Spike 6 findings — Codex, and why running it mattered
+
+Three findings, none of them available from documentation:
+
+1. **⚠️ "Logged in" is not "can run".** `codex login status` reports *"Logged in using ChatGPT"* on
+   an account where every model — `gpt-5.6-sol`, `gpt-5.6-codex`, `gpt-5-codex`, `gpt-5.6` —
+   returns HTTP 400 *"not supported when using Codex with a ChatGPT account"*. A status-command
+   check would have been a confident false positive, and bots would have failed at 3am instead of
+   during onboarding. `AuthStatus` gained `.signedInWithoutModelAccess(detail:)`, and the adapter
+   now probes a real turn rather than trusting the status command.
+
+   **Action:** find out which ChatGPT plan grants Codex CLI model access, and whether the default
+   model is simply stale in `0.160.0`. Onboarding has to be able to tell a user *"you're signed in
+   but your plan can't run Codex"*.
+
+2. **🪤 Codex hangs if stdin is left open.** Given a prompt argument *and* an open stdin, it prints
+   `Reading additional input from stdin...` and waits forever, because it wants to append stdin as
+   a `<stdin>` block. `LocalHost` already closed stdin — which turns out to be load-bearing rather
+   than tidy. `LocalHostTests` now pins it by spawning `cat`, which exits immediately with stdin
+   closed and blocks indefinitely without. If that test times out, every Codex run in the product
+   is hanging.
+
+3. **✅ The abstraction holds, and it caught a bug.** Codex's event model shares no structure with
+   Claude's — a thread/turn lifecycle with typed items, versus assistant/user/result envelopes. Both
+   normalise into the same `AgentEvent` without widening it, which is the whole claim of the adapter
+   layer. Writing the second adapter also exposed a real bug: `thread.started` was being mapped to
+   `.done`, which would have told the UI a run had finished before it began. Fixed by adding
+   `AgentEvent.started(conversationID:)`, which both engines now emit early — Codex from
+   `thread.started`, Claude from its init banner. A thread stays resumable even when the run fails,
+   which is exactly the case that matters for a failed overnight routine.
+
 ---
 
 ## Spike 5 — Latency and real cost
@@ -256,7 +310,10 @@ Cheap, but it decides §7. libraries.dev says Beam and Orb support SwiftUI; veri
 | 3c | GUI-app `PATH` resolution of engine binary | ✅ | `claude` found at `~/.local/bin/claude` — on **none** of the default system paths. `BinaryResolver` is required, not optional. | 2026-10-02 |
 | 3d | Stream schema mapped | ✅ | `system/init`, `assistant` (text + tool_use), `user` (tool_result), `result`, `rate_limit_event`. Sanitised fixture committed. | 2026-10-02 |
 | 4 | Claude `PreToolUse` can block and decide | ⬜ | | |
-| 4b | Codex / Grok equivalents | ⬜ | | |
+| 4b | Codex enforcement mechanism | ✅ | **Sandbox policy, not a blocking hook.** `exec --sandbox read-only\|workspace-write\|danger-full-access`, fixed before the run, enforced by the OS. No mid-run human gate exists in `exec`. | 2026-10-02 |
+| 4c | Grok equivalent | ⬜ | | |
+| 6 | Codex flag set + stream schema | ✅ | `exec --json` emits JSONL. Thread/turn/item model, nothing like Claude's. Two fixtures committed. | 2026-10-02 |
+| 6b | Codex auth on a ChatGPT subscription | ⚠️ | `login status` says "Logged in using ChatGPT" but **every model returns 400 "not supported when using Codex with a ChatGPT account"**. Logged in ≠ able to run. | 2026-10-02 |
 | 5 | Resume → first token (median) | ⬜ | | |
 | 5b | Cost of a 30-min session | ⬜ | | |
 | 6 | SwiftUI orb + beam packages render | ⬜ | | |
