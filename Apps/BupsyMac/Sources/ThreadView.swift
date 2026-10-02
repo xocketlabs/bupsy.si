@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ThreadView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     let bot: Bot
     @State private var draft = ""
     @State private var showsProfile = false
@@ -12,7 +13,7 @@ struct ThreadView: View {
     var body: some View {
         VStack(spacing: 0) {
             ThreadHeader(bot: bot, showsProfile: $showsProfile)
-            Divider()
+            Divider().overlay(palette.border)
             Transcript(thread: thread, bot: bot)
             Composer(
                 draft: $draft,
@@ -22,6 +23,7 @@ struct ThreadView: View {
                 onStop: { model.stop(bot.id) }
             )
         }
+        .background(palette.background)
         .inspector(isPresented: $showsProfile) {
             BotProfile(bot: bot)
                 .inspectorColumnWidth(min: 280, ideal: 320, max: 380)
@@ -41,6 +43,7 @@ struct ThreadView: View {
 /// on a surface you can see.
 struct ThreadHeader: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     let bot: Bot
     @Binding var showsProfile: Bool
 
@@ -49,10 +52,12 @@ struct ThreadHeader: View {
             Button { showsProfile.toggle() } label: {
                 HStack(spacing: Theme.Space.snug) {
                     BotFace(hue: bot.avatarHue, mood: mood, size: 30)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(bot.name).font(.headline)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(bot.name)
+                            .font(Theme.Typography.heading)
+                            .foregroundStyle(palette.foreground)
                         Text(status)
-                            .font(.caption)
+                            .font(Theme.Typography.caption)
                             .foregroundStyle(statusColor)
                     }
                 }
@@ -71,8 +76,9 @@ struct ThreadHeader: View {
             .buttonStyle(.borderless)
             .help("Everything about \(bot.name)")
         }
-        .padding(.horizontal, Theme.Space.step)
-        .padding(.vertical, Theme.Space.snug)
+        .padding(.horizontal, Theme.Space.gutter)
+        .padding(.vertical, Theme.Space.step)
+        .background(palette.background)
     }
 
     private var mood: BotMood {
@@ -93,8 +99,8 @@ struct ThreadHeader: View {
     }
 
     private var statusColor: Color {
-        if model.isWaitingForApproval(bot.id) { return .orange }
-        return .secondary
+        if model.isWaitingForApproval(bot.id) { return palette.primary }
+        return palette.mutedForeground
     }
 }
 
@@ -124,7 +130,7 @@ struct Transcript: View {
                         TypingIndicator(bot: bot)
                     }
                 }
-                .padding(.horizontal, Theme.Space.wide)
+                .padding(.horizontal, Theme.Space.section)
                 .padding(.vertical, Theme.Space.step)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -165,6 +171,7 @@ struct DaySeparator: View {
 }
 
 struct Bubble: View {
+    @Environment(\.palette) private var palette
     let entry: TranscriptEntry
     let bot: Bot
     let showsAvatar: Bool
@@ -175,21 +182,26 @@ struct Bubble: View {
             HStack {
                 Spacer(minLength: 72)
                 Text(text)
+                    .font(Theme.Typography.body)
                     .textSelection(.enabled)
                     .padding(.horizontal, Theme.Space.step)
                     .padding(.vertical, Theme.Space.snug)
-                    .background(.tint, in: .rect(cornerRadius: Theme.Radius.bubble))
-                    .foregroundStyle(.white)
+                    .background(palette.primary, in: .rect(cornerRadius: Theme.Radius.bubble))
+                    .foregroundStyle(palette.onPrimary)
                     .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .trailing)
             }
 
         case .assistantText(let text):
             botAligned {
+                // Cards sit above the background, which is where this palette's depth comes
+                // from — a reply looks like an object on a surface rather than text on a page.
                 Text(markdown(text))
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
                     .textSelection(.enabled)
                     .padding(.horizontal, Theme.Space.step)
                     .padding(.vertical, Theme.Space.snug)
-                    .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: Theme.Radius.bubble))
+                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
             }
 
         case .thinking(let text):
@@ -285,7 +297,7 @@ struct ToolAside: View {
                     }
                 }
                 .padding(Theme.Space.snug)
-                .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: Theme.Radius.chip))
+                .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: Theme.Radius.control))
             }
         }
         .padding(.leading, 2)
@@ -342,7 +354,7 @@ struct ThinkingAside: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .padding(Theme.Space.snug)
-                    .background(.quaternary.opacity(0.3), in: .rect(cornerRadius: Theme.Radius.chip))
+                    .background(.quaternary.opacity(0.3), in: .rect(cornerRadius: Theme.Radius.control))
             }
         }
     }
@@ -381,6 +393,7 @@ struct FailureNotice: View {
 }
 
 struct TypingIndicator: View {
+    @Environment(\.palette) private var palette
     let bot: Bot
 
     var body: some View {
@@ -389,7 +402,7 @@ struct TypingIndicator: View {
             ThinkingOrbs(hue: bot.avatarHue, dotSize: 6)
                 .padding(.horizontal, Theme.Space.step)
                 .padding(.vertical, Theme.Space.snug)
-                .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: Theme.Radius.bubble))
+                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
             Spacer(minLength: 0)
         }
     }
@@ -418,6 +431,7 @@ struct EmptyThread: View {
 }
 
 struct Composer: View {
+    @Environment(\.palette) private var palette
     @Binding var draft: String
     let bot: Bot
     let isRunning: Bool
@@ -428,29 +442,35 @@ struct Composer: View {
         HStack(alignment: .bottom, spacing: Theme.Space.snug) {
             TextField("Message \(bot.name)", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.body)
+                .font(Theme.Typography.body)
                 .lineLimit(1...8)
-                .padding(.horizontal, Theme.Space.step)
-                .padding(.vertical, Theme.Space.snug)
-                .background(.quaternary.opacity(0.4), in: .capsule)
-                .borderBeam(hue: bot.avatarHue, active: isRunning, cornerRadius: 22)
+                .padding(.horizontal, Theme.Space.gutter)
+                .padding(.vertical, Theme.Space.step)
+                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.base))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.Radius.base)
+                        .strokeBorder(palette.border)
+                }
+                .borderBeam(hue: bot.avatarHue, active: isRunning, cornerRadius: Theme.Radius.base)
                 .onSubmit(onSend)
 
             Button(action: isRunning ? onStop : onSend) {
                 Image(systemName: isRunning ? "stop.fill" : "arrow.up")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(sendEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary),
-                                in: .circle)
+                    .frame(width: 34, height: 34)
+                    .background(sendEnabled ? palette.primary : palette.secondary,
+                                in: .rect(cornerRadius: Theme.Radius.control))
             }
             .buttonStyle(.plain)
             .disabled(!sendEnabled)
             .keyboardShortcut(.return, modifiers: .command)
         }
-        .padding(.horizontal, Theme.Space.step)
-        .padding(.vertical, Theme.Space.snug)
-        .background(.bar)
+        .padding(.horizontal, Theme.Space.section)
+        .padding(.vertical, Theme.Space.step)
+        .frame(maxWidth: Theme.Size.contentMaxWidth)
+        .frame(maxWidth: .infinity)
+        .background(palette.background)
     }
 
     private var sendEnabled: Bool {

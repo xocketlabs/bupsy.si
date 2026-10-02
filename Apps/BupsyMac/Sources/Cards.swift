@@ -9,6 +9,7 @@ import SwiftUI
 /// than a dialog that served its purpose and vanished.
 struct ApprovalCard: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     let approval: PendingApproval
     @State private var showsDetail = false
 
@@ -35,7 +36,7 @@ struct ApprovalCard: View {
                 .textSelection(.enabled)
                 .padding(Theme.Space.snug)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.opacity(0.55), in: .rect(cornerRadius: Theme.Radius.chip))
+                .background(palette.sidebar, in: .rect(cornerRadius: Theme.Radius.control))
 
             if showsDetail {
                 Text(approval.inputJSON)
@@ -92,9 +93,11 @@ struct ApprovalCard: View {
 
     private var tint: Color {
         switch approval.decided {
-        case nil: .orange
-        case .allowed: .green
-        case .denied, .expired: .secondary
+        // Pink is the palette's only saturated colour, and this is the one thing in a thread
+        // that stops until you answer — so it gets it.
+        case nil: palette.primary
+        case .allowed: palette.info
+        case .denied, .expired: palette.mutedForeground
         }
     }
 }
@@ -104,6 +107,7 @@ struct ApprovalCard: View {
 /// Small and in the header rather than in the thread: it is context, not an event. Protecting
 /// someone's quota protects their account, which protects us.
 struct LimitsGauge: View {
+    @Environment(\.palette) private var palette
     let limits: RateLimit
 
     var body: some View {
@@ -125,9 +129,9 @@ struct LimitsGauge: View {
 
     private func colour(_ percent: Int) -> Color {
         switch percent {
-        case ..<60: .secondary
-        case ..<85: .orange
-        default: .red
+        case ..<60: palette.mutedForeground
+        case ..<85: palette.primary
+        default: palette.destructive
         }
     }
 

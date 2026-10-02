@@ -89,7 +89,11 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [ ] Watch its screen
 - [ ] **Needs your boat key to prove it works against the real service**
 
-### 3. Make it look good ✅ **rebuilt as a messaging app**
+### 3. Make it look good ✅ **messaging app, on the Agndex palette**
+- [x] Colours ported exactly from watermelon.sh's Agndex dashboard (oklch → sRGB, not eyeballed)
+- [x] Sidebar darker than content, cards lifted above it — depth without borders or shadows
+- [x] Everything on a 44pt control height and an 8/12/16/24/40 spacing scale
+- [x] Pink used for one thing only: something needs you
 - [x] Conversation list — faces, what they last said, when
 - [x] Proper chat bubbles, day separators, typing indicator
 - [x] Tool calls read as quiet asides, not cards competing with the reply

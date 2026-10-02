@@ -28,9 +28,11 @@ struct BupsyApp: App {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         content
+            .withPalette(colorScheme)
             .sheet(isPresented: Binding(
                 get: { model.needsOnboarding },
                 set: { if !$0 { model.completeOnboarding() } }
