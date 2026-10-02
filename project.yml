@@ -1,0 +1,40 @@
+name: Bupsy
+options:
+  bundleIdPrefix: si.bupsy
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  BupsyKit:
+    path: Packages/BupsyKit
+
+targets:
+  BupsyMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Apps/BupsyMac/Sources
+    dependencies:
+      - package: BupsyKit
+        product: BupsyKit
+    settings:
+      base:
+        PRODUCT_NAME: Bupsy
+        PRODUCT_BUNDLE_IDENTIFIER: si.bupsy.mac
+        MARKETING_VERSION: "0.0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        # App Sandbox is OFF, and must stay off: a sandboxed app cannot spawn the
+        # user-installed `claude` / `codex` binaries, which is the entire premise.
+        # This is why Bupsy ships via Developer ID rather than the Mac App Store.
+        # See docs/00-compliance-and-auth.md.
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO

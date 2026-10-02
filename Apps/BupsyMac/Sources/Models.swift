@@ -1,0 +1,149 @@
+import BupsyKit
+import Foundation
+
+/// A bot as the UI knows it.
+///
+/// `machineID` is nil for a bot with no machine, which is the default and the common case —
+/// see PLAN.md §3. A machine-less bot runs on this Mac and cannot run routines while it sleeps,
+/// and the UI has to say so rather than pretend otherwise.
+struct Bot: Identifiable, Hashable, Sendable {
+    let id: BotID
+    var name: String
+    var engine: EngineID
+    var model: String?
+    var autonomy: Autonomy = .ask
+    var machineID: String?
+    var personaPrompt: String?
+    var avatarHue: Double
+
+    /// Deterministic from the name, so a bot keeps its colour between launches without
+    /// anything being stored.
+    init(name: String, engine: EngineID, model: String? = nil, machineID: String? = nil,
+         personaPrompt: String? = nil) {
+        self.id = BotID(UUID().uuidString)
+        self.name = name
+        self.engine = engine
+        self.model = model
+        self.machineID = machineID
+        self.personaPrompt = personaPrompt
+        var hash = 5381
+        for byte in name.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
+        self.avatarHue = Double(abs(hash) % 360) / 360
+    }
+
+    /// What the bot can honestly promise about unattended work. PLAN.md §4.
+    var scheduleTier: ScheduleTier { machineID == nil ? .macAwake : .alwaysOn }
+}
+
+enum ScheduleTier: Sendable {
+    case macAwake
+    case alwaysOn
+
+    var label: String {
+        switch self {
+        case .macAwake: "This Mac"
+        case .alwaysOn: "Cloud machine"
+        }
+    }
+
+    var caveat: String? {
+        switch self {
+        case .macAwake: "Routines only run while your Mac is awake."
+        case .alwaysOn: nil
+        }
+    }
+}
+
+/// One entry in a transcript. Deliberately a flat list rather than nested turns: tool calls and
+/// their results interleave with prose, and a flat log is what the audit trail needs anyway.
+struct TranscriptEntry: Identifiable, Sendable {
+    enum Kind: Sendable {
+        case userMessage(String)
+        case assistantText(String)
+        case thinking(String)
+        case tool(name: String, arguments: String, result: String?, failed: Bool)
+        case limits(RateLimit)
+        case failure(EngineFailure)
+        case finished(Outcome)
+    }
+
+    let id = UUID()
+    var kind: Kind
+    var at = Date()
+}
+
+/// The live state of one bot's conversation.
+@MainActor
+@Observable
+final class Thread {
+    let botID: BotID
+    var entries: [TranscriptEntry] = []
+    var isRunning = false
+    /// Resume handle, captured from `.started` so a thread stays resumable even if a run fails.
+    var conversationID: ConversationID?
+    var latestLimits: RateLimit?
+
+    init(botID: BotID) { self.botID = botID }
+
+    /// Folds a canonical event into the transcript.
+    ///
+    /// Consecutive text events are merged into the preceding bubble so streaming reads as one
+    /// message rather than a stack of fragments. Tool results attach to their call by id.
+    func apply(_ event: AgentEvent) {
+        switch event {
+        case .started(let id):
+            conversationID = id
+
+        case .text(let chunk):
+            if case .assistantText(let existing) = entries.last?.kind {
+                entries[entries.count - 1].kind = .assistantText(existing + chunk)
+            } else {
+                entries.append(TranscriptEntry(kind: .assistantText(chunk)))
+            }
+
+        case .thinking(let chunk):
+            if case .thinking(let existing) = entries.last?.kind {
+                entries[entries.count - 1].kind = .thinking(existing + chunk)
+            } else {
+                entries.append(TranscriptEntry(kind: .thinking(chunk)))
+            }
+
+        case .toolCall(let call):
+            entries.append(TranscriptEntry(kind: .tool(
+                name: call.name, arguments: call.argumentsJSON, result: nil, failed: false)))
+
+        case .toolResult(let result):
+            // Attach to the most recent tool entry still awaiting a result.
+            if let index = entries.lastIndex(where: {
+                if case .tool(_, _, let r, _) = $0.kind { return r == nil }
+                return false
+            }), case .tool(let name, let arguments, _, _) = entries[index].kind {
+                entries[index].kind = .tool(
+                    name: name, arguments: arguments,
+                    result: result.content, failed: result.isError)
+            }
+
+        case .rateLimit(let limit):
+            latestLimits = limit
+
+        case .approvalRequired:
+            // The approval gate lands in M3. Until then nothing is auto-allowed: engines run
+            // under their own narrowest policy, so there is nothing to silently permit here.
+            break
+
+        case .usage:
+            break
+
+        case .done(let outcome):
+            if let id = outcome.conversationID { conversationID = id }
+            entries.append(TranscriptEntry(kind: .finished(outcome)))
+
+        case .failed(let failure):
+            entries.append(TranscriptEntry(kind: .failure(failure)))
+
+        case .unknown:
+            // Never surfaced to the user, but never dropped either — it reaches the log.
+            break
+        }
+    }
+}

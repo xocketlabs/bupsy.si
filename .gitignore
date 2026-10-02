@@ -18,3 +18,6 @@ docs/samples/*-flags.txt
 *.p12
 *.mobileprovision
 .env
+
+# XcodeGen output — regenerate with `xcodegen generate` (or `make app`)
+Bupsy.xcodeproj/
