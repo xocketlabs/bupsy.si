@@ -618,7 +618,8 @@ All nineteen framing questions are settled and recorded, with reasoning, in
 
 | Question | Blocks |
 |---|---|
-| `<LICENSOR>` legal entity + lawyer review of the Use Grant | repo going public, any shipped build |
+| Apple Developer account | a downloadable build, and the tier 2b wake helper |
+| Lawyer review of the Additional Use Grant | not blocking; worth doing before the first public build |
 | **Spike 2: does a stopped VM wake for its own cron?** | the always-on architecture |
 | Each engine's real blocking approval mechanism (spike 4) | autonomy above `ask` |
 | Freestyle region list | whether EU-only is permanent |
@@ -633,8 +634,8 @@ three parallel tracks (§9).
    for long-tail reach? Recommend MCP-only through 1.0.
 2. **`bupsy-run` language** — Swift static binary (one language) or Go (smaller, trivially
    cross-compiled for the Linux VM)? Lean Go for the VM side.
-3. ~~**Licence**~~ — *settled: BSL 1.1, converting to Apache-2.0 after four years. The remaining
-   open item is the `<LICENSOR>` legal entity and a lawyer's review — see docs/02-licence.md.*
+3. ~~**Licence**~~ — *settled: BSL 1.1 converting to Apache-2.0 after four years, licensed by
+   **Xocket Labs Inc., a Delaware corporation**. See docs/02-licence.md.*
 4. **Windows/Linux** — never, community-maintained, or post-1.0? Say it publicly either way.
 
 ---

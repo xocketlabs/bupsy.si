@@ -26,6 +26,12 @@ appleid.apple.com → Sign-In and Security → App-Specific Passwords. Not your 
 
 ### 3. Sparkle signing keys
 
+**Not needed yet.** Distribution is GitHub Releases only for now, so there is no appcast feed and
+automatic updates stay off — the menu item opens the releases page instead. The signing step in
+the workflow is skipped without a key, and the generated appcast ships as a release asset so it is
+ready the day a feed gets a home. Set these up when you want updates to install themselves.
+
+
 ```bash
 # generate_keys ships with Sparkle; after a build it is in DerivedData
 find ~/Library/Developer/Xcode/DerivedData -name generate_keys -type f | head -1
@@ -85,10 +91,10 @@ and for an app holding agent credentials the oldest build has the known problems
 
 ## Before the first public release
 
-- [ ] Replace `<LICENSOR>` in `LICENSE`, both places, and have a lawyer read the Use Grant
-- [ ] Replace `REPLACE_WITH_YOUR_SPARKLE_PUBLIC_KEY` in `project.yml`
+- [x] Licensor named: Xocket Labs Inc., a Delaware corporation
+- [ ] Have a lawyer read the Additional Use Grant — the clause that would actually be argued over
 - [ ] Agree to Anthropic's Commercial Terms — we run Claude Code in a product
-- [ ] Enable GitHub Pages on `docs/` so the appcast is reachable, or change `SUFeedURL`
+- [ ] *(Later)* Host an appcast and set `SUFeedURL` + `SUPublicEDKey` to switch on auto-updates
 - [ ] Sweep every piece of copy for "open source" — it is source-available (docs/02-licence.md)
 - [ ] Decide whether the repository goes public at this release
 - [ ] Install the DMG on a Mac that has never seen the code, and make sure it opens
