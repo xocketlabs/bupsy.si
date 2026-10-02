@@ -152,3 +152,42 @@ struct WorkingDirectoryTests {
         }
     }
 }
+
+@Suite("Line reading")
+struct LineReaderTests {
+    /// Engine output is line-delimited JSON, so a line split across two reads would be
+    /// unparseable — the kind of failure that only shows up under load, on a long reply.
+    @Test("reassembles a line split across chunks")
+    func reassemblesSplitLines() {
+        var reader = LineReader(FileHandle.nullDevice)
+        #expect(reader.take(Data(#"{"type":"te"#.utf8)).isEmpty)
+        #expect(reader.take(Data("xt\"}\n".utf8)) == [#"{"type":"text"}"#])
+    }
+
+    @Test("returns every complete line in one chunk")
+    func multipleLinesInAChunk() {
+        var reader = LineReader(FileHandle.nullDevice)
+        #expect(reader.take(Data("a\nb\nc\n".utf8)) == ["a", "b", "c"])
+    }
+
+    /// A process that exits without a trailing newline still said something.
+    @Test("flushes a final line with no newline")
+    func flushesTrailingLine() {
+        var reader = LineReader(FileHandle.nullDevice)
+        #expect(reader.take(Data("done".utf8)).isEmpty)
+        #expect(reader.flush() == ["done"])
+        #expect(reader.flush().isEmpty, "flushing twice must not repeat it")
+    }
+
+    @Test("strips carriage returns, so Windows line endings read the same")
+    func stripsCarriageReturns() {
+        var reader = LineReader(FileHandle.nullDevice)
+        #expect(reader.take(Data("a\r\nb\r\n".utf8)) == ["a", "b"])
+    }
+
+    @Test("an empty line is a line, not a dropped one")
+    func keepsEmptyLines() {
+        var reader = LineReader(FileHandle.nullDevice)
+        #expect(reader.take(Data("a\n\nb\n".utf8)) == ["a", "", "b"])
+    }
+}
