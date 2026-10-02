@@ -250,6 +250,33 @@ bypass flag is unreachable below `.auto`.
 **Still open:** whether Codex's `config.toml` hooks (implied by `--dangerously-bypass-hook-trust`)
 can block. If they can, Codex gets interactive gating too. Worth an hour.
 
+### Spike 4 findings — the gate holds
+
+Run it yourself: `make spike-deny` and `make spike-allow`.
+
+```
+  GATE →     Bash: ls -la
+  GATE ←     deny
+  tool ←     ERROR spike auto-deny
+  text       `ls -la` was blocked — the call came back denied by a permission rule…
+```
+
+**Claude Code's `PreToolUse` hook blocks and decides, in `-p` mode, with our reason reaching the
+model verbatim.** That is the mechanism the entire autonomy ladder rests on, and it is now proven
+rather than assumed.
+
+**⚠️ The trap worth knowing: a hook that times out fails OPEN.** Claude Code's documentation is
+explicit that a timed-out `PreToolUse` hook does not block — the call proceeds through the normal
+permission flow. A gate that simply waited for a human would therefore grant permission precisely
+when nobody was watching, which is the worst possible moment to be permissive.
+
+So the generated script answers `deny` at **870 s**, inside the **900 s** hook timeout. The margin
+is the safety property, and `failsClosed` tests it with a 2-second timeout so the suite stays fast.
+
+**Still open:** whether Codex's `config.toml` hooks (implied by `--dangerously-bypass-hook-trust`)
+can block. If they can, Codex gains interactive gating too and `GateMechanism` gets a second
+`.blockingHook`. Worth an hour.
+
 ### Spike 6 findings — Codex, and why running it mattered
 
 Three findings, none of them available from documentation:
@@ -336,7 +363,8 @@ Cheap, but it decides §7. libraries.dev says Beam and Orb support SwiftUI; veri
 | 3b | Swift incremental stream parse | ✅ | **First event 2.49s into a 10.81s run** — genuinely incremental, no buffering. 7 lines, 0 unknown. | 2026-10-02 |
 | 3c | GUI-app `PATH` resolution of engine binary | ✅ | `claude` found at `~/.local/bin/claude` — on **none** of the default system paths. `BinaryResolver` is required, not optional. | 2026-10-02 |
 | 3d | Stream schema mapped | ✅ | `system/init`, `assistant` (text + tool_use), `user` (tool_result), `result`, `rate_limit_event`. Sanitised fixture committed. | 2026-10-02 |
-| 4 | Claude `PreToolUse` can block and decide | ⬜ | | |
+| 4 | Claude `PreToolUse` can block and decide | ✅ | **Both directions, against the real binary.** `make spike-deny` / `make spike-allow`. Our reason reaches the model verbatim. | 2026-10-02 |
+| 4d | A timed-out hook fails OPEN | ✅ | Confirmed from docs: the call proceeds. So the gate script denies at 870s, inside the 900s hook timeout. Tested. | 2026-10-02 |
 | 4b | Codex enforcement mechanism | ✅ | **Sandbox policy, not a blocking hook.** `exec --sandbox read-only\|workspace-write\|danger-full-access`, fixed before the run, enforced by the OS. No mid-run human gate exists in `exec`. | 2026-10-02 |
 | 4c | Grok equivalent | ⬜ | | |
 | 6 | Codex flag set + stream schema | ✅ | `exec --json` emits JSONL. Thread/turn/item model, nothing like Claude's. Two fixtures committed. | 2026-10-02 |
@@ -353,6 +381,6 @@ Cheap, but it decides §7. libraries.dev says Beam and Orb support SwiftUI; veri
 - **2 → answered: always-on means an always-running machine.** Replaced by a three-tier model
   (Mac-awake free / `pmset` scheduled wake free / always-on machine ~$13/mo). PLAN.md §4 rewritten.
 - 3 → adapter internals and the normaliser fixtures **(done: shell out, parse NDJSON, no SDK)**
-- 4 → the highest autonomy level we can honestly offer per engine
+- 4 → **answered: Claude `.auto` (blocking hook), Codex `.auto` (sandbox policy, no mid-run ask)**
 - 5 → whether M4 needs pre-warming; what we tell users compute costs
 - 6 → build-vs-reimplement for each libraries.dev effect

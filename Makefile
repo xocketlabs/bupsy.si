@@ -27,3 +27,10 @@ app:
 
 run: app
 	open "$$(find ~/Library/Developer/Xcode/DerivedData/Bupsy-*/Build/Products/Debug -maxdepth 1 -name 'Bupsy.app' | head -1)"
+
+# M0 spike 4: prove the approval gate blocks a real tool call, both directions.
+spike-deny:
+	swift run --package-path $(PKG) spike-stream --gate deny "Run the shell command: ls -la"
+
+spike-allow:
+	swift run --package-path $(PKG) spike-stream --gate allow "Run the shell command: echo GATE-ALLOWED"

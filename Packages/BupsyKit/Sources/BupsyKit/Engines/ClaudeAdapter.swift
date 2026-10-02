@@ -75,9 +75,14 @@ public struct ClaudeAdapter: EngineAdapter {
         for path in request.mcpConfigPaths {
             arguments += ["--mcp-config", path]
         }
-        // Permission flags are intentionally absent until spike 4 confirms which mechanism
-        // actually blocks. Gating belongs in a PreToolUse hook, not in a flag that merely
-        // widens what runs unattended.
+        if let settings = request.gateSettingsPath {
+            // Command-line settings sit above project and user settings in precedence, and —
+            // unlike project `.claude/settings.json` hooks, which do not run in `-p` sessions —
+            // these take effect in print mode, which is the only mode we ever use.
+            arguments += ["--settings", settings]
+        }
+        // No `--permission-mode` here on purpose: widening permissions is not the same as
+        // gating them, and the gate is the hook.
         return EngineInvocation(
             executable: binaryName,
             arguments: arguments,

@@ -55,7 +55,7 @@ struct TranscriptList: View {
                             .padding(.top, 60)
                     }
                     ForEach(thread.entries) { entry in
-                        EntryView(entry: entry, hue: bot.avatarHue)
+                        EntryView(entry: entry, hue: bot.avatarHue, bot: bot)
                             .id(entry.id)
                     }
                 }
@@ -95,6 +95,7 @@ struct EmptyThread: View {
 struct EntryView: View {
     let entry: TranscriptEntry
     let hue: Double
+    let bot: Bot
 
     var body: some View {
         switch entry.kind {
@@ -128,6 +129,9 @@ struct EntryView: View {
 
         case .tool(let name, let arguments, let result, let failed):
             ToolChip(name: name, arguments: arguments, result: result, failed: failed)
+
+        case .approval(let approval):
+            ApprovalCard(approval: approval)
 
         case .limits(let limits):
             LimitsGauge(limits: limits)
@@ -178,6 +182,101 @@ struct EntryView: View {
             markdown: text,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         )) ?? AttributedString(text)
+    }
+}
+
+/// A tool call waiting on the user.
+///
+/// Deliberately a card in the transcript rather than a modal: a modal interrupts whatever you
+/// were doing and loses the context of what the bot was in the middle of. It stays visible after
+/// a decision because what you allowed is part of the record, not a dialog that served its
+/// purpose and went away.
+struct ApprovalCard: View {
+    @Environment(AppModel.self) private var model
+    let approval: PendingApproval
+    @State private var showsDetail = false
+
+    private var bot: Bot? { model.selectedBot }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .fontWeight(.medium)
+                    Text(approval.reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            // The command itself, in full. An approval you cannot read is not an approval.
+            Text(approval.summary)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.background.opacity(0.5), in: .rect(cornerRadius: 6))
+
+            if showsDetail {
+                Text(approval.inputJSON)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            if approval.decided == nil {
+                HStack(spacing: 8) {
+                    Button("Allow") { decide(true) }
+                        .keyboardShortcut("a", modifiers: [.command, .shift])
+                    Button("Deny") { decide(false) }
+                        .keyboardShortcut("d", modifiers: [.command, .shift])
+                    Button(showsDetail ? "Less" : "Details") { showsDetail.toggle() }
+                        .buttonStyle(.link)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 640, alignment: .leading)
+        .background(tint.opacity(0.1), in: .rect(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(tint.opacity(approval.decided == nil ? 0.5 : 0.2), lineWidth: 1)
+        }
+    }
+
+    private func decide(_ allow: Bool) {
+        guard let bot else { return }
+        model.decide(approval, allow: allow, for: bot)
+    }
+
+    private var title: String {
+        switch approval.decided {
+        case nil: "\(approval.tool) needs your approval"
+        case .allowed: "\(approval.tool) — you allowed this"
+        case .denied: "\(approval.tool) — you declined this"
+        case .expired: "\(approval.tool) — denied, nobody answered"
+        }
+    }
+
+    private var icon: String {
+        switch approval.decided {
+        case nil: "hand.raised.fill"
+        case .allowed: "checkmark.circle.fill"
+        case .denied, .expired: "xmark.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch approval.decided {
+        case nil: .orange
+        case .allowed: .green
+        case .denied, .expired: .secondary
+        }
     }
 }
 

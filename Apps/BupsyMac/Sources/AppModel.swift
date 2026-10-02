@@ -14,6 +14,7 @@ final class AppModel {
 
     private var threads: [BotID: Thread] = [:]
     private var running: [BotID: Task<Void, Never>] = [:]
+    private var gates: [BotID: ApprovalGate] = [:]
     private let store: Store?
 
     private let host: any ExecutionHost = LocalHost()
@@ -136,11 +137,22 @@ final class AppModel {
         try? store?.save(run)
         persist(.text(prompt), run: run.id, seq: 0, asUserMessage: true)
 
+        // A fresh gate per run: the hook script and settings are written to a temporary
+        // directory, and the engine is told about them with `--settings`. An engine started
+        // without this runs ungated, which is only ever correct for an auth probe.
+        var gateSettings: String?
+        if let gate = try? ApprovalGate.temporary() {
+            gates[bot.id] = gate
+            gateSettings = try? GateInstaller.install(gateDirectory: gate.directory).path
+            watchGate(gate, bot: bot, thread: thread, run: run.id)
+        }
+
         let request = RunRequest(
             prompt: bot.personaPrompt.map { "\($0)\n\n\(prompt)" } ?? prompt,
             resume: thread.conversationID,
             model: bot.model,
-            autonomy: bot.autonomy
+            autonomy: bot.autonomy,
+            gateSettingsPath: gateSettings
         )
 
         running[bot.id] = Task { [host, store] in
@@ -149,6 +161,8 @@ final class AppModel {
             defer {
                 thread.isRunning = false
                 running[bot.id] = nil
+                Task { [gate = gates[bot.id]] in await gate?.stop() }
+                gates[bot.id] = nil
                 var finished = run
                 finished.status = failed ? "failed" : "finished"
                 finished.endedAt = Date()
@@ -203,10 +217,81 @@ final class AppModel {
         return created.id
     }
 
+    /// Applies policy to each gated tool call, and raises a card only when a human is needed.
+    ///
+    /// Every call passes through here, including auto-allowed ones, so the audit trail records
+    /// what ran and under which rule — a bot on `.auto` still leaves a complete account of itself.
+    private func watchGate(_ gate: ApprovalGate, bot: Bot, thread: Thread, run: String) {
+        Task { [weak self] in
+            for await request in await gate.requests() {
+                guard let self else { return }
+                let outcome = AutonomyPolicy.decide(
+                    tool: request.tool,
+                    autonomy: bot.autonomy,
+                    allowlist: bot.toolAllowlist
+                )
+                switch outcome {
+                case .allow(let rule):
+                    try? await gate.decide(request.id, .allow(reason: rule))
+                    self.recordDecision(run: run, request: request,
+                                        decision: "allowed", rule: rule)
+                case .ask(let reason):
+                    thread.raiseApproval(PendingApproval(
+                        id: request.id, tool: request.tool, summary: request.summary,
+                        inputJSON: request.inputJSON, reason: reason))
+                }
+            }
+        }
+    }
+
+    /// The user's answer on an approval card.
+    func decide(_ approval: PendingApproval, allow: Bool, for bot: Bot) {
+        guard let gate = gates[bot.id] else { return }
+        let thread = thread(for: bot.id)
+        thread.resolveApproval(id: approval.id, as: allow ? .allowed : .denied)
+        Task {
+            try? await gate.decide(
+                approval.id,
+                allow ? .allow(reason: "you approved it") : .deny(reason: "you declined it"))
+        }
+        recordDecision(run: nil, requestID: approval.id, tool: approval.tool,
+                       inputJSON: approval.inputJSON,
+                       decision: allow ? "allowed" : "denied", rule: "decided by you")
+    }
+
+    private func recordDecision(run: String?, request: GateRequest, decision: String, rule: String) {
+        recordDecision(run: run, requestID: request.id, tool: request.tool,
+                       inputJSON: request.inputJSON, decision: decision, rule: rule)
+    }
+
+    /// Decisions are part of the audit trail, not UI state. They go into the same append-only
+    /// log as everything else the agent did.
+    private func recordDecision(run: String?, requestID: String, tool: String,
+                                inputJSON: String, decision: String, rule: String) {
+        guard let store, let run else { return }
+        let payload = [
+            "tool": tool, "decision": decision, "rule": rule, "input": inputJSON,
+        ]
+        let encoded = (try? String(
+            data: JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+            encoding: .utf8)) ?? "{}"
+        try? store.append([EventRecord(
+            runID: run, seq: Int(Date().timeIntervalSince1970 * 1000) % 1_000_000_000,
+            type: "approval", payload: encoded)])
+    }
+
     func stop(_ botID: BotID) {
         running[botID]?.cancel()
         running[botID] = nil
+        Task { [gate = gates[botID]] in await gate?.stop() }
+        gates[botID] = nil
         thread(for: botID).isRunning = false
+    }
+
+    /// Stops every run and closes every gate. The thing you reach for when a bot is doing
+    /// something you did not expect.
+    func stopEverything() {
+        for id in running.keys { stop(id) }
     }
 
     func addBot(name: String, engine: EngineID) {

@@ -12,7 +12,17 @@ import Foundation
 @main
 struct SpikeStream {
     static func main() async {
-        let prompt = CommandLine.arguments.dropFirst().joined(separator: " ")
+        var arguments = Array(CommandLine.arguments.dropFirst())
+
+        // M0 spike 4: prove the PreToolUse gate actually blocks, against the real binary.
+        //   spike-stream --gate deny  "Run: ls"
+        //   spike-stream --gate allow "Run: ls"
+        var gateMode: String?
+        if let index = arguments.firstIndex(of: "--gate"), index + 1 < arguments.count {
+            gateMode = arguments[index + 1]
+            arguments.removeSubrange(index...(index + 1))
+        }
+        let prompt = arguments.joined(separator: " ")
         guard !prompt.isEmpty else {
             print("usage: spike-stream <prompt>")
             exit(2)
@@ -39,8 +49,33 @@ struct SpikeStream {
         var rawLines: [String] = []
         var counts: [String: Int] = [:]
 
+        var gateSettings: String?
+        var gate: ApprovalGate?
+        if let gateMode {
+            do {
+                let created = try ApprovalGate.temporary()
+                gate = created
+                gateSettings = try GateInstaller.install(gateDirectory: created.directory).path
+                print("gate:       \(gateMode) · \(created.directory.path)")
+                Task {
+                    for await request in await created.requests() {
+                        print("  GATE →     \(request.tool): \(oneLine(request.summary, limit: 70))")
+                        let verdict: GateVerdict = gateMode == "allow"
+                            ? .allow(reason: "spike auto-allow")
+                            : .deny(reason: "spike auto-deny")
+                        try? await created.decide(request.id, verdict)
+                        print("  GATE ←     \(gateMode)")
+                    }
+                }
+            } catch {
+                print("gate:       FAILED to install — \(error)")
+                exit(1)
+            }
+        }
+
         do {
-            let invocation = adapter.invocation(for: RunRequest(prompt: prompt))
+            let invocation = adapter.invocation(
+                for: RunRequest(prompt: prompt, gateSettingsPath: gateSettings))
             for try await output in try await host.spawn(invocation) {
                 if case .stdout(let line) = output, !line.isEmpty { rawLines.append(line) }
 
@@ -81,6 +116,7 @@ struct SpikeStream {
             print("⚠️  \(unknown) unmodelled line(s) — add them to the normaliser and a fixture")
         }
 
+        if let gate { await gate.stop() }
         if !rawLines.isEmpty { writeFixture(rawLines) }
     }
 
