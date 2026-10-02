@@ -358,7 +358,8 @@ Cheap, but it decides §7. libraries.dev says Beam and Orb support SwiftUI; veri
 | 2b | Does a *stopped* VM wake for scheduled work? | ✅ | **No.** boat docs: "Stopped sandboxes do NOT automatically wake for scheduled work." Answered from documentation — architecture changed accordingly. | 2026-10-02 |
 | 2c | Cost of always-running `small` | 🟡 | **~$12.96/mo** (2,592,000 wall s × 0.5 rate = 1,296,000 billed of the 2,000,000 in boat's $20 minimum). Arithmetic, not measured. | 2026-10-02 |
 | 2d | `ttlSeconds` semantics | ✅ | Default 1h, counts **from creation, not last activity**. `ttlSeconds: null` disables. Easy, expensive bug. | 2026-10-02 |
-| 2e | `pmset` scheduled wake exists | ✅ | Yes, and already in use on this Mac (`pmset -g sched`). Enables tier 2. Reliability with lid closed on battery still unverified. | 2026-10-02 |
+| 2e | `pmset` scheduled wake usable by the app | ❌ | **Needs root.** `pmset: This operation must be run as root`. Tier 2 redesigned around a LaunchAgent; true wake would need a privileged helper (tier 2b, post-1.0). | 2026-10-02 |
+| 2f | LaunchAgent schedules unprivileged | ✅ | Installed one and watched launchd fire it (`runs = 3`). Runs with the app closed; does **not** wake the Mac. | 2026-10-02 |
 | 3 | Exact flag set confirmed | 🟡 | `-p`, `--output-format stream-json`, `--verbose`, `--resume`, `--model`, `--mcp-config` all work. Full `--help` sweep still to do. | 2026-10-02 |
 | 3b | Swift incremental stream parse | ✅ | **First event 2.49s into a 10.81s run** — genuinely incremental, no buffering. 7 lines, 0 unknown. | 2026-10-02 |
 | 3c | GUI-app `PATH` resolution of engine binary | ✅ | `claude` found at `~/.local/bin/claude` — on **none** of the default system paths. `BinaryResolver` is required, not optional. | 2026-10-02 |

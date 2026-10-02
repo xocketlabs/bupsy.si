@@ -44,6 +44,12 @@ asleep), **`pmset` scheduled wake** (free, native-only, "usually works"), and an
 (~$13/mo for a `small`, genuinely independent of the Mac). The machine pool model is what makes the
 third affordable — the cost is per machine, and one machine serves every bot assigned to it.
 
+Tier 2 was then corrected a second time: `pmset schedule wake` needs root, so the free middle tier
+is a LaunchAgent that runs with the app closed and catches up after sleep, rather than one that
+wakes the Mac. That costs us a claimed native advantage — an Electron app can install a LaunchAgent
+too — so lid-closed autonomy now rests entirely on tier 3. Said plainly in PLAN.md §4 rather than
+quietly softened, because overclaiming there would be the worst lie this product could tell.
+
 Also: **systemd timers, not cron.** And `ttlSeconds` counts from *creation*, not last activity, so
 an always-on machine must be created with `ttlSeconds: null` or it disappears after an hour.
 

@@ -32,9 +32,11 @@ are *structurally* better at something it cannot easily copy, so these four are 
    dictation, `launchd` integration, no `127.0.0.1` port to collide. An Electron app cannot follow
    us here without a rewrite. This is the most defensible axis and it is visible in the first
    five seconds of use.
-2. **Always-on that survives a closed lid.** A local harness stops when the Mac sleeps. We put the
-   scheduler **inside the user's own VM**, so routines fire whether the Mac is awake or in a bag.
-   This is the Dots half, and §4 is how.
+2. **Always-on that survives a closed lid.** A local harness stops when the Mac sleeps. Routines
+   that must not wait run **inside the user's own machine**, so they fire whether the Mac is awake
+   or in a bag. This is the Dots half, and §4 is how. Note the free tiers do *not* deliver this —
+   §4 is explicit about which tier buys what, because overclaiming here would be the easiest and
+   worst lie the product could tell.
 3. **MCP-native, not broker-dependent.** Connectors are MCP servers the user owns, not a hosted
    marketplace account. Works identically on the Mac and in the VM, and needs no third-party key.
    Composio stays available for long-tail reach once there is demand, but nothing core depends on it.
@@ -295,19 +297,39 @@ The bot has no machine. Routines run on `LocalHost` while the Mac is awake and a
 otherwise. Correct for most bots, costs nothing, and is the default because the default bot has no
 machine.
 
-### Tier 2 — Scheduled wake · free · **native-only**
+### Tier 2 — A LaunchAgent · free · runs with bupsy closed
 
-macOS can wake itself from sleep for a scheduled event (`pmset schedule`, `repeat wakeorpoweron`).
-The app registers a wake a minute before each routine, the Mac wakes, runs it, and goes back to
-sleep.
+**Corrected after testing.** The first draft said macOS could wake itself for a routine via
+`pmset schedule wake`, and called that a native-only advantage. It is not available to us:
 
-This is a genuine advantage of being native, and worth building for that reason alone: an Electron
-app cannot schedule system power events this cleanly, so a local-harness competitor has the same
-sleeping-Mac problem and no comparable answer.
+```
+$ pmset schedule wake "10/02/26 21:05:00"
+pmset: This operation must be run as root
+```
 
-Honest limits, which the UI must state: a Mac on battery with the lid closed may not wake reliably,
-a powered-off Mac never does, and `pmset` needs the right authorisation. So tier 2 is "usually
-works" — good enough for a 7am briefing, not good enough for something that must never be missed.
+Scheduling a real wake needs root, which for a user app means installing a privileged helper and
+asking for an admin password. That is a thing we could do later; it is not a free tier.
+
+What *is* free and unprivileged is a **LaunchAgent**, verified by installing one and watching
+launchd fire it three times on schedule:
+
+- Runs on schedule **even when bupsy is not open** — launchd starts the app to do the work.
+- A run missed while the Mac slept fires **once on wake**, so a 7am briefing arrives when the lid
+  opens rather than being lost.
+- It does **not** wake the Mac. A closed laptop stays closed.
+
+So tier 2's honest claim is "runs without bupsy open, and catches up after sleep" — useful, and
+noticeably less than "wakes your Mac". The UI says the smaller true thing.
+
+**This costs us a differentiator, and the plan should say so.** An Electron app can install a
+LaunchAgent just as easily, so tier 2 is no longer a native advantage. Lid-closed autonomy now
+rests entirely on **tier 3**, which is still true and still the thing worth paying for.
+
+#### Tier 2b — a privileged helper · post-1.0
+
+A signed `SMAppService` daemon could call `pmset` and schedule genuine wakes. One-time admin
+authorisation, a second signed binary, and a meaningfully larger attack surface for a tool that
+already holds a user's agent credentials. Worth revisiting only if people ask for it.
 
 ### Tier 3 — Always-on machine · ~$13/month · actually independent
 
@@ -336,9 +358,10 @@ $500/month for.
 | | Tier 1 | Tier 2 | Tier 3 |
 |---|---|---|---|
 | Cost/month | $0 | $0 | ~$13 per machine |
-| Mac asleep | skipped | wakes it | irrelevant |
-| Mac off | skipped | skipped | still runs |
-| Reliability | exact | usually | exact |
+| bupsy closed | skipped | runs | runs |
+| Mac asleep | skipped | catches up on wake | runs on time |
+| Mac off | skipped | catches up on boot | runs on time |
+| Reliability | exact | late, but not lost | exact |
 
 PLAN.md previously claimed $1–5/month for always-on. That figure was for **wake-on-demand**
 (12 runs/day × 10 min ≈ $1.08/month) which remains the right way to run *interactive* cloud work —
@@ -350,7 +373,7 @@ overnight work, and §8 is corrected.
 ```
 routine created → compiled to persona + prompt + schedule
   tier 1 → kept on the Mac
-  tier 2 → pmset wake registered, run stays on the Mac
+  tier 2 → LaunchAgent installed; launchd starts bupsy to run it
   tier 3 → systemd service + timer installed in the machine:
              /etc/systemd/system/bupsy-<routine>.service   (oneshot, runs bupsy-run)
              /etc/systemd/system/bupsy-<routine>.timer     (OnCalendar=…)
