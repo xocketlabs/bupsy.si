@@ -89,7 +89,12 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [ ] Watch its screen
 - [ ] **Needs your boat key to prove it works against the real service**
 
-### 3. Make it look good ✅ **messaging app, on the Agndex palette**
+### 3. Make it look good ✅ **rebuilt in the Agndex dashboard shell**
+- [x] Nav rail with labelled groups — Bots, Setup — on the darkest surface
+- [x] Working surface floats as a rounded panel inset inside it
+- [x] Topbar with breadcrumbs
+- [x] Page header, meta chips, section headers with badges, card rows with icon tiles
+- [x] The chips *are* the controls — engine, model, machine and trust change from the page
 - [x] Colours ported exactly from watermelon.sh's Agndex dashboard (oklch → sRGB, not eyeballed)
 - [x] Sidebar darker than content, cards lifted above it — depth without borders or shadows
 - [x] Everything on a 44pt control height and an 8/12/16/24/40 spacing scale
