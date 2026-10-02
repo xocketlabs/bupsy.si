@@ -71,25 +71,71 @@ enum Theme {
 
 // MARK: - The pieces Agndex repeats
 
+/// A chip that is also the control for the fact it states.
+///
+/// In a dashboard, a row of read-only labels sitting next to a hidden menu is the worst of both:
+/// the fact is visible and changing it is not. These carry a menu, so the thing you can see is
+/// the thing you can change.
+struct MenuChip<Content: View>: View {
+    @Environment(\.palette) private var palette
+    let icon: String
+    let text: String
+    var emphasised = false
+    var tone: Color?
+    @ViewBuilder var menu: Content
+    @State private var hovering = false
+
+    var body: some View {
+        Menu {
+            menu
+        } label: {
+            HStack(spacing: Theme.Space.snug) {
+                Image(systemName: icon).font(.system(size: 12))
+                Text(text).font(Theme.Typography.body)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground.opacity(hovering ? 1 : 0.45))
+            }
+            .foregroundStyle(tone ?? (emphasised ? palette.foreground : palette.mutedForeground))
+            .padding(.horizontal, Theme.Space.step)
+            .frame(height: Theme.Size.control)
+            .background(hovering ? palette.cardHover : palette.secondary,
+                        in: .rect(cornerRadius: Theme.Radius.control))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.control)
+                    .strokeBorder(tone?.opacity(0.35) ?? palette.border)
+            }
+            .contentShape(.rect)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .onHover { hovering = $0 }
+    }
+}
+
 /// A pill of secondary information: an icon and a short label at control height.
 struct MetaChip: View {
     @Environment(\.palette) private var palette
     let icon: String
     let text: String
     var emphasised = false
+    /// Set only for a chip that should carry weight — an engine that cannot run, a bot with the
+    /// brakes off. Left nil, a chip is an ordinary fact and stays grey.
+    var tone: Color?
 
     var body: some View {
         HStack(spacing: Theme.Space.snug) {
             Image(systemName: icon).font(.system(size: 12))
             Text(text).font(Theme.Typography.body)
         }
-        .foregroundStyle(emphasised ? palette.foreground : palette.mutedForeground)
+        .foregroundStyle(tone ?? (emphasised ? palette.foreground : palette.mutedForeground))
         .padding(.horizontal, Theme.Space.step)
         .frame(height: Theme.Size.control)
         .background(palette.secondary, in: .rect(cornerRadius: Theme.Radius.control))
         .overlay {
             RoundedRectangle(cornerRadius: Theme.Radius.control)
-                .strokeBorder(palette.border)
+                .strokeBorder(tone?.opacity(0.35) ?? palette.border)
         }
     }
 }
