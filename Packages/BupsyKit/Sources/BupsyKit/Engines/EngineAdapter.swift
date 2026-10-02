@@ -70,6 +70,20 @@ public enum Autonomy: String, Sendable, Codable, CaseIterable, Comparable {
     public static func < (a: Autonomy, b: Autonomy) -> Bool { a.rank < b.rank }
 }
 
+/// A model a bot can be pointed at.
+public struct ModelOption: Sendable, Hashable, Identifiable {
+    /// Passed verbatim to the engine's model flag. `nil` means "whatever the CLI already
+    /// defaults to", which is the right default: the user may have configured one themselves and
+    /// we should not quietly override it.
+    public let id: String?
+    public let label: String
+    public let detail: String?
+
+    public init(id: String?, label: String, detail: String? = nil) {
+        self.id = id; self.label = label; self.detail = detail
+    }
+}
+
 public struct LoginCommand: Sendable, Equatable {
     /// Run in a PTY we render but never parse. The user completes the vendor's own flow;
     /// the credential lands in their own files and we learn only that it worked.
@@ -142,6 +156,9 @@ public protocol EngineAdapter: Sendable {
 
     /// The highest autonomy this engine can honestly enforce.
     var maximumEnforceableAutonomy: Autonomy { get }
+
+    /// Models this engine can be pointed at, for a per-bot picker.
+    var models: [ModelOption] { get }
 
     /// How this engine enforces, which decides what the UI is allowed to promise. An engine
     /// with `.sandboxPolicy` cannot stop to ask, so `.ask` means "run narrowly" rather than

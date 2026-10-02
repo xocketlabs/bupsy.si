@@ -30,6 +30,20 @@ public struct CodexAdapter: EngineAdapter {
     public var maximumEnforceableAutonomy: Autonomy { .auto }
     public var gateMechanism: GateMechanism { .sandboxPolicy }
 
+    /// Codex publishes no alias scheme and `--help` lists no models, so these are identifiers
+    /// observed in the wild rather than a documented set. **Every one of them was rejected on the
+    /// ChatGPT account tested in M0** with "not supported when using Codex with a ChatGPT
+    /// account", so the picker must tolerate all of them failing and say why — see
+    /// `AuthStatus.signedInWithoutModelAccess`.
+    public var models: [ModelOption] {
+        [
+            ModelOption(id: nil, label: "Default", detail: "Whatever your CLI is set to"),
+            ModelOption(id: "gpt-5.6-codex", label: "GPT-5.6 Codex", detail: "Tuned for code"),
+            ModelOption(id: "gpt-5.6", label: "GPT-5.6", detail: "General purpose"),
+            ModelOption(id: "gpt-5-codex", label: "GPT-5 Codex", detail: "Previous generation"),
+        ]
+    }
+
     public func loginCommand() -> LoginCommand {
         LoginCommand(
             command: "codex login --device-auth",

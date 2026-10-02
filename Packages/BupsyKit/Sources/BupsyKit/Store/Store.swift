@@ -138,6 +138,18 @@ public struct Store: Sendable {
                           columns: ["machineID", "engine"], unique: true)
         }
 
+        // Switching a bot between engines must not lose its history, and must not try to resume
+        // a Claude session id inside Codex — the handles are not interchangeable. So a
+        // conversation belongs to a (bot, engine) pair rather than a bot.
+        migrator.registerMigration("v2-conversations-per-engine") { db in
+            try db.alter(table: "conversations") { t in
+                t.add(column: "engine", .text).notNull().defaults(to: "claude")
+            }
+            try db.create(
+                index: "conversations_bot_engine", on: "conversations",
+                columns: ["botID", "engine"])
+        }
+
         return migrator
     }
 
@@ -175,10 +187,12 @@ public struct Store: Sendable {
 
     // MARK: - Conversations, runs, events
 
-    public func conversation(forBot botID: String) throws -> ConversationRecord? {
+    /// The bot's thread **for this engine**. Switching engines gives a bot a separate thread,
+    /// and switching back returns to the one it had.
+    public func conversation(forBot botID: String, engine: String) throws -> ConversationRecord? {
         try database.read { db in
             try ConversationRecord
-                .filter(Column("botID") == botID)
+                .filter(Column("botID") == botID && Column("engine") == engine)
                 .order(Column("lastEventAt").desc)
                 .fetchOne(db)
         }

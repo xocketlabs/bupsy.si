@@ -14,6 +14,9 @@ final class AppModel {
     /// Set when a machine operation failed. Shown rather than logged — a machine that did not
     /// start is money not being spent, or work not being done, and either way the user should know.
     var machineProblem: String?
+    /// Shown once. Stored in UserDefaults rather than the database: it is a preference about the
+    /// app, not part of the user's data, and it should not travel with a restored database.
+    var needsOnboarding = !UserDefaults.standard.bool(forKey: "si.bupsy.onboarded")
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?
     /// Set when a schedule could not be installed, so the UI can say a routine will not fire.
@@ -64,6 +67,11 @@ final class AppModel {
     // Machines are rented on the *user's* boat.dev account with the *user's* key. bupsy holds no
     // compute key of its own, and the UI says so, because a surprise charge from a company
     // someone did not knowingly sign up with would be worse than any bug in here.
+
+    func completeOnboarding() {
+        UserDefaults.standard.set(true, forKey: "si.bupsy.onboarded")
+        needsOnboarding = false
+    }
 
     var hasComputeKey: Bool { keychain.has(.boatAPIKey) }
 
@@ -151,6 +159,36 @@ final class AppModel {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         bots[index].machineID = machineID
         try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Moves a bot to another engine.
+    ///
+    /// The thread is swapped rather than lost. Resume handles are engine-specific — a Claude
+    /// session id means nothing to Codex — so each engine keeps its own conversation, and
+    /// switching back returns to where that engine left off. The visible transcript is reloaded
+    /// to match, because showing a Claude transcript while talking to Codex would be a lie.
+    func setEngine(_ bot: Bot, _ engine: EngineID) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }), bot.engine != engine
+        else { return }
+
+        bots[index].engine = engine
+        // A model name from one engine is meaningless to the other.
+        bots[index].model = nil
+        try? store?.save(bots[index].record(sortIndex: index))
+
+        threads[bot.id] = nil
+        _ = thread(for: bot.id)
+    }
+
+    func setModel(_ bot: Bot, _ model: String?) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].model = model
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// The models the bot's current engine offers.
+    func models(for bot: Bot) -> [ModelOption] {
+        adapters[bot.engine]?.models ?? []
     }
 
     func setAutonomy(_ bot: Bot, _ level: Autonomy) {
@@ -299,7 +337,9 @@ final class AppModel {
                 for record in try store.transcript(forBot: botID.rawValue) {
                     created.applyStored(type: record.type, payload: record.payload)
                 }
-                created.conversationID = try store.conversation(forBot: botID.rawValue)
+                let engine = bots.first { $0.id == botID }?.engine ?? .claude
+                created.conversationID = try store
+                    .conversation(forBot: botID.rawValue, engine: engine.rawValue)
                     .flatMap { record in record.providerConversationID.map { ConversationID($0) } }
             } catch {
                 storageProblem = error.localizedDescription
@@ -310,6 +350,15 @@ final class AppModel {
     }
 
     func isRunning(_ botID: BotID) -> Bool { running[botID] != nil }
+
+    /// True when a bot is blocked on a decision from you, which the roster shows differently
+    /// from merely working — it is the state that needs a human.
+    func isWaitingForApproval(_ botID: BotID) -> Bool {
+        threads[botID]?.entries.contains {
+            if case .approval(let approval) = $0.kind { return approval.decided == nil }
+            return false
+        } ?? false
+    }
 
     func refreshEngineStatus() async {
         for (id, adapter) in adapters {
@@ -394,7 +443,7 @@ final class AppModel {
                 try? store?.save(finished)
                 if let id = thread.conversationID {
                     try? store?.save(ConversationRecord(
-                        id: conversationID, botID: bot.id.rawValue,
+                        id: conversationID, botID: bot.id.rawValue, engine: bot.engine.rawValue,
                         providerConversationID: id.rawValue, lastEventAt: Date()))
                 }
             }
@@ -434,10 +483,12 @@ final class AppModel {
     }
 
     private func ensureConversation(for bot: Bot, thread: Thread) -> String {
-        if let store, let existing = try? store.conversation(forBot: bot.id.rawValue) {
+        if let store,
+           let existing = try? store.conversation(
+               forBot: bot.id.rawValue, engine: bot.engine.rawValue) {
             return existing.id
         }
-        let created = ConversationRecord(botID: bot.id.rawValue)
+        let created = ConversationRecord(botID: bot.id.rawValue, engine: bot.engine.rawValue)
         try? store?.save(created)
         return created.id
     }

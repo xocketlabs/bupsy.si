@@ -25,6 +25,21 @@ public struct ClaudeAdapter: EngineAdapter {
     /// A hook can hold the run open while a human decides, so `.ask` genuinely means "ask me".
     public var gateMechanism: GateMechanism { .blockingHook }
 
+    /// Aliases rather than pinned identifiers.
+    ///
+    /// `claude --help` documents aliases that track the latest model in each family, so a list of
+    /// them keeps working when new versions ship. Pinning `claude-opus-5` would quietly rot and
+    /// leave users on an old model with no indication why.
+    public var models: [ModelOption] {
+        [
+            ModelOption(id: nil, label: "Default", detail: "Whatever your CLI is set to"),
+            ModelOption(id: "opus", label: "Opus", detail: "Most capable, uses your quota fastest"),
+            ModelOption(id: "sonnet", label: "Sonnet", detail: "Balanced — a good default"),
+            ModelOption(id: "haiku", label: "Haiku", detail: "Fastest, lightest on your quota"),
+            ModelOption(id: "fable", label: "Fable", detail: "Latest Fable model"),
+        ]
+    }
+
     public func loginCommand() -> LoginCommand {
         LoginCommand(
             command: "claude",

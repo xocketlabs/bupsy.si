@@ -22,6 +22,8 @@ fmt:
 # Generate the Xcode project and build the Mac app.
 # The project file is generated, never committed — project.yml is the source of truth.
 app:
+	# xcodegen enumerates files at generation time, so a NEW source file is invisible
+	# until the project is regenerated. Always regenerate before building.
 	xcodegen generate
 	xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac -configuration Debug build
 

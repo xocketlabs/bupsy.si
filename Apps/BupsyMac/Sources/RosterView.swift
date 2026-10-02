@@ -70,6 +70,27 @@ struct BotMenu: View {
             }
         }
 
+        Menu("Engine") {
+            ForEach([EngineID.claude, .codex], id: \.self) { engine in
+                Button {
+                    model.setEngine(bot, engine)
+                } label: {
+                    Label(engine.displayName,
+                          systemImage: bot.engine == engine ? "checkmark" : "")
+                }
+            }
+        }
+
+        Menu("Model") {
+            ForEach(model.models(for: bot)) { option in
+                Button {
+                    model.setModel(bot, option.id)
+                } label: {
+                    Label(option.label, systemImage: bot.model == option.id ? "checkmark" : "")
+                }
+            }
+        }
+
         Menu("Trust") {
             ForEach(Autonomy.allCases, id: \.self) { level in
                 Button {
@@ -106,17 +127,30 @@ struct BotMenu: View {
 }
 
 struct BotRow: View {
+    @Environment(AppModel.self) private var model
     let bot: Bot
     let isRunning: Bool
 
+    /// A glance at the roster should say which bot is busy and which is stuck on you, without
+    /// reading a word. Waiting beats working: a bot blocked on a decision is the one that needs
+    /// attention, even though it is also technically running.
+    private var mood: BotMood {
+        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
+        if isRunning { return .working }
+        return .idle
+    }
+
     var body: some View {
         HStack(spacing: 10) {
-            BotAvatar(hue: bot.avatarHue, isRunning: isRunning)
+            BotFace(hue: bot.avatarHue, mood: mood)
             VStack(alignment: .leading, spacing: 1) {
                 Text(bot.name)
                     .fontWeight(.medium)
                 HStack(spacing: 4) {
                     Text(bot.engine.displayName)
+                    if let model = bot.model {
+                        Text("· \(model)")
+                    }
                     if bot.machineID == nil {
                         Text("· this Mac")
                     }
@@ -125,75 +159,11 @@ struct BotRow: View {
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            if isRunning {
-                ThinkingOrb(hue: bot.avatarHue)
+            if isRunning && !model.isWaitingForApproval(bot.id) {
+                ThinkingOrbs(hue: bot.avatarHue)
             }
         }
         .padding(.vertical, 3)
-    }
-}
-
-/// Status-driven avatar.
-///
-/// Placeholder for libraries.dev `bot-avatars`, which is React-only and needs a SwiftUI port
-/// (docs/03-decisions.md #17). The shape of the API — a hue plus a status — is deliberately the
-/// same, so swapping the implementation later does not touch the roster.
-struct BotAvatar: View {
-    let hue: Double
-    let isRunning: Bool
-
-    var body: some View {
-        Circle()
-            .fill(
-                AngularGradient(
-                    colors: [
-                        Color(hue: hue, saturation: 0.55, brightness: 0.95),
-                        Color(hue: (hue + 0.12).truncatingRemainder(dividingBy: 1),
-                              saturation: 0.7, brightness: 0.8),
-                    ],
-                    center: .center
-                )
-            )
-            .frame(width: 26, height: 26)
-            .overlay {
-                Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if isRunning {
-                    Circle()
-                        .fill(.green)
-                        .frame(width: 8, height: 8)
-                        .overlay { Circle().strokeBorder(.background, lineWidth: 1.5) }
-                        .offset(x: 1, y: 1)
-                }
-            }
-    }
-}
-
-/// Stand-in for libraries.dev `thinking-orbs`, which does ship a SwiftUI package — swap this for
-/// the real one once the dependency is added. Runs are minutes long, so this is the most-seen
-/// animation in the app and worth getting right.
-struct ThinkingOrb: View {
-    let hue: Double
-    @State private var phase = 0.0
-
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .fill(Color(hue: hue, saturation: 0.5, brightness: 0.9))
-                    .frame(width: 5, height: 5)
-                    .opacity(0.35 + 0.65 * abs(sin(phase + Double(index) * 0.7)))
-            }
-        }
-        .task {
-            // A timer rather than a repeatForever animation: this view appears and disappears
-            // with run state, and implicit animations on an unstable view flicker.
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(90))
-                phase += 0.22
-            }
-        }
     }
 }
 

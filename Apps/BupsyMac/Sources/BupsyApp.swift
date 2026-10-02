@@ -28,6 +28,16 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        content
+            .sheet(isPresented: Binding(
+                get: { model.needsOnboarding },
+                set: { if !$0 { model.completeOnboarding() } }
+            )) {
+                OnboardingSheet()
+            }
+    }
+
+    private var content: some View {
         NavigationSplitView {
             RosterView()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)

@@ -87,9 +87,7 @@ struct EmptyThread: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            BotAvatar(hue: bot.avatarHue, isRunning: false)
-                .scaleEffect(1.8)
-                .frame(height: 48)
+            BotFace(hue: bot.avatarHue, mood: .idle, size: 52)
             Text(bot.name).font(.headline)
             Text("Runs \(bot.engine.displayName) on this Mac, under your own sign-in.")
                 .font(.callout)
@@ -411,16 +409,7 @@ struct Composer: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
                 .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: 10))
-                .overlay {
-                    // Stand-in for libraries.dev `border-beam`, which ships SwiftUI — swap it in
-                    // once the dependency is added. Shows the input is live without a spinner.
-                    if isRunning {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(
-                                Color(hue: hue, saturation: 0.6, brightness: 0.95).opacity(0.7),
-                                lineWidth: 1.5)
-                    }
-                }
+                .borderBeam(hue: hue, active: isRunning)
                 .onSubmit(onSend)
 
             Button(isRunning ? "Stop" : "Send", action: isRunning ? onStop : onSend)

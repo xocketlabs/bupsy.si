@@ -71,11 +71,13 @@ public struct ConversationRecord: Codable, FetchableRecord, MutablePersistableRe
     public var providerConversationID: String?
     public var title: String?
     public var lastEventAt: Date
+    /// Resume handles are engine-specific, so a conversation belongs to a (bot, engine) pair.
+    public var engine: String
 
-    public init(id: String = UUID().uuidString, botID: String,
+    public init(id: String = UUID().uuidString, botID: String, engine: String,
                 providerConversationID: String? = nil, title: String? = nil,
                 lastEventAt: Date = Date()) {
-        self.id = id; self.botID = botID
+        self.id = id; self.botID = botID; self.engine = engine
         self.providerConversationID = providerConversationID
         self.title = title; self.lastEventAt = lastEventAt
     }
