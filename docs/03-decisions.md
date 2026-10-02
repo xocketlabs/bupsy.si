@@ -31,6 +31,21 @@ Reversing one is fine. Reversing one without reading why it was made is not.
 | 20 | Default autonomy | `ask` — gate everything | New bots start fully gated |
 | 21 | Voice | After 1.0 | |
 | 22 | iOS companion | **Skipped for 1.0** | Decide once the need is demonstrated |
+| 23 | Always-on mechanism | **Three tiers** (Mac-awake / `pmset` wake / always-on machine) | Corrected after boat docs contradicted the original design. PLAN.md §4 |
+
+### Always-on is three tiers, not one (#23)
+
+The plan originally said routines run via cron inside a VM that gets woken from a snapshot, making
+always-on nearly free. boat's documentation says stopped sandboxes do not wake for scheduled work,
+and hand-started processes do not survive a reboot — so that was simply wrong.
+
+Corrected to three mechanisms the user picks between per routine: **Mac awake** (free, skipped when
+asleep), **`pmset` scheduled wake** (free, native-only, "usually works"), and an **always-on machine**
+(~$13/mo for a `small`, genuinely independent of the Mac). The machine pool model is what makes the
+third affordable — the cost is per machine, and one machine serves every bot assigned to it.
+
+Also: **systemd timers, not cron.** And `ttlSeconds` counts from *creation*, not last activity, so
+an always-on machine must be created with `ttlSeconds: null` or it disappears after an hour.
 
 ## The five worth explaining
 

@@ -50,10 +50,35 @@ routines can be trusted at all* and sets the reconnect-nudge cadence. Do not ski
 
 ---
 
-## Spike 2 — Does VM-side cron fire with the Mac closed? **(the differentiator)**
+## Spike 2 — How does unattended work actually run? **(partly answered — from the docs)**
 
-The claim behind §4 of the plan: routines run in the user's VM, so always-on does not depend on the
-Mac being awake.
+The original claim was that routines run via cron inside a stopped-and-woken VM, so always-on would
+cost almost nothing. **That was wrong**, and boat's own documentation settles it:
+
+> Stopped sandboxes do NOT automatically wake for scheduled work […] processes you ran by hand
+> (dev servers, background jobs, tunnels, browser sessions) do not survive a reboot.
+
+Two corrections followed, both now in PLAN.md §4:
+
+1. **Use systemd timers, not cron.** Services enabled with `systemctl enable --now` restart after
+   resume and fork; hand-installed crontabs do not survive a reboot.
+2. **Unattended work needs something that is awake.** Hence three tiers: Mac-awake (free),
+   `pmset` scheduled wake (free, native-only), always-on machine (~$13/mo, truly independent).
+
+What remains is live confirmation of the three things arithmetic and docs cannot settle. The
+original claim below is kept as the probe to run once a key is available.
+
+### Remaining checks
+
+- **A systemd timer survives stop/resume.** Install a `oneshot` service plus `OnCalendar` timer,
+  `systemctl enable --now`, stop the sandbox, resume, and confirm the timer still fires.
+- **A month of always-on `small` really costs ~$13.** Run one for 24h and extrapolate from
+  `GET /sandboxes/{id}/usage`.
+- **`pmset` wake fires with the lid closed on battery.** Schedule a wake, close the lid, unplug,
+  and see whether the run happened. This decides whether tier 2 can be offered as "usually works"
+  or has to be "only while plugged in".
+
+### The original probe, for when a key is available
 
 ```bash
 boat ssh spike1
@@ -302,9 +327,11 @@ Cheap, but it decides §7. libraries.dev says Beam and Orb support SwiftUI; veri
 | 1b | Codex device-auth survives snapshot | ⬜ | | |
 | 1c | Local `claude -p` works from a spawned process | ⬜ | | |
 | 1d | Sign-in still valid at day 3 / day 7 | ⬜ | | |
-| 2 | Cron fires in VM with Mac closed | ⬜ | | |
-| 2b | Does a *stopped* VM wake for cron? | ⬜ | | |
-| 2c | Cost of always-running `small` fallback | ⬜ | | |
+| 2 | Scheduling mechanism in the VM | 🟡 | **cron is wrong — use systemd timers.** boat: services enabled with `systemctl enable --now` survive resume/fork; hand-started processes do not survive a reboot. Needs live confirmation. | 2026-10-02 |
+| 2b | Does a *stopped* VM wake for scheduled work? | ✅ | **No.** boat docs: "Stopped sandboxes do NOT automatically wake for scheduled work." Answered from documentation — architecture changed accordingly. | 2026-10-02 |
+| 2c | Cost of always-running `small` | 🟡 | **~$12.96/mo** (2,592,000 wall s × 0.5 rate = 1,296,000 billed of the 2,000,000 in boat's $20 minimum). Arithmetic, not measured. | 2026-10-02 |
+| 2d | `ttlSeconds` semantics | ✅ | Default 1h, counts **from creation, not last activity**. `ttlSeconds: null` disables. Easy, expensive bug. | 2026-10-02 |
+| 2e | `pmset` scheduled wake exists | ✅ | Yes, and already in use on this Mac (`pmset -g sched`). Enables tier 2. Reliability with lid closed on battery still unverified. | 2026-10-02 |
 | 3 | Exact flag set confirmed | 🟡 | `-p`, `--output-format stream-json`, `--verbose`, `--resume`, `--model`, `--mcp-config` all work. Full `--help` sweep still to do. | 2026-10-02 |
 | 3b | Swift incremental stream parse | ✅ | **First event 2.49s into a 10.81s run** — genuinely incremental, no buffering. 7 lines, 0 unknown. | 2026-10-02 |
 | 3c | GUI-app `PATH` resolution of engine binary | ✅ | `claude` found at `~/.local/bin/claude` — on **none** of the default system paths. `BinaryResolver` is required, not optional. | 2026-10-02 |
@@ -323,7 +350,8 @@ Cheap, but it decides §7. libraries.dev says Beam and Orb support SwiftUI; veri
 
 - 1 → go / local-only / stop
 - 1d → reconnect cadence; whether weekly routines are trustworthy
-- **2 → whether the Dots half is real, or whether always-on means an always-running VM**
+- **2 → answered: always-on means an always-running machine.** Replaced by a three-tier model
+  (Mac-awake free / `pmset` scheduled wake free / always-on machine ~$13/mo). PLAN.md §4 rewritten.
 - 3 → adapter internals and the normaliser fixtures **(done: shell out, parse NDJSON, no SDK)**
 - 4 → the highest autonomy level we can honestly offer per engine
 - 5 → whether M4 needs pre-warming; what we tell users compute costs
