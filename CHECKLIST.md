@@ -33,6 +33,13 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [x] A stop button that halts everything
 - [x] Bots can keep your Mac awake while working, so long jobs don't die
 
+### Per-bot settings — right-click any bot
+- [x] **Swap engine** — Claude ↔ Codex, keeping each engine's own thread
+- [x] **Pick a model** — Opus, Sonnet, Haiku, Fable, or the Codex ones
+- [x] Trust level
+- [x] Which machine it uses
+- [x] Whether it keeps your Mac awake
+
 ### Machines
 - [x] Your key, your account, your bill — bupsy has no cloud of its own
 - [x] Key lives in the Mac's Keychain, never leaves this Mac
@@ -70,13 +77,14 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [ ] Watch its screen
 - [ ] **Needs your boat key to prove it works against the real service**
 
-### 3. Make it look good ← **doing next**
-- [ ] Proper animated bot faces
-- [ ] Nicer waiting animation
-- [ ] First-run walkthrough
-- [ ] Settings screen
+### 3. Make it look good ✅ **done**
+- [x] Animated bot faces — they blink, and show at a glance who's busy or stuck
+- [x] Nicer waiting animation
+- [x] Glowing border on the box while a bot replies
+- [x] First-run walkthrough
+- [x] Settings live in a right-click menu on each bot
 
-### 4. Connect your apps
+### 4. Connect your apps ← **doing next**
 - [ ] Gmail, Calendar, Slack, Notion, GitHub
 - [ ] Choose which bot can touch which app
 

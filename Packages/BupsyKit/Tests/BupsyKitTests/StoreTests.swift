@@ -121,10 +121,31 @@ struct StoreTests {
         #expect(try reopened.bots().map(\.name) == ["Scout"])
     }
 
+    /// Switching a bot between engines must keep both threads. A Claude session id cannot be
+    /// resumed by Codex, so handing one to the other would either error or, worse, silently
+    /// start a new conversation while the UI still showed the old transcript.
+    @Test("a bot keeps a separate thread per engine")
+    func conversationsArePerEngine() throws {
+        let store = try Store.inMemory()
+        let bot = BotRecord(name: "Scout", engine: "claude")
+        try store.save(bot)
+
+        try store.save(ConversationRecord(
+            botID: bot.id, engine: "claude", providerConversationID: "claude-sess-1"))
+        try store.save(ConversationRecord(
+            botID: bot.id, engine: "codex", providerConversationID: "codex-thread-1"))
+
+        #expect(try store.conversation(forBot: bot.id, engine: "claude")?
+            .providerConversationID == "claude-sess-1")
+        #expect(try store.conversation(forBot: bot.id, engine: "codex")?
+            .providerConversationID == "codex-thread-1")
+        #expect(try store.conversation(forBot: bot.id, engine: "grok") == nil)
+    }
+
     private func seed(_ store: Store) throws -> (BotRecord, ConversationRecord, RunRecord) {
         let bot = BotRecord(name: "Scout", engine: "claude")
         try store.save(bot)
-        let conversation = ConversationRecord(botID: bot.id)
+        let conversation = ConversationRecord(botID: bot.id, engine: "claude")
         try store.save(conversation)
         let run = RunRecord(botID: bot.id, conversationID: conversation.id, host: "local")
         try store.save(run)

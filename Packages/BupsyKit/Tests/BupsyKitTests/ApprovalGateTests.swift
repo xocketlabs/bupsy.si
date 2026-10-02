@@ -181,3 +181,46 @@ struct ApprovalGateTests {
         return String(data: data, encoding: .utf8) ?? ""
     }
 }
+
+@Suite("Model options")
+struct ModelOptionTests {
+    /// Aliases, not pinned identifiers. `claude --help` documents aliases that track the latest
+    /// model in each family; pinning `claude-opus-5` would quietly rot and strand users on an old
+    /// model with no indication why.
+    @Test("Claude offers aliases rather than versioned identifiers")
+    func claudeUsesAliases() {
+        let ids = ClaudeAdapter().models.compactMap(\.id)
+        #expect(ids.contains("opus"))
+        #expect(ids.contains("sonnet"))
+        #expect(ids.allSatisfy { !$0.contains("-5") }, "a pinned version will go stale")
+    }
+
+    /// Not overriding a model the user configured themselves is the right default.
+    @Test("every engine offers a default that passes no model flag")
+    func defaultPassesNothing() {
+        for adapter: any EngineAdapter in [ClaudeAdapter(), CodexAdapter()] {
+            #expect(adapter.models.first?.id == nil)
+            #expect(adapter.models.first?.label == "Default")
+        }
+    }
+
+    @Test("a chosen model reaches the command line for both engines")
+    func modelReachesInvocation() {
+        let claude = ClaudeAdapter().invocation(for: RunRequest(prompt: "x", model: "sonnet"))
+        #expect(claude.arguments.contains("--model"))
+        #expect(claude.arguments.contains("sonnet"))
+
+        let codex = CodexAdapter().invocation(for: RunRequest(prompt: "x", model: "gpt-5.6"))
+        #expect(codex.arguments.contains("-m"))
+        #expect(codex.arguments.contains("gpt-5.6"))
+    }
+
+    /// No model chosen means no flag at all, rather than an empty one.
+    @Test("no model means no flag")
+    func noModelNoFlag() {
+        let claude = ClaudeAdapter().invocation(for: RunRequest(prompt: "x"))
+        #expect(!claude.arguments.contains("--model"))
+        let codex = CodexAdapter().invocation(for: RunRequest(prompt: "x"))
+        #expect(!codex.arguments.contains("-m"))
+    }
+}

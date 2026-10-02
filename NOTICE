@@ -16,3 +16,8 @@ listed here as they are added, with license texts in third_party/. The Business
 Source License applies to this project's own code, not to them.
 
   (none yet)
+
+The bot faces, thinking orbs and border beam are original SwiftUI implementations.
+Their design language is inspired by libraries.dev (MIT, https://libraries.dev);
+no code from that project is included. Credited as a courtesy rather than an
+obligation.
