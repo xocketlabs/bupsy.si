@@ -118,6 +118,76 @@ VM is rented with *their own* boat API key. We ship an app; we operate nothing. 
 "free" sustainable and what makes the compliance story in
 [docs/00-compliance-and-auth.md](docs/00-compliance-and-auth.md) nearly trivial.
 
+### Machines and bots are separate pools
+
+Neither incumbent's model fits. Grokbot puts every bot on one shared computer; Dots gives each its
+own. We decouple them: a user owns a **pool of machines** and a **roster of bots**, and assigns
+bots to machines many-to-one. Ten machines, twenty bots, whatever mapping they like.
+
+**A bot has no machine by default.** It runs on the Mac — free, instant, and already holding the
+user's local files. A machine gets assigned when a bot actually needs one: a computer to drive, a
+toolchain that should not touch the Mac, or routines that must survive a closed lid.
+
+This earns its keep three ways:
+
+- **Nothing is paid for before it is needed.** A roster of chat-only bots costs zero compute. Dots'
+  one-VM-per-agent model bills from the first bot.
+- **One engine login per machine, not per bot.** Bots sharing a machine share its sign-in. That
+  step is our biggest onboarding tax, so paying it per machine rather than per bot matters more
+  than it looks.
+- **`survivesSleep` becomes a product surface, not a caveat.** A machine-less bot genuinely cannot
+  run routines with the lid closed; the UI says so plainly, and "assign a machine" is the one-click
+  fix. The honest limitation and its remedy are the same control.
+
+Bots on one machine collaborate through the filesystem with no plumbing — one drops a file in
+`shared/`, another picks it up. They get no isolation from each other, which is fine: they are the
+same principal. Isolation is what *separate machines* are for, and the user now chooses it per bot.
+Per-bot tool allowlists apply either way.
+
+```
+   bots (roster)                    machines (pool, may be empty)
+   ┌──────────────┐
+   │ Inbox        │──────────────▶ ┌──────────────────┐
+   │ Researcher   │──────────────▶ │ work  (4c/8G)    │  shared sign-in
+   │ Scraper      │──────────────▶ └──────────────────┘
+   ├──────────────┤
+   │ Builder      │──────────────▶ ┌──────────────────┐
+   │              │                │ build (8c/16G)   │  own toolchain
+   ├──────────────┤                └──────────────────┘
+   │ Notes        │ ── no machine ──▶ this Mac. Free. No lid-closed routines.
+   │ Scratch      │ ── no machine ──▶ this Mac.
+   └──────────────┘
+```
+
+### Data model
+
+Local SQLite via GRDB. The shape that matters is the nullable assignment.
+
+```
+machines      id, user_id, name, provider, provider_id, snapshot_id, state, size,
+              region, last_active_at, vm_seconds_mtd
+              -- a user-owned pool. Zero machines is a valid, common state.
+bots          id, name, avatar_seed, persona_md, engine, model,
+              machine_id NULL REFERENCES machines,   -- NULL = this Mac only
+              workdir, tool_allowlist, autonomy(ask|allowlist|trusted|auto)
+engine_links  id, machine_id NULL, engine, status(signedIn|signedOut|unknown),
+              method, last_checked_at      -- NULL machine_id = the Mac's own login
+                                           -- NEVER a token column
+conversations id, bot_id, provider_conv_id, title, last_event_at
+runs          id, bot_id, conversation_id, trigger_id, host, status,
+              started_at, ended_at, usage, rate_limit_snapshot
+events        id, run_id, seq, type, payload, at        -- append-only
+triggers      id, bot_id, kind(cron|email|webhook|watch|manual), config,
+              enabled, installed_on_machine  -- false ⇒ Mac-awake-only, say so in the UI
+approvals     id, run_id, tool, args_redacted, state, decided_at
+connectors    id, machine_id NULL, kind, status, scopes  -- status only, no tokens
+audit_log     id, actor, action, target, at, meta        -- append-only
+```
+
+Three rules to enforce in review: **no column can hold a model credential or connector OAuth
+token**; `events` and `audit_log` are append-only; and `bots.machine_id` is nullable *on purpose* —
+a machine-less bot is the default, not a broken row, so every host-resolution path must handle it.
+
 ### Why native Swift rather than a Node sidecar
 
 OpenMausBot runs a harness server on `127.0.0.1:8799` because an Electron app cannot own long-lived
@@ -344,6 +414,19 @@ Against Dots' $500/mo tier: **we have no token COGS and no servers, so we need n
 
 ## 9. Milestones
 
+Sized for a **team of 3–5**, which is what makes 22 weeks plausible. Three tracks run in parallel
+once M1 lands, with the `ExecutionHost` / `EngineAdapter` / `AgentEvent` contracts as the seam
+between them:
+
+| Track | Owns |
+|---|---|
+| **Core** | `BupsyKit`: engines, hosts, store, triggers, reconciliation |
+| **App** | SwiftUI: roster, threads, approvals, computer panel, onboarding |
+| **VM** | `bupsy-run`, machine template, MCP connectors, cloud scheduling |
+
+The contracts exist precisely so these three do not block each other. Agree them in M1 and treat a
+change to them as a reviewed interface change, not a refactor.
+
 ### M0 — Spikes (week 1). Gate before product code.
 Six assumptions hold up everything. [docs/01-spikes.md](docs/01-spikes.md) has the commands.
 Headline: **does a subscription survive a VM snapshot** (the premise), **does VM-side cron fire
@@ -414,6 +497,10 @@ bupsy.si/
 ---
 
 ## 11. Open decisions
+
+**Settled since first draft:** machines and bots are separate pools with nullable assignment (§3);
+EU-only compute is acceptable, so Freestyle stays a hedge at M7; team of 3–5, so milestones run as
+three parallel tracks (§9).
 
 1. **Connector layer** — MCP-only (open, no third-party key, works in both hosts) or add Composio
    for long-tail reach? Recommend MCP-only through 1.0.
