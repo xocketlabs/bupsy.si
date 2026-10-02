@@ -1,0 +1,57 @@
+import Foundation
+
+/// Where a run executes. The distinction is load-bearing: only a cloud host keeps
+/// working when the user's Mac is asleep, and the UI must be honest about that.
+public enum HostID: Sendable, Hashable, Codable {
+    case local
+    case cloud(provider: CloudProvider)
+
+    public var survivesSleep: Bool {
+        switch self {
+        case .local: false
+        case .cloud: true
+        }
+    }
+}
+
+public enum CloudProvider: String, Sendable, Codable, CaseIterable {
+    case boat
+    case freestyle
+}
+
+public enum EngineID: String, Sendable, Codable, CaseIterable {
+    case claude
+    case codex
+    case grok
+    case opencode
+
+    /// Plain vendor names only. Never use these marks in product or feature names —
+    /// see docs/00-compliance-and-auth.md §5.
+    public var displayName: String {
+        switch self {
+        case .claude: "Claude Code"
+        case .codex: "Codex"
+        case .grok: "Grok CLI"
+        case .opencode: "OpenCode"
+        }
+    }
+}
+
+public struct BotID: Sendable, Hashable, Codable, RawRepresentable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(_ raw: String) { self.rawValue = raw }
+}
+
+public struct RunID: Sendable, Hashable, Codable, RawRepresentable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init() { self.rawValue = UUID().uuidString }
+}
+
+/// A provider-native conversation handle, used to resume a thread.
+public struct ConversationID: Sendable, Hashable, Codable, RawRepresentable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(_ raw: String) { self.rawValue = raw }
+}
