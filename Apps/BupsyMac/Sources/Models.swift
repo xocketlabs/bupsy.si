@@ -33,6 +33,25 @@ struct Bot: Identifiable, Hashable, Sendable {
 
     /// What the bot can honestly promise about unattended work. PLAN.md §4.
     var scheduleTier: ScheduleTier { machineID == nil ? .macAwake : .alwaysOn }
+
+    /// Rebuilt from storage.
+    init(record: BotRecord) {
+        self.id = BotID(record.id)
+        self.name = record.name
+        self.engine = EngineID(rawValue: record.engine) ?? .claude
+        self.model = record.model
+        self.autonomy = Autonomy(rawValue: record.autonomy) ?? .ask
+        self.machineID = record.machineID
+        self.personaPrompt = record.personaPrompt
+        self.avatarHue = record.avatarHue
+    }
+
+    func record(sortIndex: Int = 0) -> BotRecord {
+        BotRecord(
+            id: id.rawValue, name: name, engine: engine.rawValue, model: model,
+            machineID: machineID, autonomy: autonomy.rawValue,
+            personaPrompt: personaPrompt, avatarHue: avatarHue, sortIndex: sortIndex)
+    }
 }
 
 enum ScheduleTier: Sendable {
@@ -145,5 +164,19 @@ final class Thread {
             // Never surfaced to the user, but never dropped either — it reaches the log.
             break
         }
+    }
+
+    /// Replays a stored row. `userMessage` is written as its own type so a reloaded transcript
+    /// shows who said what, which `AgentEvent` alone does not carry — it only ever describes the
+    /// engine's side of the conversation.
+    func applyStored(type: String, payload: String) {
+        if type == "userMessage" {
+            let text = EventCodec.decode(type: "text", payload: payload)
+            if case .text(let message) = text {
+                entries.append(TranscriptEntry(kind: .userMessage(message)))
+            }
+            return
+        }
+        apply(EventCodec.decode(type: type, payload: payload))
     }
 }
