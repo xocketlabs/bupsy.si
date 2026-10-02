@@ -228,6 +228,49 @@ public struct Store: Sendable {
         }
     }
 
+    /// Runs with a one-line summary, for a history view.
+    ///
+    /// The transcript of an unattended run is already on disk; without something that reads it
+    /// back, work done overnight is invisible even after it happened — which is most of the
+    /// value of having done it.
+    public func recentRuns(forBot botID: String, limit: Int = 30) throws -> [RunSummary] {
+        try database.read { db in
+            let runs = try RunRecord
+                .filter(Column("botID") == botID)
+                .order(Column("startedAt").desc)
+                .limit(limit)
+                .fetchAll(db)
+
+            return try runs.map { run in
+                let events = try EventRecord
+                    .filter(Column("runID") == run.id)
+                    .order(Column("seq"))
+                    .fetchAll(db)
+
+                let prompt = events.first { $0.type == "userMessage" }
+                let reply = events.last { $0.type == "text" }
+                let tools = events.filter { $0.type == "toolCall" }.count
+
+                return RunSummary(
+                    id: run.id,
+                    startedAt: run.startedAt,
+                    endedAt: run.endedAt,
+                    status: run.status,
+                    host: run.host,
+                    prompt: prompt.flatMap(Self.text(in:)),
+                    reply: reply.flatMap(Self.text(in:)),
+                    toolCalls: tools)
+            }
+        }
+    }
+
+    private static func text(in record: EventRecord) -> String? {
+        guard let data = record.payload.data(using: .utf8),
+              let fields = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+        else { return nil }
+        return fields["text"]
+    }
+
     public func events(forRun runID: String) throws -> [EventRecord] {
         try database.read { db in
             try EventRecord

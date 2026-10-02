@@ -37,6 +37,10 @@ downloadable app is an Apple Developer certificate.
 - [x] **Give a bot a folder** — it can finally see and work on your files
 - [x] **Notifications** — told when a routine finishes or a bot needs you
 - [x] **Code renders as code** — monospace, scrollable, with a copy button
+- [x] **Menu bar** — see who's working, approve, stop, all without the window
+- [x] **Recent runs** — what a bot did while you were away
+- [x] Drop a file on the composer to hand it over
+- [x] Duplicate a bot, copy a conversation, ⌘-click a path to reveal it
 
 ### Per-bot settings — right-click any bot
 - [x] **Swap engine** — Claude ↔ Codex, keeping each engine's own thread

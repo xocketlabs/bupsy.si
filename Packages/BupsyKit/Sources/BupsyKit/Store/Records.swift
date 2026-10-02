@@ -170,3 +170,29 @@ public struct EngineLinkRecord: Codable, FetchableRecord, MutablePersistableReco
         self.status = status; self.method = method; self.lastCheckedAt = lastCheckedAt
     }
 }
+
+/// One past run, condensed enough to list.
+public struct RunSummary: Sendable, Identifiable, Equatable {
+    public let id: String
+    public let startedAt: Date
+    public let endedAt: Date?
+    public let status: String
+    /// "local", or "cloud:<machineID>" — which host actually did the work.
+    public let host: String
+    public let prompt: String?
+    public let reply: String?
+    public let toolCalls: Int
+
+    public var duration: TimeInterval? {
+        endedAt.map { $0.timeIntervalSince(startedAt) }
+    }
+
+    public var succeeded: Bool { status == "finished" }
+
+    public init(id: String, startedAt: Date, endedAt: Date?, status: String, host: String,
+                prompt: String?, reply: String?, toolCalls: Int) {
+        self.id = id; self.startedAt = startedAt; self.endedAt = endedAt
+        self.status = status; self.host = host
+        self.prompt = prompt; self.reply = reply; self.toolCalls = toolCalls
+    }
+}
