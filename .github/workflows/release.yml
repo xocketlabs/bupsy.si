@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build, e.g. 0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      # Tests gate the release. A signed, notarized build of broken code is worse than no build:
+      # it is the one people actually install.
+      - name: Test
+        run: swift test --package-path Packages/BupsyKit
+
+      # A keychain created for this run and deleted after it, so the certificate never lingers on
+      # a shared runner.
+      - name: Import signing certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          security create-keychain -p "" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "" "$KEYCHAIN"
+          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN" login.keychain
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Build, sign, notarize
+        env:
+          DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: ./scripts/package.sh "${{ steps.version.outputs.value }}"
+
+      # Sparkle will not install an update whose EdDSA signature does not verify, so this step is
+      # what makes the update channel safe rather than merely convenient.
+      - name: Sign the update for Sparkle
+        id: sign_update
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData build -name sign_update -type f 2>/dev/null | head -1)
+          if [ -z "$SPARKLE_BIN" ]; then
+            echo "::warning::sign_update not found — the appcast will be unsigned and Sparkle will refuse it"
+            exit 0
+          fi
+          echo "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle_key"
+          SIG=$("$SPARKLE_BIN" "build/Bupsy-${{ steps.version.outputs.value }}.dmg" \
+                 -f "$RUNNER_TEMP/sparkle_key" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+          rm -f "$RUNNER_TEMP/sparkle_key"
+          echo "signature=$SIG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.value }}
+          files: build/Bupsy-${{ steps.version.outputs.value }}.dmg
+          generate_release_notes: true
+
+      - name: Update the appcast
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          SIGNATURE: ${{ steps.sign_update.outputs.signature }}
+        run: |
+          ./scripts/appcast.sh "$VERSION" "$SIGNATURE" \
+            "build/Bupsy-$VERSION.dmg" > docs/appcast.xml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/appcast.xml
+          git commit -m "Appcast for $VERSION" || echo "nothing to commit"
+          git push origin HEAD:main || echo "could not push appcast"
+
+      - name: Clean up the keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/build.keychain" || true
