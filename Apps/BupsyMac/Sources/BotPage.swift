@@ -95,6 +95,14 @@ struct BotPage: View {
                 }
             }
 
+            MenuChip(icon: "folder", text: folderLabel,
+                     tone: bot.workdir == nil ? nil : nil) {
+                Button("Choose folder…") { model.chooseWorkdir(for: bot) }
+                if bot.workdir != nil {
+                    Button("No folder") { model.setWorkdir(bot, nil) }
+                }
+            }
+
             MenuChip(icon: "hand.raised", text: trustLabel, tone: trustTone) {
                 ForEach(Autonomy.allCases, id: \.self) { level in
                     Button {
@@ -122,6 +130,13 @@ struct BotPage: View {
     private var modelLabel: String? {
         guard bot.model != nil else { return nil }
         return model.models(for: bot).first { $0.id == bot.model }?.label
+    }
+
+    /// Shows the folder's own name rather than a path — the path is long and the name is what
+    /// anyone actually recognises.
+    private var folderLabel: String {
+        guard let path = bot.workdir else { return "No folder" }
+        return URL(fileURLWithPath: path).lastPathComponent
     }
 
     private var machineName: String {

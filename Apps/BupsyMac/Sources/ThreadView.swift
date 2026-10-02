@@ -40,10 +40,7 @@ struct Bubble: View {
             botAligned {
                 // Cards sit above the background, which is where this palette's depth comes
                 // from — a reply looks like an object on a surface rather than text on a page.
-                Text(markdown(text))
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(palette.foreground)
-                    .textSelection(.enabled)
+                FormattedReply(markdown: text)
                     .padding(.horizontal, Theme.Space.step)
                     .padding(.vertical, Theme.Space.snug)
                     .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
@@ -90,12 +87,6 @@ struct Bubble: View {
         }
     }
 
-    private func markdown(_ text: String) -> AttributedString {
-        (try? AttributedString(
-            markdown: text,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(text)
-    }
 }
 
 /// A compact line rather than a card. Expands when you want the detail.

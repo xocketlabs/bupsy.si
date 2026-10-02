@@ -18,6 +18,12 @@ public enum BinaryResolver {
         "\(NSHomeDirectory())/.bun/bin",
         "\(NSHomeDirectory())/.volta/bin",
         "/usr/bin",
+        // /bin holds sh, cat, pwd and friends. Its absence was masked for a while by the login
+        // shell fallback, which resolves most of them — but not the ones that are also shell
+        // builtins, where `command -v` answers with the builtin's name and no path at all.
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
     ]
 
     /// - Parameter name: a bare binary name, or an absolute path the user chose in Settings.

@@ -33,6 +33,11 @@ downloadable app is an Apple Developer certificate.
 - [x] A stop button that halts everything
 - [x] Bots can keep your Mac awake while working, so long jobs don't die
 
+### Doing real work
+- [x] **Give a bot a folder** — it can finally see and work on your files
+- [x] **Notifications** — told when a routine finishes or a bot needs you
+- [x] **Code renders as code** — monospace, scrollable, with a copy button
+
 ### Per-bot settings — right-click any bot
 - [x] **Swap engine** — Claude ↔ Codex, keeping each engine's own thread
 - [x] **Pick a model** — Opus, Sonnet, Haiku, Fable, or the Codex ones
