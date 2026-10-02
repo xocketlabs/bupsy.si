@@ -31,7 +31,9 @@ Reversing one is fine. Reversing one without reading why it was made is not.
 | 20 | Default autonomy | `ask` — gate everything | New bots start fully gated |
 | 21 | Voice | After 1.0 | |
 | 22 | iOS companion | **Skipped for 1.0** | Decide once the need is demonstrated |
-| 23 | Always-on mechanism | **Three tiers** (Mac-awake / `pmset` wake / always-on machine) | Corrected after boat docs contradicted the original design. PLAN.md §4 |
+| 23 | Always-on mechanism | **Three tiers** (app open / LaunchAgent / always-on machine) | Corrected twice — see below. PLAN.md §4 |
+| 24 | Keeping the Mac awake during a run | **Per bot**, `whileWorking` by default | Free, unprivileged. Prevents idle sleep killing a long run |
+| 25 | Privileged wake helper (tier 2b) | **Yes, opt-in in onboarding — post-certificate** | Root daemon with a one-call interface. Threat model in [04-wake-helper.md](04-wake-helper.md) |
 
 ### Always-on is three tiers, not one (#23)
 
@@ -105,6 +107,7 @@ softened — a padded list of four reads weaker than a tight list of three.
 | Question | Blocks | Owner |
 |---|---|---|
 | `<LICENSOR>` legal entity in `LICENSE` | repo going public, any distributed build | founder |
+| **Developer ID certificate** | notarized releases **and** the tier 2b wake helper | founder |
 | Lawyer review of the Additional Use Grant | same | founder |
 | Change Date: 4 years or 3? | nothing yet | founder |
 | **Spike 2: does a stopped VM wake for its own cron?** | the always-on architecture | Core/VM |

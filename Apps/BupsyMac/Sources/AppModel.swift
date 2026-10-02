@@ -15,6 +15,7 @@ final class AppModel {
     private var threads: [BotID: Thread] = [:]
     private var running: [BotID: Task<Void, Never>] = [:]
     private var gates: [BotID: ApprovalGate] = [:]
+    private var awake: [BotID: PowerAssertion] = [:]
     private let store: Store?
 
     private let host: any ExecutionHost = LocalHost()
@@ -155,6 +156,14 @@ final class AppModel {
             gateSettingsPath: gateSettings
         )
 
+        // Hold the Mac awake for the duration, if this bot asks for it. An agent run killed at
+        // minute three of ten leaves a half-finished task and a truncated transcript, which is
+        // worse than one that never started.
+        if bot.keepAwake == .whileWorking {
+            let assertion = PowerAssertion(reason: "bupsy: \(bot.name) is working")
+            if assertion.acquire() { awake[bot.id] = assertion }
+        }
+
         running[bot.id] = Task { [host, store] in
             var seq = 1
             var failed = false
@@ -163,6 +172,8 @@ final class AppModel {
                 running[bot.id] = nil
                 Task { [gate = gates[bot.id]] in await gate?.stop() }
                 gates[bot.id] = nil
+                awake[bot.id]?.release()
+                awake[bot.id] = nil
                 var finished = run
                 finished.status = failed ? "failed" : "finished"
                 finished.endedAt = Date()
@@ -285,6 +296,8 @@ final class AppModel {
         running[botID] = nil
         Task { [gate = gates[botID]] in await gate?.stop() }
         gates[botID] = nil
+        awake[botID]?.release()
+        awake[botID] = nil
         thread(for: botID).isRunning = false
     }
 
