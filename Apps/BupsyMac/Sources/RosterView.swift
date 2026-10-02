@@ -8,24 +8,29 @@ import SwiftUI
 /// message-shaped row tells you about the conversation, which is what someone actually came for.
 struct RosterView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     @State private var isAddingBot = false
     @State private var showsMachines = false
     @State private var showsConnectors = false
     @State private var showsAttention = false
 
     var body: some View {
-        List(selection: Binding(
-            get: { model.selectedBotID },
-            set: { model.selectedBotID = $0 }
-        )) {
-            ForEach(model.bots) { bot in
-                BotRow(bot: bot)
-                    .tag(bot.id)
-                    .listRowInsets(EdgeInsets(top: 5, leading: 8, bottom: 5, trailing: 8))
-                    .contextMenu { BotMenu(bot: bot) }
+        ScrollView {
+            LazyVStack(spacing: Theme.Space.tight) {
+                ForEach(model.bots) { bot in
+                    BotRow(bot: bot, selected: model.selectedBotID == bot.id)
+                        .contentShape(.rect)
+                        .onTapGesture { model.selectedBotID = bot.id }
+                        .contextMenu { BotMenu(bot: bot) }
+                }
             }
+            .padding(.horizontal, Theme.Space.step)
+            .padding(.vertical, Theme.Space.snug)
         }
-        .listStyle(.sidebar)
+        // The sidebar is the darkest surface, so it recedes and the content reads as lifted
+        // above it. The opposite of the usual Mac arrangement, and the whole reason this
+        // palette has depth without borders or shadows.
+        .background(palette.sidebar)
         .safeAreaInset(edge: .top, spacing: 0) { AttentionBanner(showing: $showsAttention) }
         .toolbar {
             ToolbarItem {
@@ -55,6 +60,7 @@ struct RosterView: View {
 /// absent until it matters gets noticed the one time it does.
 struct AttentionBanner: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     @Binding var showing: Bool
 
     var body: some View {
@@ -68,22 +74,27 @@ struct AttentionBanner: View {
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").font(.caption2)
                 }
-                .font(.callout)
-                .foregroundStyle(.orange)
-                .padding(.horizontal, Theme.Space.snug)
-                .padding(.vertical, 8)
-                .background(.orange.opacity(0.12), in: .rect(cornerRadius: Theme.Radius.chip))
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.primary)
+                .padding(.horizontal, Theme.Space.step)
+                .frame(height: Theme.Size.control)
+                .frame(maxWidth: .infinity)
+                .background(palette.primary.opacity(0.12),
+                            in: .rect(cornerRadius: Theme.Radius.control))
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 8)
-            .padding(.bottom, 6)
+            .padding(.horizontal, Theme.Space.step)
+            .padding(.top, Theme.Space.step)
         }
     }
 }
 
 struct BotRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     let bot: Bot
+    let selected: Bool
+    @State private var hovering = false
 
     private var thread: Thread { model.thread(for: bot.id) }
 
@@ -94,38 +105,44 @@ struct BotRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Space.snug) {
+        HStack(alignment: .center, spacing: Theme.Space.step) {
             BotFace(hue: bot.avatarHue, mood: mood, size: Theme.Size.rosterAvatar)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: Theme.Space.tight) {
                     Text(bot.name)
-                        .font(.body.weight(.semibold))
+                        .font(Theme.Typography.heading)
+                        .foregroundStyle(palette.foreground)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     if let at = thread.lastActivity {
                         Text(Theme.stamp(at))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.sidebarMuted)
                     }
                 }
 
-                HStack(spacing: Theme.Space.tight) {
-                    Text(preview)
-                        .font(.callout)
-                        // Orange is the one state worth a colour; the rest are weights of grey,
-                        // so "needs you" is the only thing that catches the eye in a long list.
-                        .foregroundStyle(mood == .waitingForYou
-                                         ? AnyShapeStyle(Color.orange)
-                                         : AnyShapeStyle(previewColor))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
+                Text(preview)
+                    .font(Theme.Typography.label)
+                    // The pink is the only saturated colour in the palette, so spending it on
+                    // "needs you" means that state is the one thing the eye finds in a list.
+                    .foregroundStyle(mood == .waitingForYou
+                                     ? palette.primary
+                                     : palette.sidebarMutedForeground)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.vertical, 2)
+        .padding(Theme.Space.step)
+        .background(rowBackground, in: .rect(cornerRadius: Theme.Radius.card))
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+
+    private var rowBackground: Color {
+        if selected { return palette.sidebarAccent }
+        return hovering ? palette.sidebarAccent.opacity(0.5) : .clear
     }
 
     /// What the row says when there is nothing to quote yet — the bot's job, not its settings.
@@ -137,13 +154,6 @@ struct BotRow: View {
             ?? "No messages yet"
     }
 
-    private var previewColor: HierarchicalShapeStyle {
-        switch mood {
-        case .waitingForYou: .primary
-        case .working: .secondary
-        default: thread.preview == nil ? .tertiary : .secondary
-        }
-    }
 }
 
 /// Right-click. Everything here is also in the bot's profile, where it is visible rather than
@@ -227,7 +237,7 @@ struct NewBotSheet: View {
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .padding(Theme.Space.wide)
+        .padding(Theme.Space.section)
         .frame(width: 400)
     }
 

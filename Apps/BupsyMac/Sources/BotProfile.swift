@@ -11,6 +11,7 @@ import SwiftUI
 /// what it does on its own — rather than by which subsystem implements them.
 struct BotProfile: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     let bot: Bot
 
     @State private var showsRoutines = false
@@ -25,7 +26,7 @@ struct BotProfile: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.wide) {
+            VStack(alignment: .leading, spacing: Theme.Space.section) {
                 header
 
                 section("Brain") {
@@ -102,8 +103,9 @@ struct BotProfile: View {
                     row("Standing goals", count: objectiveCount) { showsObjectives = true }
                 }
             }
-            .padding(Theme.Space.step)
+            .padding(Theme.Space.gutter)
         }
+        .background(palette.sidebar)
         .sheet(isPresented: $showsRoutines) { RoutinesSheet(bot: bot) }
         .sheet(isPresented: $showsObjectives) { ObjectivesSheet(bot: bot) }
     }
@@ -111,11 +113,13 @@ struct BotProfile: View {
     private var header: some View {
         VStack(spacing: Theme.Space.snug) {
             BotFace(hue: bot.avatarHue, mood: .idle, size: Theme.Size.profileAvatar)
-            Text(bot.name).font(.title3.weight(.semibold))
+            Text(bot.name)
+                .font(Theme.Typography.title)
+                .foregroundStyle(palette.foreground)
             if let job = bot.personaPrompt {
                 Text(job)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(palette.mutedForeground)
                     .multilineTextAlignment(.center)
             }
         }
@@ -129,9 +133,9 @@ struct BotProfile: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.snug) {
             Text(title.uppercased())
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .tracking(0.6)
+                .font(Theme.Typography.badge)
+                .foregroundStyle(palette.sidebarMuted)
+                .tracking(0.7)
             content()
         }
     }
@@ -146,21 +150,32 @@ struct BotProfile: View {
 
     private func note(_ text: String) -> some View {
         Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(Theme.Typography.caption)
+            .foregroundStyle(palette.mutedForeground)
             .fixedSize(horizontal: false, vertical: true)
     }
 
     private func row(_ title: String, count: Int, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack {
-                Text(title).font(.callout)
+            HStack(spacing: Theme.Space.snug) {
+                Text(title)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
                 Spacer()
-                Text(count == 0 ? "None" : "\(count)")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                if count > 0 {
+                    Badge(text: "\(count)")
+                } else {
+                    Text("None")
+                        .font(Theme.Typography.label)
+                        .foregroundStyle(palette.mutedForeground)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundStyle(palette.sidebarMuted)
             }
+            .padding(.horizontal, Theme.Space.step)
+            .frame(height: Theme.Size.control)
+            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
