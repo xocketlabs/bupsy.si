@@ -18,3 +18,12 @@ clean:
 
 fmt:
 	swift format --in-place --recursive $(PKG)/Sources $(PKG)/Tests
+
+# Generate the Xcode project and build the Mac app.
+# The project file is generated, never committed — project.yml is the source of truth.
+app:
+	xcodegen generate
+	xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac -configuration Debug build
+
+run: app
+	open "$$(find ~/Library/Developer/Xcode/DerivedData/Bupsy-*/Build/Products/Debug -maxdepth 1 -name 'Bupsy.app' | head -1)"
