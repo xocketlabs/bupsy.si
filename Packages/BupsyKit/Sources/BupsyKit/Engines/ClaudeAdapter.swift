@@ -132,9 +132,22 @@ public struct ClaudeAdapter: EngineAdapter {
         case "system":
             // The init banner carries session id, cwd and the tool list. Only the session id
             // matters to us, and it makes the thread resumable from the very first line.
-            guard json.string("subtype") == "init", let session = json.string("session_id")
-            else { return [] }
-            return [.started(conversationID: ConversationID(session))]
+            guard json.string("subtype") == "init" else { return [] }
+
+            var events: [AgentEvent] = []
+            if let session = json.string("session_id") {
+                events.append(.started(conversationID: ConversationID(session)))
+            }
+            if let servers = json.array("mcp_servers") {
+                events.append(.connectors(servers.compactMap { entry in
+                    guard let name = entry["name"] as? String else { return nil }
+                    return ConnectorState(
+                        name: name,
+                        status: ConnectorState.Status(
+                            rawValue: entry["status"] as? String ?? "") ?? .unknown)
+                }))
+            }
+            return events
 
         case "rate_limit_event":
             // Undocumented, and valuable: the engine volunteers how much of the user's own

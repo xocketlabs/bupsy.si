@@ -7,6 +7,7 @@ struct RosterView: View {
     @Environment(AppModel.self) private var model
     @State private var isAddingBot = false
     @State private var showsMachines = false
+    @State private var showsConnectors = false
 
     var body: some View {
         List(selection: Binding(
@@ -36,9 +37,16 @@ struct RosterView: View {
                 }
                 .help("Cloud machines your bots can use")
             }
+            ToolbarItem {
+                Button { showsConnectors = true } label: {
+                    Label("Apps", systemImage: "puzzlepiece.extension")
+                }
+                .help("Apps your bots can use")
+            }
         }
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
         .sheet(isPresented: $showsMachines) { MachinesSheet() }
+        .sheet(isPresented: $showsConnectors) { ConnectorsSheet() }
     }
 }
 
@@ -87,6 +95,21 @@ struct BotMenu: View {
                     model.setModel(bot, option.id)
                 } label: {
                     Label(option.label, systemImage: bot.model == option.id ? "checkmark" : "")
+                }
+            }
+        }
+
+        if !model.connectors.isEmpty {
+            Menu("Apps") {
+                ForEach(model.connectors) { server in
+                    Button {
+                        model.setConnectorAllowed(
+                            bot, server, !bot.toolAllowlist.contains(server.toolPrefix))
+                    } label: {
+                        Label("\(server.name) — no need to ask",
+                              systemImage: bot.toolAllowlist.contains(server.toolPrefix)
+                                  ? "checkmark" : "")
+                    }
                 }
             }
         }

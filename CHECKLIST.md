@@ -40,6 +40,12 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [x] Which machine it uses
 - [x] Whether it keeps your Mac awake
 
+### Apps
+- [x] Your MCP servers, run on your machine — not integrations we wrote
+- [x] Tokens go in your own shell, never through us
+- [x] Real connection status, not a guess
+- [x] Allow a whole app per bot, so new tools in it don't need re-approving
+
 ### Machines
 - [x] Your key, your account, your bill — bupsy has no cloud of its own
 - [x] Key lives in the Mac's Keychain, never leaves this Mac
@@ -84,11 +90,13 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [x] First-run walkthrough
 - [x] Settings live in a right-click menu on each bot
 
-### 4. Connect your apps ← **doing next**
-- [ ] Gmail, Calendar, Slack, Notion, GitHub
-- [ ] Choose which bot can touch which app
+### 4. Connect your apps ✅ **done**
+- [x] Add any MCP server — GitHub, Slack, Notion, Files suggested, anything else by hand
+- [x] Choose which bot can use which app, without being asked each time
+- [x] See which apps actually connected, reported by the engine itself
+- [x] bupsy never stores an app's password or token
 
-### 5. Standing goals
+### 5. Standing goals ← **doing next**
 - [ ] "Keep my inbox at zero" — not a one-off job, an ongoing one
 - [ ] Bots that learn from your feedback
 - [ ] One place showing everything waiting on you

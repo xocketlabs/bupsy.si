@@ -130,6 +130,7 @@ struct SpikeStream {
         case .approvalRequired: "approval"
         case .usage: "usage"
         case .rateLimit: "rateLimit"
+        case .connectors: "connectors"
         case .done: "done"
         case .failed: "failed"
         case .unknown: "unknown"
@@ -144,6 +145,11 @@ struct SpikeStream {
         case .toolCall(let call):         print("  tool →     \(call.name) \(oneLine(call.argumentsJSON))")
         case .toolResult(let result):     print("  tool ←     \(result.isError ? "ERROR " : "")\(oneLine(result.content))")
         case .approvalRequired(let req):  print("  approval?  \(req.tool) — \(req.summary)")
+        case .connectors(let states):
+            let summary = states
+                .filter { $0.status != .connected }
+                .map { "\($0.name)=\($0.status.rawValue)" }
+            print("  connectors \(states.count) total\(summary.isEmpty ? "" : " · " + summary.joined(separator: " "))")
         case .usage(let usage):           print("  usage      in=\(usage.inputTokens.map(String.init) ?? "?") out=\(usage.outputTokens.map(String.init) ?? "?")")
         case .rateLimit(let limit):
             let windows = limit.windows

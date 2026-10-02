@@ -47,6 +47,25 @@ struct ClaudeNormaliserTests {
         if let started, let firstText { #expect(started < firstText) }
     }
 
+    /// Observed in M0: the init line reports a live status per connector. Worth more than
+    /// inferring readiness from configuration, because a server can be configured perfectly and
+    /// still fail to start — and a tick next to something about to break a run is worse than
+    /// no tick at all.
+    @Test("reads real connector status from the init line")
+    func readsConnectorStatus() {
+        let events = adapter.normalise(.stdout(#"""
+            {"type":"system","subtype":"init","session_id":"s1","mcp_servers":[\
+            {"name":"files","status":"connected"},{"name":"fcpxml","status":"failed"},\
+            {"name":"cloudflare","status":"needs-auth"}]}
+            """#.replacingOccurrences(of: "\\\n", with: "")))
+
+        let states = events.compactMap { if case .connectors(let s) = $0 { s } else { nil } }.first
+        #expect(states?.count == 3)
+        #expect(states?.first { $0.name == "files" }?.isUsable == true)
+        #expect(states?.first { $0.name == "fcpxml" }?.status == .failed)
+        #expect(states?.first { $0.name == "cloudflare" }?.status == .needsAuth)
+    }
+
     @Test("carries usage and the resumable conversation id out of the result line")
     func extractsOutcome() throws {
         let events = try events(fromFixture: "claude-stream")

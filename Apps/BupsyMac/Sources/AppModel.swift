@@ -11,6 +11,7 @@ final class AppModel {
     var engineStatus: [EngineID: AuthStatus] = [:]
     var routines: [Routine] = []
     var machines: [MachineRecord] = []
+    var connectors: [MCPServer] = []
     /// Set when a machine operation failed. Shown rather than logged — a machine that did not
     /// start is money not being spent, or work not being done, and either way the user should know.
     var machineProblem: String?
@@ -59,7 +60,68 @@ final class AppModel {
         // Sync at launch, not only when a routine changes. Otherwise an agent removed by hand,
         // or a database restored onto a different Mac, leaves routines that quietly never fire.
         machines = (try? self.store?.machines()) ?? []
+        connectors = Self.loadConnectors()
         syncLaunchAgent()
+    }
+
+    // MARK: - Connectors
+    //
+    // Stored in UserDefaults rather than the database: a connector definition is a command and a
+    // list of environment variable *names*, which is configuration rather than the user's data,
+    // and keeping it out of the database keeps the "no credential columns" rule trivially true.
+
+    private static let connectorsKey = "si.bupsy.connectors"
+
+    private static func loadConnectors() -> [MCPServer] {
+        guard let data = UserDefaults.standard.data(forKey: connectorsKey) else { return [] }
+        return (try? JSONDecoder().decode([MCPServer].self, from: data)) ?? []
+    }
+
+    private func saveConnectors() {
+        if let data = try? JSONEncoder().encode(connectors) {
+            UserDefaults.standard.set(data, forKey: Self.connectorsKey)
+        }
+    }
+
+    func addConnector(_ server: MCPServer) {
+        guard !connectors.contains(where: { $0.name == server.name }) else { return }
+        connectors.append(server)
+        saveConnectors()
+    }
+
+    func removeConnector(_ server: MCPServer) {
+        connectors.removeAll { $0.id == server.id }
+        // Leave no bot allowing a connector that no longer exists.
+        for index in bots.indices {
+            bots[index].toolAllowlist.remove(server.toolPrefix)
+            try? store?.save(bots[index].record(sortIndex: index))
+        }
+        saveConnectors()
+    }
+
+    /// The engine's last report for a connector, if any run has produced one. Nil means we have
+    /// not seen it come up yet — honestly different from "it failed".
+    func liveStatus(of server: MCPServer) -> ConnectorState? {
+        threads.values
+            .flatMap(\.connectorStates)
+            .last { $0.name == server.name }
+    }
+
+    func setConnectorEnabled(_ server: MCPServer, _ enabled: Bool) {
+        guard let index = connectors.firstIndex(where: { $0.id == server.id }) else { return }
+        connectors[index].enabled = enabled
+        saveConnectors()
+    }
+
+    /// Whether a bot may use a connector without being asked each time.
+    func setConnectorAllowed(_ bot: Bot, _ server: MCPServer, _ allowed: Bool) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        if allowed {
+            bots[index].toolAllowlist.insert(server.toolPrefix)
+        } else {
+            bots[index].toolAllowlist.remove(server.toolPrefix)
+        }
+        try? store?.save(bots[index].record(sortIndex: index))
     }
 
     // MARK: - Machines
@@ -416,6 +478,7 @@ final class AppModel {
             resume: thread.conversationID,
             model: bot.model,
             autonomy: bot.autonomy,
+            mcpConfigPaths: (try? MCPConfig.write(connectors)).flatMap { $0 }.map { [$0] } ?? [],
             gateSettingsPath: gateSettings
         )
 
