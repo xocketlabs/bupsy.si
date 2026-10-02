@@ -48,6 +48,16 @@ public struct LoginCommand: Sendable, Equatable {
 
 public enum AuthStatus: Sendable, Equatable {
     case signedIn(method: Method)
+
+    /// Authenticated, but the account cannot actually run a model.
+    ///
+    /// Found the hard way in M0: `codex login status` reports "Logged in using ChatGPT" while
+    /// every model returns HTTP 400 "not supported when using Codex with a ChatGPT account".
+    /// A status command alone is therefore a **false positive** — the only honest check is to
+    /// try a real turn. Surfacing this distinctly lets onboarding say "signed in, but your plan
+    /// can't run Codex" instead of letting a bot fail at 3am.
+    case signedInWithoutModelAccess(detail: String)
+
     case signedOut
     case unknown(String)
 
@@ -55,6 +65,29 @@ public enum AuthStatus: Sendable, Equatable {
         case subscription
         case apiKey
     }
+
+    /// True only when a run would actually be expected to work.
+    public var isUsable: Bool {
+        if case .signedIn = self { return true }
+        return false
+    }
+}
+
+/// How an engine enforces a permission decision.
+///
+/// This exists because the two engines are categorically different, and the UI must not promise
+/// behaviour an engine cannot deliver.
+public enum GateMechanism: Sendable, Equatable {
+    /// Can pause mid-run and wait for a human. Claude Code's `PreToolUse` hooks do this.
+    case blockingHook
+    /// Policy is fixed before the run and enforced by the OS sandbox; no mid-run human decision.
+    /// Codex `exec --sandbox` works this way — strong enforcement, zero interactivity.
+    case sandboxPolicy
+    /// No enforcement available. Such an engine must never be offered above `.ask`.
+    case none
+
+    /// Whether `.ask` can mean "pause and ask me" rather than "pre-authorise narrowly".
+    public var canAskMidRun: Bool { self == .blockingHook }
 }
 
 /// One adapter per engine harness.
@@ -75,9 +108,13 @@ public protocol EngineAdapter: Sendable {
 
     func invocation(for request: RunRequest) -> EngineInvocation
 
-    /// The highest autonomy this engine can honestly enforce. An engine with no blocking
-    /// gate must not be offered above `.ask`, and the UI shows why.
+    /// The highest autonomy this engine can honestly enforce.
     var maximumEnforceableAutonomy: Autonomy { get }
+
+    /// How this engine enforces, which decides what the UI is allowed to promise. An engine
+    /// with `.sandboxPolicy` cannot stop to ask, so `.ask` means "run narrowly" rather than
+    /// "wait for me" — and the approval UI must say which it is.
+    var gateMechanism: GateMechanism { get }
 
     /// Translates one line of engine output into canonical events. Stateful adapters may
     /// buffer internally; this is called in order and must never drop input.

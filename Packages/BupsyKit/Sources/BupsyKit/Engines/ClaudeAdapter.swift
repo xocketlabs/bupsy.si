@@ -22,6 +22,9 @@ public struct ClaudeAdapter: EngineAdapter {
     /// what lets us honestly offer autonomy above `.ask`. Confirmed by spike 4.
     public var maximumEnforceableAutonomy: Autonomy { .auto }
 
+    /// A hook can hold the run open while a human decides, so `.ask` genuinely means "ask me".
+    public var gateMechanism: GateMechanism { .blockingHook }
+
     public func loginCommand() -> LoginCommand {
         LoginCommand(
             command: "claude",
@@ -107,8 +110,11 @@ public struct ClaudeAdapter: EngineAdapter {
     static func events(from json: JSONLine) -> [AgentEvent] {
         switch json.string("type") {
         case "system":
-            // init banners carry session id, cwd and the tool list; nothing user-visible.
-            return []
+            // The init banner carries session id, cwd and the tool list. Only the session id
+            // matters to us, and it makes the thread resumable from the very first line.
+            guard json.string("subtype") == "init", let session = json.string("session_id")
+            else { return [] }
+            return [.started(conversationID: ConversationID(session))]
 
         case "rate_limit_event":
             // Undocumented, and valuable: the engine volunteers how much of the user's own

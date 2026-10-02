@@ -86,6 +86,7 @@ struct SpikeStream {
 
     static func label(_ event: AgentEvent) -> String {
         switch event {
+        case .started: "started"
         case .text: "text"
         case .thinking: "thinking"
         case .toolCall: "toolCall"
@@ -101,6 +102,7 @@ struct SpikeStream {
 
     static func render(_ event: AgentEvent) {
         switch event {
+        case .started(let id):            print("  started    conversation=\(id.rawValue)")
         case .text(let text):             print("  text       \(oneLine(text))")
         case .thinking(let text):         print("  thinking   \(oneLine(text))")
         case .toolCall(let call):         print("  tool →     \(call.name) \(oneLine(call.argumentsJSON))")

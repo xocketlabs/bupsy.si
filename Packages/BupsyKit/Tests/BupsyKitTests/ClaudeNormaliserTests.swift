@@ -35,6 +35,18 @@ struct ClaudeNormaliserTests {
         #expect(results.first?.isError == false)
     }
 
+    /// Both engines must report the resume handle early, from different places: Codex has
+    /// `thread.started`, Claude has `session_id` on its init banner. Same canonical event.
+    @Test("emits .started from the init banner, before any work")
+    func emitsStartedEarly() throws {
+        let events = try events(fromFixture: "claude-stream")
+        let started = events.firstIndex { if case .started = $0 { true } else { false } }
+        let firstText = events.firstIndex { if case .text = $0 { true } else { false } }
+        #expect(started != nil)
+        #expect(events[started!] == .started(conversationID: ConversationID("sess-abc123")))
+        if let started, let firstText { #expect(started < firstText) }
+    }
+
     @Test("carries usage and the resumable conversation id out of the result line")
     func extractsOutcome() throws {
         let events = try events(fromFixture: "claude-stream")
