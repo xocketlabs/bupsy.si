@@ -83,8 +83,8 @@ The feature set we are claiming, split by which incumbent it answers:
 - Connectors: Gmail, Calendar, Drive, Slack, Notion, GitHub via MCP
 - Computer use — browser automation inside the VM
 - Multi-bot teams with a coordinator; bots hand work to each other
-- iOS companion for approvals and checking in
-- Voice: spoken replies and calls
+- ~~iOS companion for approvals and checking in~~ — **cut from 1.0**
+- ~~Voice: spoken replies and calls~~ — **cut from 1.0**
 
 ---
 
@@ -201,9 +201,10 @@ subprocesses comfortably. We have no such constraint: `Foundation.Process` plus 
 process supervisor than an HTTP hop, and skipping it buys us no bundled Node, no port conflict, no
 localhost attack surface, no "harness failed to start" class of bug, and one signed binary.
 
-Cost: no free localhost API for a companion app. We pay that deliberately in M7 by exposing
-`BupsyKit` over an opt-in local HTTP+SSE listener for the iOS companion — **off by default**, so
-the common case keeps its advantage.
+Cost: no free localhost API for a companion app. Originally we planned to pay that in M7 with an
+opt-in local listener. The companion app is now cut from 1.0, so **we do not pay it at all**: 1.0
+has no inbound network surface of any kind. If a companion is ever built, the listener is the price
+and it stays off by default.
 
 ### Core types
 
@@ -412,9 +413,15 @@ Free to use, source-available, no accounts, no backend, nothing metered by us.
 | Our fixed cost | $99/yr Apple Developer |
 | User's compute | their own boat key, $1–5/mo on the wake-on-cron pattern |
 | User's models | subscriptions they already hold |
-| Sustainability | GitHub Sponsors; BSL keeps a commercial-licensing option open if ever needed |
+| Monetisation | **None.** No pricing, no Sponsors, no paid tier. BSL keeps commercial licensing available later without promising it now |
+| Telemetry | **None.** Update checks only, and verifiable by anyone watching the network |
 
 Against Dots' $500/mo tier: **we have no token COGS and no servers, so we need no price at all.**
+
+The combination is unusually easy to state: no account, no server, no telemetry, and no way to pay
+us. The accepted risk is that a team of 3–5 with no revenue is on someone's runway — a business
+decision, recorded in [docs/03-decisions.md](docs/03-decisions.md) #18 so it is not mistaken for an
+oversight.
 
 ---
 
@@ -470,12 +477,19 @@ MCP connectors (Gmail, Calendar, Drive, Slack, Notion, GitHub) with in-VM OAuth,
 allowlists, computer use, channels, multi-bot teams with a coordinator.
 
 ### M7 — Polish & 1.0 (weeks 19–22)
-Opt-in local HTTP+SSE listener → iOS companion for approvals. Voice. Onboarding that survives the
-sign-in step. Freestyle as second `CloudHost`. Docs, site, launch.
+Onboarding that survives the sign-in step. Freestyle as second `CloudHost`. Signed, notarized,
+auto-updating release. Docs, site, launch.
 
-**Deliberately out of scope for 1.0:** Windows and Linux (the native bet means they are separate
-projects, and saying so honestly is better than half-shipping Electron), teams/multi-user, hosted
-anything, a bot marketplace.
+**Deliberately out of scope for 1.0:** the iOS companion and voice (both cut — see
+[docs/03-decisions.md](docs/03-decisions.md) #21–22), Windows and Linux (macOS first, reassess
+after), teams/multi-user, hosted anything, a bot marketplace, any monetisation at all.
+
+Cutting the companion app removes the opt-in local HTTP+SSE listener it needed, so **1.0 ships with
+zero inbound network surface.** That is a better security story than the one first planned, and it
+is worth saying out loud in the launch copy.
+
+Be honest about the gap: Grokbot ships a mobile companion and Dots is cross-device by design. We
+claim parity on bots, computers, connectors, schedules and objectives — not on mobile.
 
 ---
 
@@ -503,6 +517,18 @@ bupsy.si/
 ---
 
 ## 11. Open decisions
+
+All nineteen framing questions are settled and recorded, with reasoning, in
+**[docs/03-decisions.md](docs/03-decisions.md)**. What remains genuinely open:
+
+| Question | Blocks |
+|---|---|
+| `<LICENSOR>` legal entity + lawyer review of the Use Grant | repo going public, any shipped build |
+| **Spike 2: does a stopped VM wake for its own cron?** | the always-on architecture |
+| Each engine's real blocking approval mechanism (spike 4) | autonomy above `ask` |
+| Freestyle region list | whether EU-only is permanent |
+
+### Superseded — kept for the reasoning
 
 **Settled since first draft:** machines and bots are separate pools with nullable assignment (§3);
 EU-only compute is acceptable, so Freestyle stays a hedge at M7; team of 3–5, so milestones run as
