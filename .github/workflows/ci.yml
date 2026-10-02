@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test BupsyKit
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build --package-path Packages/BupsyKit
+
+      - name: Test
+        run: swift test --package-path Packages/BupsyKit
+
+  boundaries:
+    name: Credential boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The rule from CONTRIBUTING.md §1, enforced rather than trusted: nothing in this
+      # codebase may read a vendor credential file. Keep this grep narrow and loud.
+      - name: No code reads a credential path
+        run: |
+          if grep -rnE '\.claude/\.credentials|\.codex/auth\.json|CLAUDE_CODE_OAUTH_TOKEN|setup-token' \
+               --include='*.swift' Packages/ Apps/ 2>/dev/null; then
+            echo "::error::Source references a vendor credential path. See docs/00-compliance-and-auth.md"
+            exit 1
+          fi
+          echo "clean"
+
+      - name: No vendor marks in product naming
+        run: |
+          if grep -rniE '\b(claude|anthropic|openai|codex|grok|xai)(kit|app|bot)\b' \
+               --include='*.swift' Packages/ Apps/ 2>/dev/null; then
+            echo "::error::Vendor mark used in a product or type name. See compliance doc §5."
+            exit 1
+          fi
+          echo "clean"

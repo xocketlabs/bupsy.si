@@ -1,0 +1,20 @@
+# Swift / SPM
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# Spike artefacts — captured from a real account, never committed.
+# Sanitised fixtures live in Packages/BupsyKit/Tests/BupsyKitTests/Fixtures/ instead.
+docs/samples/*.ndjson
+docs/samples/*-flags.txt
+
+# Signing and secrets. Nothing here should ever exist, but fail safe.
+*.p12
+*.mobileprovision
+.env
