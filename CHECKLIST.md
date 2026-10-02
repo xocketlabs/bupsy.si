@@ -2,8 +2,8 @@
 
 Plain-language status. Updated with every change — if a box is ticked, it works and has tests.
 
-**Today:** the app runs, you can chat with bots, it remembers everything, and bots ask before
-they act. Routines and cloud machines are built underneath but have no buttons yet.
+**Today:** everything on this list works from source. The only thing standing between you and a
+downloadable app is an Apple Developer certificate.
 
 ---
 
@@ -127,7 +127,7 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [x] Licence set to Xocket Labs Inc., a Delaware corporation
 - [ ] **Needs your Apple Developer account ($99/yr)** — docs/05-release.md
 - [ ] Auto-updates — deliberately off until there's somewhere to host the feed
-- [ ] Website
+- [x] Website — `site/index.html`, ready for any static host
 
 ---
 

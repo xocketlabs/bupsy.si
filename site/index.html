@@ -1,0 +1,290 @@
+<title>Bupsy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+  /* Layout: a single narrow column on the app's own ground, so the page reads as an extension
+     of the product rather than an advert for it. */
+  :root {
+    --ground:   #101010;
+    --surface:  #202020;
+    --card:     #292929;
+    --raised:   #343434;
+    --fg:       #fafafa;
+    --muted:    #a1a1a1;
+    --faint:    #6d6d6d;
+    --accent:   #e075c8;
+    --violet:   #8c4bff;
+    --line:     rgba(255,255,255,.10);
+
+    --ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ground: #ffffff; --surface: #fafafa; --card: #f5f5f5; --raised: #ebebeb;
+      --fg: #0a0a0a; --muted: #585858; --faint: #8a8a8a;
+      --accent: #c14fa6; --violet: #6d2fe0; --line: rgba(0,0,0,.09);
+      color-scheme: light;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--fg);
+    font-family: var(--ui); font-size: 15px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding-inline: 20px; padding-block: 0; }
+
+  /* ── head ── */
+  header { padding-block: 28px 0; display: flex; align-items: center; justify-content: space-between; }
+  .mark { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 17px; letter-spacing: -.02em; }
+  .mark i {
+    width: 20px; height: 20px; border-radius: 6px; display: block;
+    background: linear-gradient(135deg, var(--accent), var(--violet));
+  }
+  .ghost {
+    color: var(--muted); text-decoration: none; font-size: 14px;
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px;
+  }
+  .ghost:hover { color: var(--fg); background: var(--card); }
+
+  /* ── hero ── */
+  .hero { padding-block: 56px 32px; }
+  h1 {
+    margin: 0 0 14px; font-size: clamp(32px, 6vw, 46px); font-weight: 600;
+    letter-spacing: -.035em; line-height: 1.08; text-wrap: balance; max-width: 15ch;
+  }
+  .lede { margin: 0; font-size: 17px; color: var(--muted); max-width: 54ch; }
+  .lede b { color: var(--fg); font-weight: 500; }
+
+  .cta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 26px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px;
+    border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;
+    background: var(--accent); color: #fff; border: 1px solid transparent;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.sec { background: var(--card); color: var(--fg); border-color: var(--line); }
+  .btn.sec:hover { background: var(--raised); }
+  .note { font-size: 13px; color: var(--faint); }
+
+  .shot {
+    margin-top: 40px; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--line); background: var(--surface);
+  }
+  .shot img { display: block; width: 100%; }
+
+  /* ── sections ── */
+  section { padding-block: 44px; border-top: 1px solid var(--line); }
+  h2 {
+    margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .sec-lede { margin: 0 0 24px; font-size: 20px; letter-spacing: -.02em; max-width: 34ch; text-wrap: balance; }
+
+  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .card { background: var(--card); border-radius: 12px; padding: 18px; min-width: 0; }
+  .card h3 { margin: 0 0 5px; font-size: 15px; font-weight: 500; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); }
+
+  .rows { display: flex; flex-direction: column; gap: 8px; }
+  .row { display: flex; gap: 14px; align-items: flex-start; background: var(--card); border-radius: 12px; padding: 14px; }
+  .tile {
+    width: 40px; height: 40px; flex: 0 0 40px; border-radius: 8px; display: grid; place-items: center;
+    background: var(--ground); border: 1px solid var(--line); color: var(--muted);
+  }
+  .row div { min-width: 0; }
+  .row h3 { margin: 0 0 3px; font-size: 14px; font-weight: 500; }
+  .row p { margin: 0; font-size: 13px; color: var(--muted); }
+
+  blockquote {
+    margin: 0; padding: 18px; border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    font-size: 15px;
+  }
+  blockquote strong { color: var(--accent); }
+
+  pre {
+    margin: 0; background: var(--card); border-radius: 12px; padding: 16px;
+    overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.7; color: var(--muted);
+  }
+  pre b { color: var(--fg); font-weight: 400; }
+  .cmt { color: var(--faint); }
+
+  dl { margin: 0; display: grid; gap: 14px; }
+  dt { font-weight: 500; font-size: 15px; }
+  dd { margin: 3px 0 0; color: var(--muted); font-size: 14px; }
+
+  footer { padding-block: 36px 56px; border-top: 1px solid var(--line); color: var(--faint); font-size: 13px; }
+  footer a { color: var(--muted); }
+  .fine { margin-top: 10px; max-width: 62ch; line-height: 1.6; }
+
+  svg.i { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="mark"><i></i> bupsy</span>
+    <a class="ghost" href="https://github.com/vanshpatelx/bupsy.si">GitHub</a>
+  </header>
+
+  <div class="hero">
+    <h1>Your AI already has a subscription. Give it a job.</h1>
+    <p class="lede">
+      A Mac app where bots live. Each one runs <b>Claude Code</b> or <b>Codex</b> under your own
+      sign-in — no new account, no credits, no server of ours in the middle. Give one a schedule
+      or a standing goal and it keeps working with the lid closed.
+    </p>
+
+    <div class="cta">
+      <a class="btn" href="https://github.com/vanshpatelx/bupsy.si">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        Download for Mac
+      </a>
+      <a class="btn sec" href="https://github.com/vanshpatelx/bupsy.si">Read the source</a>
+      <span class="note">macOS 14+ · Apple silicon &amp; Intel</span>
+    </div>
+
+    <div class="shot">
+      <img src="bupsy.png" alt="The bupsy app: a rail of bots on the left, and Scout's page showing its engine, model, machine and trust level, a conversation, standing goals and routines.">
+    </div>
+  </div>
+
+  <section>
+    <h2>The idea</h2>
+    <p class="sec-lede">You are already paying for the hard part.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Bring your own agent</h3>
+        <p>Bots run the CLIs already on your Mac, billed to the subscription you already hold.
+           bupsy never buys, resells or proxies model access.</p>
+      </div>
+      <div class="card">
+        <h3>No servers. Ours, anyway.</h3>
+        <p>There is no bupsy backend. Transcripts are files on your disk. A bot's cloud machine is
+           rented with your own key, on your own account.</p>
+      </div>
+      <div class="card">
+        <h3>Native, not Electron</h3>
+        <p>A signed Swift app that opens instantly and behaves like a Mac app, because it is one.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What a bot does</h2>
+    <p class="sec-lede">More than a chat window.</p>
+    <div class="rows">
+      <div class="row">
+        <span class="tile"><svg class="i" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+        <div>
+          <h3>Talk to it</h3>
+          <p>Claude Code or Codex, switchable per bot. Each engine keeps its own thread, so
+             switching back picks up where it left off.</p>
+        </div>
+      </div>
+      <div class="row">
+        <span class="tile"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg></span>
+        <div>
+          <h3>Give it a routine</h3>
+          <p>“Brief me every weekday at 7am.” Runs with the app closed. A run missed while your Mac
+             slept happens when it wakes — once, not fourteen times.</p>
+        </div>
+      </div>
+      <div class="row">
+        <span class="tile"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span>
+        <div>
+          <h3>Give it a standing goal</h3>
+          <p>“My inbox has nothing older than a day.” It checks on a schedule and acts only when
+             something is off. Most checks do nothing, which is the point.</p>
+        </div>
+      </div>
+      <div class="row">
+        <span class="tile"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg></span>
+        <div>
+          <h3>Give it a computer</h3>
+          <p>Assign a cloud machine and its work carries on with your Mac shut. Rented on your own
+             account, costed before you create it.</p>
+        </div>
+      </div>
+      <div class="row">
+        <span class="tile"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><rect x="8" y="8" width="8" height="8" rx="2"/></svg></span>
+        <div>
+          <h3>Connect your apps</h3>
+          <p>Any MCP server — GitHub, Slack, Notion, files. They authenticate themselves; bupsy
+             never sees their sign-ins.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Permission</h2>
+    <p class="sec-lede">An agent with your logins should ask.</p>
+    <blockquote>
+      New bots are fully gated: anything beyond reading stops and waits for you.
+      <strong>If nobody answers, the answer is no.</strong>
+    </blockquote>
+    <dl style="margin-top:20px">
+      <div>
+        <dt>Four levels of trust</dt>
+        <dd>From “ask before everything” to “never ask”, per bot. Loosen it when a bot has earned it.</dd>
+      </div>
+      <div>
+        <dt>Every decision is written down</dt>
+        <dd>The transcript is append-only, enforced by the database. What a bot did is a record,
+            not a note that could have been edited afterwards.</dd>
+      </div>
+      <div>
+        <dt>One place for what is waiting</dt>
+        <dd>Approvals and stuck goals collect in a single tray, so unattended work never stalls
+            somewhere nobody is looking.</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Your credentials</h2>
+    <p class="sec-lede">bupsy spawns the binaries. It never holds the keys.</p>
+    <p style="margin:0 0 18px;color:var(--muted);font-size:15px">
+      Signing in happens in a terminal the app renders but does not read. The credential lands in
+      files owned by you and the CLI. There is no column in the codebase that could hold one — and
+      a test walks the live database schema on every build to prove it.
+    </p>
+    <pre><span class="cmt"># connectors work the same way: names, never values</span>
+"env": { "GITHUB_TOKEN": <b>"${GITHUB_TOKEN}"</b> }</pre>
+    <p style="margin:14px 0 0;color:var(--muted);font-size:14px">
+      You set it in your own shell; the server reads it directly. More setup than a paste box, and
+      the app says so. It also means a breach of bupsy leaks nobody's mail.
+    </p>
+  </section>
+
+  <section>
+    <h2>Run it</h2>
+    <p class="sec-lede">From source, today.</p>
+    <pre>git clone https://github.com/vanshpatelx/bupsy.si
+<b>make run</b>      <span class="cmt"># build and launch</span>
+<b>make test</b>     <span class="cmt"># 123 tests</span></pre>
+    <p style="margin:16px 0 0;color:var(--muted);font-size:14px">
+      Needs macOS 14+, Swift 6, and <code style="font-family:var(--mono);font-size:13px">claude</code>
+      or <code style="font-family:var(--mono);font-size:13px">codex</code> installed and signed in.
+      A downloadable build is coming once the app is notarized.
+    </p>
+  </section>
+
+  <footer>
+    <div>
+      <a href="https://github.com/vanshpatelx/bupsy.si">GitHub</a> ·
+      Source-available under BSL 1.1, becoming Apache-2.0 after four years ·
+      © 2026 Xocket Labs Inc.
+    </div>
+    <p class="fine">
+      Not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI, xAI or any other vendor.
+      Product names are their owners' trademarks, used only to say which tools bupsy runs.
+    </p>
+  </footer>
+</div>
