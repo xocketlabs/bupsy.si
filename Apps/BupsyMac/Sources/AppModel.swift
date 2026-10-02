@@ -12,6 +12,7 @@ final class AppModel {
     var routines: [Routine] = []
     var machines: [MachineRecord] = []
     var connectors: [MCPServer] = []
+    var objectives: [Objective] = []
     /// Set when a machine operation failed. Shown rather than logged — a machine that did not
     /// start is money not being spent, or work not being done, and either way the user should know.
     var machineProblem: String?
@@ -61,6 +62,7 @@ final class AppModel {
         // or a database restored onto a different Mac, leaves routines that quietly never fire.
         machines = (try? self.store?.machines()) ?? []
         connectors = Self.loadConnectors()
+        objectives = (try? self.store?.objectives()) ?? []
         syncLaunchAgent()
     }
 
@@ -304,7 +306,11 @@ final class AppModel {
     /// truth is far easier to reason about than a set of incremental edits, and launchd is a
     /// user-visible resource we should leave tidy.
     private func syncLaunchAgent() {
-        let intervals = RoutineScheduler().launchdIntervals(for: routines)
+        let objectiveRoutines = objectives.map {
+            Routine(id: $0.id, botID: $0.botID, name: "check", prompt: "",
+                    cron: $0.checkCron, enabled: $0.enabled, tier: $0.tier)
+        }
+        let intervals = RoutineScheduler().launchdIntervals(for: routines + objectiveRoutines)
         let appPath = Bundle.main.bundlePath
         Task.detached { [weak self] in
             do {
@@ -325,6 +331,9 @@ final class AppModel {
     /// Runs whatever is due. Called at launch — including when launchd started us for exactly
     /// this reason — and on a timer while the app is open.
     func runDueRoutines(now: Date = Date()) {
+        for objective in dueObjectives(now: now) {
+            checkObjective(objective)
+        }
         for due in RoutineScheduler().due(routines: routines, now: now) {
             guard let bot = bots.first(where: { $0.id.rawValue == due.routine.botID })
             else { continue }
@@ -341,6 +350,110 @@ final class AppModel {
                     + due.scheduledFor.formatted(date: .omitted, time: .shortened) + ".)"
                 : ""
             send(due.routine.prompt + note, to: bot)
+        }
+    }
+
+    // MARK: - Objectives
+
+    func addObjective(to bot: Bot, goal: String, doneWhen: String, cron: String,
+                      tier: Routine.Tier) {
+        let effective = (tier == .machine && bot.machineID == nil) ? .appOpen : tier
+        let objective = Objective(
+            botID: bot.id.rawValue, goal: goal, doneWhen: doneWhen,
+            checkCron: cron, tier: effective)
+        objectives.append(objective)
+        try? store?.save(objective)
+        syncLaunchAgent()
+    }
+
+    func deleteObjective(_ objective: Objective) {
+        objectives.removeAll { $0.id == objective.id }
+        try? store?.deleteObjective(id: objective.id)
+        syncLaunchAgent()
+    }
+
+    func setObjectiveEnabled(_ objective: Objective, _ enabled: Bool) {
+        guard let index = objectives.firstIndex(where: { $0.id == objective.id }) else { return }
+        objectives[index].enabled = enabled
+        try? store?.save(objectives[index])
+        syncLaunchAgent()
+    }
+
+    /// The user editing what a bot has learned. The real safeguard against notes drifting
+    /// somewhere unhelpful is that they are plain text a person can read and correct.
+    func setObjectiveNotes(_ objective: Objective, _ notes: String) {
+        guard let index = objectives.firstIndex(where: { $0.id == objective.id }) else { return }
+        objectives[index].notes = notes
+        try? store?.save(objectives[index])
+    }
+
+    /// Runs one check now.
+    func checkObjective(_ objective: Objective) {
+        guard let bot = bots.first(where: { $0.id.rawValue == objective.botID }) else { return }
+
+        // Recorded before the run, so a crash mid-check cannot cause it to repeat immediately.
+        if let index = objectives.firstIndex(where: { $0.id == objective.id }) {
+            objectives[index].lastCheckedAt = Date()
+            try? store?.save(objectives[index])
+        }
+
+        send(ObjectiveCheck.prompt(for: objective), to: bot) { [weak self] reply in
+            guard let self,
+                  let index = self.objectives.firstIndex(where: { $0.id == objective.id })
+            else { return }
+
+            self.objectives[index].lastOutcome = ObjectiveCheck.outcome(from: reply)
+            self.objectives[index].notes = ObjectiveCheck.updatedNotes(
+                self.objectives[index].notes,
+                adding: ObjectiveCheck.learnings(from: reply))
+            try? self.store?.save(self.objectives[index])
+        }
+    }
+
+    /// Objectives whose check time has passed, using the same scheduler as routines so late and
+    /// collapsed runs behave identically.
+    private func dueObjectives(now: Date) -> [Objective] {
+        let asRoutines = objectives.map {
+            Routine(id: $0.id, botID: $0.botID, name: "check", prompt: "",
+                    cron: $0.checkCron, enabled: $0.enabled, tier: $0.tier,
+                    lastFiredAt: $0.lastCheckedAt)
+        }
+        let dueIDs = Set(RoutineScheduler().due(routines: asRoutines, now: now).map(\.routine.id))
+        return objectives.filter { dueIDs.contains($0.id) }
+    }
+
+    /// Everything waiting on a person, in one place.
+    var attentionItems: [AttentionItem] {
+        var items: [AttentionItem] = []
+
+        for bot in bots {
+            for entry in threads[bot.id]?.entries ?? [] {
+                if case .approval(let approval) = entry.kind, approval.decided == nil {
+                    items.append(AttentionItem(
+                        id: approval.id, botName: bot.name, hue: bot.avatarHue,
+                        kind: .approval, title: "\(approval.tool) needs approval",
+                        detail: approval.summary))
+                }
+            }
+        }
+
+        for objective in objectives where objective.lastOutcome?.needsAttention == true {
+            guard let bot = bots.first(where: { $0.id.rawValue == objective.botID }) else { continue }
+            items.append(AttentionItem(
+                id: objective.id, botName: bot.name, hue: bot.avatarHue,
+                kind: .objective, title: objective.goal,
+                detail: detail(for: objective.lastOutcome)))
+        }
+
+        return items
+    }
+
+    private func detail(for outcome: ObjectiveOutcome?) -> String {
+        switch outcome {
+        case .needsYou(let question): question
+        case .failed(let reason): "Check failed: \(reason)"
+        case .unclear: "The bot's answer could not be read, so nobody knows if this is handled."
+        default: ""
         }
     }
 
@@ -448,6 +561,13 @@ final class AppModel {
     }
 
     func send(_ prompt: String, to bot: Bot) {
+        send(prompt, to: bot, onFinish: nil)
+    }
+
+    func send(
+        _ prompt: String, to bot: Bot,
+        onFinish: (@MainActor @Sendable (String) -> Void)?
+    ) {
         guard running[bot.id] == nil, let adapter = adapters[bot.engine] else { return }
 
         let thread = thread(for: bot.id)
@@ -493,6 +613,7 @@ final class AppModel {
         running[bot.id] = Task { [host, store] in
             var seq = 1
             var failed = false
+            var reply = ""
             defer {
                 thread.isRunning = false
                 running[bot.id] = nil
@@ -509,6 +630,7 @@ final class AppModel {
                         id: conversationID, botID: bot.id.rawValue, engine: bot.engine.rawValue,
                         providerConversationID: id.rawValue, lastEventAt: Date()))
                 }
+                onFinish?(reply)
             }
             do {
                 for try await output in try await host.spawn(adapter.invocation(for: request)) {
@@ -516,6 +638,7 @@ final class AppModel {
                     for event in adapter.normalise(output) {
                         thread.apply(event)
                         if case .failed = event { failed = true }
+                        if case .text(let chunk) = event { reply += chunk }
                         persist(event, run: run.id, seq: seq)
                         seq += 1
                     }

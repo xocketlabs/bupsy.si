@@ -6,6 +6,7 @@ struct ThreadView: View {
     let bot: Bot
     @State private var draft = ""
     @State private var showsRoutines = false
+    @State private var showsObjectives = false
 
     private var thread: Thread { model.thread(for: bot.id) }
 
@@ -33,8 +34,15 @@ struct ThreadView: View {
                 }
                 .help("Jobs \(bot.name) does on a schedule")
             }
+            ToolbarItem {
+                Button { showsObjectives = true } label: {
+                    Label("Goals", systemImage: "target")
+                }
+                .help("Things \(bot.name) keeps true")
+            }
         }
         .sheet(isPresented: $showsRoutines) { RoutinesSheet(bot: bot) }
+        .sheet(isPresented: $showsObjectives) { ObjectivesSheet(bot: bot) }
     }
 
     /// Says plainly what the bot can and cannot do unattended, rather than hiding it in settings.

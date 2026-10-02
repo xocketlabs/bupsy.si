@@ -294,6 +294,66 @@ public struct Store: Sendable {
     }
 }
 
+extension Store {
+    /// Objectives share the `triggers` table with routines, distinguished by `kind`. They are the
+    /// same shape of thing — something a bot does on a schedule — and a separate table would mean
+    /// two code paths for one concept.
+    public func objectives() throws -> [Objective] {
+        try triggers().filter { $0.kind == "objective" }.compactMap(Objective.init(record:))
+    }
+
+    public func save(_ objective: Objective) throws {
+        try save(objective.record())
+    }
+
+    public func deleteObjective(id: String) throws {
+        try deleteRoutine(id: id)
+    }
+}
+
+extension Objective {
+    func record() -> TriggerRecord {
+        var config: [String: Any] = [
+            "goal": goal, "doneWhen": doneWhen, "cron": checkCron,
+            "tier": tier.rawValue, "notes": notes,
+            "lastCheckedAt": lastCheckedAt?.timeIntervalSince1970 ?? 0,
+        ]
+        if let lastOutcome, let data = try? JSONEncoder().encode(lastOutcome),
+           let encoded = String(data: data, encoding: .utf8) {
+            config["lastOutcome"] = encoded
+        }
+        let json = (try? String(
+            data: JSONSerialization.data(withJSONObject: config, options: [.sortedKeys]),
+            encoding: .utf8)) ?? "{}"
+        return TriggerRecord(
+            id: id, botID: botID, kind: "objective", config: json, enabled: enabled,
+            installedOnMachine: tier == .machine,
+            nextFireAt: (try? CronExpression(checkCron))?.nextFire(after: Date()))
+    }
+
+    init?(record: TriggerRecord) {
+        guard let data = record.config.data(using: .utf8),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let goal = config["goal"] as? String,
+              let doneWhen = config["doneWhen"] as? String
+        else { return nil }
+
+        let checked = (config["lastCheckedAt"] as? NSNumber)?.doubleValue ?? 0
+        let outcome = (config["lastOutcome"] as? String)
+            .flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONDecoder().decode(ObjectiveOutcome.self, from: $0) }
+
+        self.init(
+            id: record.id, botID: record.botID, goal: goal, doneWhen: doneWhen,
+            checkCron: config["cron"] as? String ?? "0 9-18 * * 1-5",
+            enabled: record.enabled,
+            tier: Routine.Tier(rawValue: config["tier"] as? String ?? "") ?? .launchAgent,
+            notes: config["notes"] as? String ?? "",
+            lastCheckedAt: checked > 0 ? Date(timeIntervalSince1970: checked) : nil,
+            lastOutcome: outcome)
+    }
+}
+
 extension Routine {
     /// Packs the routine-specific fields into the trigger's `config` blob, so adding a field
     /// later needs no migration.
