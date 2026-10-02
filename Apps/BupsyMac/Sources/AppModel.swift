@@ -758,8 +758,10 @@ final class AppModel {
         for id in running.keys { stop(id) }
     }
 
-    func addBot(name: String, engine: EngineID) {
-        let bot = Bot(name: name, engine: engine)
+    func addBot(name: String, engine: EngineID, job: String = "") {
+        let bot = Bot(
+            name: name, engine: engine,
+            personaPrompt: job.isEmpty ? nil : job)
         bots.append(bot)
         try? store?.save(bot.record(sortIndex: bots.count - 1))
         selectedBotID = bot.id

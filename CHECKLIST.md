@@ -89,12 +89,14 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [ ] Watch its screen
 - [ ] **Needs your boat key to prove it works against the real service**
 
-### 3. Make it look good ✅ **done**
-- [x] Animated bot faces — they blink, and show at a glance who's busy or stuck
-- [x] Nicer waiting animation
-- [x] Glowing border on the box while a bot replies
+### 3. Make it look good ✅ **rebuilt as a messaging app**
+- [x] Conversation list — faces, what they last said, when
+- [x] Proper chat bubbles, day separators, typing indicator
+- [x] Tool calls read as quiet asides, not cards competing with the reply
+- [x] Click a bot's name for everything about it — like tapping a contact
+- [x] Approvals are the one thing in a thread you can't miss
+- [x] Animated faces that blink and show who's busy or stuck
 - [x] First-run walkthrough
-- [x] Settings live in a right-click menu on each bot
 
 ### 4. Connect your apps ✅ **done**
 - [x] Add any MCP server — GitHub, Slack, Notion, Files suggested, anything else by hand
