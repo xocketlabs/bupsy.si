@@ -5,51 +5,27 @@ struct ThreadView: View {
     @Environment(AppModel.self) private var model
     let bot: Bot
     @State private var draft = ""
-    @State private var showsRoutines = false
-    @State private var showsObjectives = false
+    @State private var showsProfile = false
 
     private var thread: Thread { model.thread(for: bot.id) }
 
     var body: some View {
         VStack(spacing: 0) {
-            TranscriptList(thread: thread, bot: bot)
+            ThreadHeader(bot: bot, showsProfile: $showsProfile)
             Divider()
+            Transcript(thread: thread, bot: bot)
             Composer(
                 draft: $draft,
+                bot: bot,
                 isRunning: thread.isRunning,
-                hue: bot.avatarHue,
                 onSend: send,
                 onStop: { model.stop(bot.id) }
             )
         }
-        .navigationTitle(bot.name)
-        .navigationSubtitle(subtitle)
-        .toolbar {
-            ToolbarItem {
-                if let limits = thread.latestLimits { LimitsGauge(limits: limits) }
-            }
-            ToolbarItem {
-                Button { showsRoutines = true } label: {
-                    Label("Routines", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                }
-                .help("Jobs \(bot.name) does on a schedule")
-            }
-            ToolbarItem {
-                Button { showsObjectives = true } label: {
-                    Label("Goals", systemImage: "target")
-                }
-                .help("Things \(bot.name) keeps true")
-            }
+        .inspector(isPresented: $showsProfile) {
+            BotProfile(bot: bot)
+                .inspectorColumnWidth(min: 280, ideal: 320, max: 380)
         }
-        .sheet(isPresented: $showsRoutines) { RoutinesSheet(bot: bot) }
-        .sheet(isPresented: $showsObjectives) { ObjectivesSheet(bot: bot) }
-    }
-
-    /// Says plainly what the bot can and cannot do unattended, rather than hiding it in settings.
-    private var subtitle: String {
-        var parts = [bot.engine.displayName, bot.scheduleTier.label]
-        if let caveat = bot.scheduleTier.caveat { parts.append(caveat) }
-        return parts.joined(separator: " · ")
     }
 
     private func send() {
@@ -60,136 +36,200 @@ struct ThreadView: View {
     }
 }
 
-struct TranscriptList: View {
+/// The header is the way into everything about a bot — the same gesture as tapping a name in
+/// Messages. Settings that used to hide in toolbars and right-click menus live one click away,
+/// on a surface you can see.
+struct ThreadHeader: View {
+    @Environment(AppModel.self) private var model
+    let bot: Bot
+    @Binding var showsProfile: Bool
+
+    var body: some View {
+        HStack(spacing: Theme.Space.snug) {
+            Button { showsProfile.toggle() } label: {
+                HStack(spacing: Theme.Space.snug) {
+                    BotFace(hue: bot.avatarHue, mood: mood, size: 30)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(bot.name).font(.headline)
+                        Text(status)
+                            .font(.caption)
+                            .foregroundStyle(statusColor)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 0)
+
+            if let limits = model.thread(for: bot.id).latestLimits {
+                LimitsGauge(limits: limits)
+            }
+
+            Button { showsProfile.toggle() } label: {
+                Image(systemName: "sidebar.trailing")
+            }
+            .buttonStyle(.borderless)
+            .help("Everything about \(bot.name)")
+        }
+        .padding(.horizontal, Theme.Space.step)
+        .padding(.vertical, Theme.Space.snug)
+    }
+
+    private var mood: BotMood {
+        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
+        if model.isRunning(bot.id) { return .working }
+        return .idle
+    }
+
+    /// Says what the bot is doing, or — when idle — the one thing it cannot do, since that is
+    /// the fact most worth knowing before you ask it for something overnight.
+    private var status: String {
+        if model.isWaitingForApproval(bot.id) { return "Waiting for you" }
+        if model.isRunning(bot.id) { return "Working…" }
+        var parts = [bot.engine.displayName]
+        if let model = bot.model { parts.append(model) }
+        parts.append(bot.machineID == nil ? "on this Mac" : "on a cloud machine")
+        return parts.joined(separator: " · ")
+    }
+
+    private var statusColor: Color {
+        if model.isWaitingForApproval(bot.id) { return .orange }
+        return .secondary
+    }
+}
+
+struct Transcript: View {
     let thread: Thread
     let bot: Bot
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: Theme.Space.snug) {
                     if thread.entries.isEmpty {
-                        EmptyThread(bot: bot)
-                            .padding(.top, 60)
+                        EmptyThread(bot: bot).padding(.top, 72)
                     }
-                    ForEach(thread.entries) { entry in
-                        EntryView(entry: entry, hue: bot.avatarHue, bot: bot)
-                            .id(entry.id)
+                    ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
+                        if showsDaySeparator(at: index) {
+                            DaySeparator(date: entry.at)
+                        }
+                        Bubble(
+                            entry: entry,
+                            bot: bot,
+                            showsAvatar: showsAvatar(at: index)
+                        )
+                        .id(entry.id)
+                    }
+                    if thread.isRunning {
+                        TypingIndicator(bot: bot)
                     }
                 }
-                .padding(20)
+                .padding(.horizontal, Theme.Space.wide)
+                .padding(.vertical, Theme.Space.step)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .onChange(of: thread.entries.count) {
                 guard let last = thread.entries.last else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(.easeOut(duration: 0.18)) {
                     proxy.scrollTo(last.id, anchor: .bottom)
                 }
             }
         }
     }
-}
 
-struct EmptyThread: View {
-    let bot: Bot
+    private func showsDaySeparator(at index: Int) -> Bool {
+        guard index > 0 else { return true }
+        return !Calendar.current.isDate(
+            thread.entries[index].at, inSameDayAs: thread.entries[index - 1].at)
+    }
 
-    var body: some View {
-        VStack(spacing: 8) {
-            BotFace(hue: bot.avatarHue, mood: .idle, size: 52)
-            Text(bot.name).font(.headline)
-            Text("Runs \(bot.engine.displayName) on this Mac, under your own sign-in.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Text("Starts fully gated — nothing outside a read runs without asking.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity)
+    /// An avatar on every consecutive bot message is noise. One at the start of a run of them
+    /// reads as a person speaking, which is the whole metaphor.
+    private func showsAvatar(at index: Int) -> Bool {
+        guard thread.entries[index].isFromBot else { return false }
+        guard index > 0 else { return true }
+        return !thread.entries[index - 1].isFromBot
     }
 }
 
-struct EntryView: View {
+struct DaySeparator: View {
+    let date: Date
+
+    var body: some View {
+        Text(Theme.daySeparator(date))
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.Space.tight)
+    }
+}
+
+struct Bubble: View {
     let entry: TranscriptEntry
-    let hue: Double
     let bot: Bot
+    let showsAvatar: Bool
 
     var body: some View {
         switch entry.kind {
         case .userMessage(let text):
             HStack {
-                Spacer(minLength: 60)
+                Spacer(minLength: 72)
                 Text(text)
                     .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.tint.opacity(0.14), in: .rect(cornerRadius: 12))
+                    .padding(.horizontal, Theme.Space.step)
+                    .padding(.vertical, Theme.Space.snug)
+                    .background(.tint, in: .rect(cornerRadius: Theme.Radius.bubble))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .trailing)
             }
 
         case .assistantText(let text):
-            Text(markdown(text))
-                .textSelection(.enabled)
-                .frame(maxWidth: 640, alignment: .leading)
+            botAligned {
+                Text(markdown(text))
+                    .textSelection(.enabled)
+                    .padding(.horizontal, Theme.Space.step)
+                    .padding(.vertical, Theme.Space.snug)
+                    .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: Theme.Radius.bubble))
+            }
 
         case .thinking(let text):
-            DisclosureGroup {
-                Text(text)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            } label: {
-                Label("Thinking", systemImage: "sparkles")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: 640, alignment: .leading)
+            botAligned { ThinkingAside(text: text) }
 
+        // Tool calls are asides, not events. A bot running `ls` is not a message, and giving it
+        // the weight of one buries the reply underneath its own working.
         case .tool(let name, let arguments, let result, let failed):
-            ToolChip(name: name, arguments: arguments, result: result, failed: failed)
+            botAligned {
+                ToolAside(name: name, arguments: arguments, result: result, failed: failed)
+            }
 
         case .approval(let approval):
-            ApprovalCard(approval: approval)
+            botAligned { ApprovalCard(approval: approval) }
 
         case .limits(let limits):
-            LimitsGauge(limits: limits)
+            botAligned { LimitsGauge(limits: limits) }
 
         case .failure(let failure):
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title(for: failure.kind)).fontWeight(.medium)
-                    Text(failure.message)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-            }
-            .padding(10)
-            .frame(maxWidth: 640, alignment: .leading)
-            .background(.orange.opacity(0.1), in: .rect(cornerRadius: 10))
+            botAligned { FailureNotice(failure: failure) }
 
-        case .finished(let outcome):
-            if let summary = outcome.summary, !summary.isEmpty {
-                EmptyView()
-            } else {
-                EmptyView()
-            }
+        case .finished:
+            EmptyView()
         }
     }
 
-    /// Engine failures are the errors users will actually hit, so each gets a sentence they can
-    /// act on instead of a raw message.
-    private func title(for kind: EngineFailure.Kind) -> String {
-        switch kind {
-        case .notSignedIn: "Not signed in"
-        case .rateLimited: "Rate limited"
-        case .binaryNotFound: "Engine not found on this Mac"
-        case .launchFailed: "Could not start the engine"
-        case .protocolError: "Unexpected engine behaviour"
-        case .nonZeroExit: "The engine exited with an error"
-        case .cancelled: "Stopped"
-        case .unknown: "Something went wrong"
+    @ViewBuilder
+    private func botAligned<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(alignment: .bottom, spacing: Theme.Space.tight) {
+            // A fixed gutter so bubbles stay aligned whether or not this one shows a face.
+            Group {
+                if showsAvatar {
+                    BotFace(hue: bot.avatarHue, mood: .idle, size: Theme.Size.bubbleAvatar)
+                } else {
+                    Color.clear.frame(width: Theme.Size.bubbleAvatar, height: 1)
+                }
+            }
+            content()
+                .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .leading)
+            Spacer(minLength: 48)
         }
     }
 
@@ -201,160 +241,75 @@ struct EntryView: View {
     }
 }
 
-/// A tool call waiting on the user.
-///
-/// Deliberately a card in the transcript rather than a modal: a modal interrupts whatever you
-/// were doing and loses the context of what the bot was in the middle of. It stays visible after
-/// a decision because what you allowed is part of the record, not a dialog that served its
-/// purpose and went away.
-struct ApprovalCard: View {
-    @Environment(AppModel.self) private var model
-    let approval: PendingApproval
-    @State private var showsDetail = false
-
-    private var bot: Bot? { model.selectedBot }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundStyle(tint)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .fontWeight(.medium)
-                    Text(approval.reason)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-
-            // The command itself, in full. An approval you cannot read is not an approval.
-            Text(approval.summary)
-                .font(.system(.callout, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.background.opacity(0.5), in: .rect(cornerRadius: 6))
-
-            if showsDetail {
-                Text(approval.inputJSON)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-
-            if approval.decided == nil {
-                HStack(spacing: 8) {
-                    Button("Allow") { decide(true) }
-                        .keyboardShortcut("a", modifiers: [.command, .shift])
-                    Button("Deny") { decide(false) }
-                        .keyboardShortcut("d", modifiers: [.command, .shift])
-                    Button(showsDetail ? "Less" : "Details") { showsDetail.toggle() }
-                        .buttonStyle(.link)
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: 640, alignment: .leading)
-        .background(tint.opacity(0.1), in: .rect(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(tint.opacity(approval.decided == nil ? 0.5 : 0.2), lineWidth: 1)
-        }
-    }
-
-    private func decide(_ allow: Bool) {
-        guard let bot else { return }
-        model.decide(approval, allow: allow, for: bot)
-    }
-
-    private var title: String {
-        switch approval.decided {
-        case nil: "\(approval.tool) needs your approval"
-        case .allowed: "\(approval.tool) — you allowed this"
-        case .denied: "\(approval.tool) — you declined this"
-        case .expired: "\(approval.tool) — denied, nobody answered"
-        }
-    }
-
-    private var icon: String {
-        switch approval.decided {
-        case nil: "hand.raised.fill"
-        case .allowed: "checkmark.circle.fill"
-        case .denied, .expired: "xmark.circle.fill"
-        }
-    }
-
-    private var tint: Color {
-        switch approval.decided {
-        case nil: .orange
-        case .allowed: .green
-        case .denied, .expired: .secondary
-        }
-    }
-}
-
-/// A tool call and its result, collapsed. Expanded on demand, because the arguments are the part
-/// that matters when something has gone wrong.
-struct ToolChip: View {
+/// A compact line rather than a card. Expands when you want the detail.
+struct ToolAside: View {
     let name: String
     let arguments: String
     let result: String?
     let failed: Bool
-    @State private var isExpanded = false
+    @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                isExpanded.toggle()
-            } label: {
-                HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.tight) {
+            Button { expanded.toggle() } label: {
+                HStack(spacing: Theme.Space.tight) {
                     Image(systemName: icon)
+                        .font(.caption)
                         .foregroundStyle(failed ? .orange : .secondary)
-                    Text(name).fontWeight(.medium)
+                    Text(verb)
+                        .foregroundStyle(.secondary)
                     Text(summary)
+                        .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    Spacer(minLength: 0)
                     if result == nil && !failed {
-                        ProgressView().controlSize(.small)
+                        ProgressView().controlSize(.mini)
                     }
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
                 }
-                .font(.callout)
+                .font(.caption)
             }
             .buttonStyle(.plain)
 
-            if isExpanded {
-                Text(arguments)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                if let result {
-                    Divider()
-                    Text(result)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
+            if expanded {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(arguments)
+                        .font(.system(.caption2, design: .monospaced))
                         .textSelection(.enabled)
-                        .lineLimit(20)
+                    if let result {
+                        Divider()
+                        Text(result)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(24)
+                    }
                 }
+                .padding(Theme.Space.snug)
+                .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: Theme.Radius.chip))
             }
         }
-        .padding(10)
-        .frame(maxWidth: 640, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 10))
+        .padding(.leading, 2)
+    }
+
+    private var verb: String {
+        if failed { return "failed" }
+        switch name {
+        case "Bash", "shell": return "ran"
+        case "Read": return "read"
+        case "Write", "Edit", "MultiEdit", "edit": return "edited"
+        case "WebFetch", "WebSearch": return "looked up"
+        default: return name.hasPrefix("mcp__") ? "used" : name.lowercased()
+        }
     }
 
     private var icon: String {
         if failed { return "exclamationmark.triangle" }
         switch name {
-        case "shell", "Bash": return "terminal"
-        case "edit", "Edit", "Write": return "pencil"
+        case "Bash", "shell": return "chevron.right"
         case "Read": return "doc.text"
-        default: return "wrench.and.screwdriver"
+        case "Write", "Edit", "MultiEdit", "edit": return "pencil"
+        case "WebFetch", "WebSearch": return "globe"
+        default: return "wrench.adjustable"
         }
     }
 
@@ -362,68 +317,143 @@ struct ToolChip: View {
         guard let data = arguments.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return "" }
-        for key in ["command", "file_path", "path", "pattern", "url", "description"] {
-            if let value = object[key] as? String { return value }
+        for key in ["command", "file_path", "path", "pattern", "url", "query", "description"] {
+            if let value = object[key] as? String, !value.isEmpty { return value }
         }
-        return ""
+        return name
     }
 }
 
-/// Subscription headroom, read from the engine's own report rather than estimated.
-/// Protecting the user's quota protects their account, which protects us.
-struct LimitsGauge: View {
-    let limits: RateLimit
+struct ThinkingAside: View {
+    let text: String
+    @State private var expanded = false
 
     var body: some View {
-        if let tightest = limits.tightest {
-            let percent = Int(tightest.window.utilization * 100)
-            HStack(spacing: 5) {
-                Image(systemName: "gauge.with.dots.needle.33percent")
-                Text("\(percent)%")
-                    .monospacedDigit()
+        VStack(alignment: .leading, spacing: Theme.Space.tight) {
+            Button { expanded.toggle() } label: {
+                Label("Thinking", systemImage: "sparkle")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
-            .font(.caption)
-            .foregroundStyle(percent >= 80 ? .orange : .secondary)
-            .help(tooltip)
+            .buttonStyle(.plain)
+            if expanded {
+                Text(text)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(Theme.Space.snug)
+                    .background(.quaternary.opacity(0.3), in: .rect(cornerRadius: Theme.Radius.chip))
+            }
         }
     }
+}
 
-    private var tooltip: String {
-        var lines = ["Your subscription usage, reported by the engine:"]
-        for (name, window) in limits.windows.sorted(by: { $0.key < $1.key }) {
-            let label = name.replacingOccurrences(of: "_", with: " ")
-            var line = "  \(label): \(Int(window.utilization * 100))%"
-            if let resets = window.resetsAt {
-                line += " · resets \(resets.formatted(date: .omitted, time: .shortened))"
+struct FailureNotice: View {
+    let failure: EngineFailure
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Space.tight) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).fontWeight(.medium)
+                Text(failure.message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
-            lines.append(line)
         }
-        return lines.joined(separator: "\n")
+        .padding(Theme.Space.snug)
+        .background(.orange.opacity(0.1), in: .rect(cornerRadius: Theme.Radius.card))
+    }
+
+    private var title: String {
+        switch failure.kind {
+        case .notSignedIn: "Not signed in"
+        case .rateLimited: "You've hit your usage limit"
+        case .binaryNotFound: "Engine not found on this Mac"
+        case .launchFailed: "Could not start the engine"
+        case .protocolError: "Unexpected engine behaviour"
+        case .nonZeroExit: "The engine exited with an error"
+        case .cancelled: "Stopped"
+        case .unknown: "Something went wrong"
+        }
+    }
+}
+
+struct TypingIndicator: View {
+    let bot: Bot
+
+    var body: some View {
+        HStack(spacing: Theme.Space.tight) {
+            Color.clear.frame(width: Theme.Size.bubbleAvatar, height: 1)
+            ThinkingOrbs(hue: bot.avatarHue, dotSize: 6)
+                .padding(.horizontal, Theme.Space.step)
+                .padding(.vertical, Theme.Space.snug)
+                .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: Theme.Radius.bubble))
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+struct EmptyThread: View {
+    let bot: Bot
+
+    var body: some View {
+        VStack(spacing: Theme.Space.snug) {
+            BotFace(hue: bot.avatarHue, mood: .idle, size: 64)
+            Text(bot.name).font(.title3.weight(.semibold))
+            if let job = bot.personaPrompt {
+                Text(job)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 340)
+            }
+            Text("Runs \(bot.engine.displayName) under your own sign-in · asks before it acts")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
 struct Composer: View {
     @Binding var draft: String
+    let bot: Bot
     let isRunning: Bool
-    let hue: Double
     let onSend: () -> Void
     let onStop: () -> Void
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("Message", text: $draft, axis: .vertical)
+        HStack(alignment: .bottom, spacing: Theme.Space.snug) {
+            TextField("Message \(bot.name)", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
-                .lineLimit(1...6)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: 10))
-                .borderBeam(hue: hue, active: isRunning)
+                .font(.body)
+                .lineLimit(1...8)
+                .padding(.horizontal, Theme.Space.step)
+                .padding(.vertical, Theme.Space.snug)
+                .background(.quaternary.opacity(0.4), in: .capsule)
+                .borderBeam(hue: bot.avatarHue, active: isRunning, cornerRadius: 22)
                 .onSubmit(onSend)
 
-            Button(isRunning ? "Stop" : "Send", action: isRunning ? onStop : onSend)
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(!isRunning && draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button(action: isRunning ? onStop : onSend) {
+                Image(systemName: isRunning ? "stop.fill" : "arrow.up")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(sendEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary),
+                                in: .circle)
+            }
+            .buttonStyle(.plain)
+            .disabled(!sendEnabled)
+            .keyboardShortcut(.return, modifiers: .command)
         }
-        .padding(12)
+        .padding(.horizontal, Theme.Space.step)
+        .padding(.vertical, Theme.Space.snug)
+        .background(.bar)
+    }
+
+    private var sendEnabled: Bool {
+        isRunning || !draft.trimmingCharacters(in: .whitespaces).isEmpty
     }
 }

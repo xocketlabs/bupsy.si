@@ -81,6 +81,13 @@ enum ScheduleTier: Sendable {
 /// One entry in a transcript. Deliberately a flat list rather than nested turns: tool calls and
 /// their results interleave with prose, and a flat log is what the audit trail needs anyway.
 struct TranscriptEntry: Identifiable, Sendable {
+    /// Whether this belongs on the bot's side of the thread. Drives bubble alignment and the
+    /// avatar gutter, so it lives with the entry rather than being re-derived in a view.
+    var isFromBot: Bool {
+        if case .userMessage = kind { return false }
+        return true
+    }
+
     enum Kind: Sendable {
         case userMessage(String)
         case assistantText(String)
@@ -129,6 +136,28 @@ final class Thread {
     var connectorStates: [ConnectorState] = []
 
     init(botID: BotID) { self.botID = botID }
+
+    /// One line for the conversation list — what a chat app shows under a name.
+    var preview: String? {
+        for entry in entries.reversed() {
+            switch entry.kind {
+            case .assistantText(let text), .userMessage(let text):
+                let flat = text
+                    .replacingOccurrences(of: "\n", with: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                if !flat.isEmpty { return flat }
+            case .approval(let approval):
+                return "Asked about \(approval.tool)"
+            case .failure(let failure):
+                return failure.message
+            default:
+                continue
+            }
+        }
+        return nil
+    }
+
+    var lastActivity: Date? { entries.last?.at }
 
     /// Folds a canonical event into the transcript.
     ///

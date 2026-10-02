@@ -1,8 +1,11 @@
 import BupsyKit
 import SwiftUI
 
-/// The home screen: bots as contacts. The chat metaphor only works if this reads like a list of
-/// people rather than a list of configurations.
+/// The bot list, as a messaging app's conversation list.
+///
+/// Rows carry what a chat list carries: who, what they last said, when, and whether they need you.
+/// A configuration-shaped row ("Claude Code · this Mac") tells you about the software; a
+/// message-shaped row tells you about the conversation, which is what someone actually came for.
 struct RosterView: View {
     @Environment(AppModel.self) private var model
     @State private var isAddingBot = false
@@ -15,45 +18,28 @@ struct RosterView: View {
             get: { model.selectedBotID },
             set: { model.selectedBotID = $0 }
         )) {
-            Section("Bots") {
-                ForEach(model.bots) { bot in
-                    BotRow(bot: bot, isRunning: model.isRunning(bot.id))
-                        .tag(bot.id)
-                        .contextMenu { BotMenu(bot: bot) }
-                }
+            ForEach(model.bots) { bot in
+                BotRow(bot: bot)
+                    .tag(bot.id)
+                    .listRowInsets(EdgeInsets(top: 5, leading: 8, bottom: 5, trailing: 8))
+                    .contextMenu { BotMenu(bot: bot) }
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom) { EngineStatusBar() }
+        .safeAreaInset(edge: .top, spacing: 0) { AttentionBanner(showing: $showsAttention) }
         .toolbar {
             ToolbarItem {
-                Button { isAddingBot = true } label: {
-                    Label("New bot", systemImage: "plus")
-                }
-                .help("New bot")
+                Button { isAddingBot = true } label: { Label("New bot", systemImage: "square.and.pencil") }
+                    .help("New bot")
             }
             ToolbarItem {
-                Button { showsMachines = true } label: {
-                    Label("Machines", systemImage: "server.rack")
+                Menu {
+                    Button("Machines…") { showsMachines = true }
+                    Button("Apps…") { showsConnectors = true }
+                } label: {
+                    Label("Setup", systemImage: "ellipsis.circle")
                 }
-                .help("Cloud machines your bots can use")
-            }
-            ToolbarItem {
-                Button { showsConnectors = true } label: {
-                    Label("Apps", systemImage: "puzzlepiece.extension")
-                }
-                .help("Apps your bots can use")
-            }
-            ToolbarItem {
-                Button { showsAttention = true } label: {
-                    Label("Waiting on you", systemImage: model.attentionItems.isEmpty
-                          ? "tray" : "tray.full.fill")
-                }
-                .help(model.attentionItems.isEmpty
-                      ? "Nothing needs you"
-                      : "\(model.attentionItems.count) waiting on you")
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(model.attentionItems.isEmpty ? Color.secondary : Color.orange)
+                .help("Machines and apps")
             }
         }
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
@@ -63,45 +49,119 @@ struct RosterView: View {
     }
 }
 
-/// Right-click a bot. Assigning a machine lives here rather than behind a settings screen,
-/// because it is the one setting that changes what a bot can actually promise.
+/// Only appears when something is actually waiting.
+///
+/// A permanent tray icon with a zero badge is furniture people stop seeing. A banner that is
+/// absent until it matters gets noticed the one time it does.
+struct AttentionBanner: View {
+    @Environment(AppModel.self) private var model
+    @Binding var showing: Bool
+
+    var body: some View {
+        let count = model.attentionItems.count
+        if count > 0 {
+            Button { showing = true } label: {
+                HStack(spacing: Theme.Space.tight) {
+                    Image(systemName: "hand.raised.fill")
+                    Text(count == 1 ? "1 thing needs you" : "\(count) things need you")
+                        .fontWeight(.medium)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.caption2)
+                }
+                .font(.callout)
+                .foregroundStyle(.orange)
+                .padding(.horizontal, Theme.Space.snug)
+                .padding(.vertical, 8)
+                .background(.orange.opacity(0.12), in: .rect(cornerRadius: Theme.Radius.chip))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 6)
+        }
+    }
+}
+
+struct BotRow: View {
+    @Environment(AppModel.self) private var model
+    let bot: Bot
+
+    private var thread: Thread { model.thread(for: bot.id) }
+
+    private var mood: BotMood {
+        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
+        if model.isRunning(bot.id) { return .working }
+        return .idle
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Space.snug) {
+            BotFace(hue: bot.avatarHue, mood: mood, size: Theme.Size.rosterAvatar)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: Theme.Space.tight) {
+                    Text(bot.name)
+                        .font(.body.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let at = thread.lastActivity {
+                        Text(Theme.stamp(at))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                HStack(spacing: Theme.Space.tight) {
+                    Text(preview)
+                        .font(.callout)
+                        // Orange is the one state worth a colour; the rest are weights of grey,
+                        // so "needs you" is the only thing that catches the eye in a long list.
+                        .foregroundStyle(mood == .waitingForYou
+                                         ? AnyShapeStyle(Color.orange)
+                                         : AnyShapeStyle(previewColor))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// What the row says when there is nothing to quote yet — the bot's job, not its settings.
+    private var preview: String {
+        if mood == .waitingForYou { return "Waiting for you to decide" }
+        if model.isRunning(bot.id) { return "Working…" }
+        if let last = thread.preview { return last }
+        return bot.personaPrompt?.split(separator: ".").first.map(String.init)
+            ?? "No messages yet"
+    }
+
+    private var previewColor: HierarchicalShapeStyle {
+        switch mood {
+        case .waitingForYou: .primary
+        case .working: .secondary
+        default: thread.preview == nil ? .tertiary : .secondary
+        }
+    }
+}
+
+/// Right-click. Everything here is also in the bot's profile, where it is visible rather than
+/// hidden — this is the shortcut, not the only route.
 struct BotMenu: View {
     @Environment(AppModel.self) private var model
     let bot: Bot
 
     var body: some View {
-        Menu("Machine") {
-            Button {
-                model.assign(bot, to: nil)
-            } label: {
-                Label("This Mac", systemImage: bot.machineID == nil ? "checkmark" : "")
-            }
-            if model.machines.isEmpty {
-                Text("No machines yet")
-            } else {
-                Divider()
-                ForEach(model.machines) { machine in
-                    Button {
-                        model.assign(bot, to: machine.id)
-                    } label: {
-                        Label(machine.name,
-                              systemImage: bot.machineID == machine.id ? "checkmark" : "")
-                    }
-                }
-            }
-        }
-
         Menu("Engine") {
             ForEach([EngineID.claude, .codex], id: \.self) { engine in
                 Button {
                     model.setEngine(bot, engine)
                 } label: {
-                    Label(engine.displayName,
-                          systemImage: bot.engine == engine ? "checkmark" : "")
+                    Label(engine.displayName, systemImage: bot.engine == engine ? "checkmark" : "")
                 }
             }
         }
-
         Menu("Model") {
             ForEach(model.models(for: bot)) { option in
                 Button {
@@ -111,145 +171,8 @@ struct BotMenu: View {
                 }
             }
         }
-
-        if !model.connectors.isEmpty {
-            Menu("Apps") {
-                ForEach(model.connectors) { server in
-                    Button {
-                        model.setConnectorAllowed(
-                            bot, server, !bot.toolAllowlist.contains(server.toolPrefix))
-                    } label: {
-                        Label("\(server.name) — no need to ask",
-                              systemImage: bot.toolAllowlist.contains(server.toolPrefix)
-                                  ? "checkmark" : "")
-                    }
-                }
-            }
-        }
-
-        Menu("Trust") {
-            ForEach(Autonomy.allCases, id: \.self) { level in
-                Button {
-                    model.setAutonomy(bot, level)
-                } label: {
-                    Label(label(for: level),
-                          systemImage: bot.autonomy == level ? "checkmark" : "")
-                }
-            }
-        }
-
-        Menu("While working") {
-            ForEach(KeepAwake.allCases, id: \.self) { setting in
-                Button {
-                    model.setKeepAwake(bot, setting)
-                } label: {
-                    Label(setting.label, systemImage: bot.keepAwake == setting ? "checkmark" : "")
-                }
-            }
-        }
-
         Divider()
         Button("Delete bot", role: .destructive) { model.deleteBot(bot) }
-    }
-
-    private func label(for level: Autonomy) -> String {
-        switch level {
-        case .ask: "Ask me everything"
-        case .allowlist: "Ask unless I've allowed it"
-        case .trusted: "Ask before anything leaves this machine"
-        case .auto: "Never ask"
-        }
-    }
-}
-
-struct BotRow: View {
-    @Environment(AppModel.self) private var model
-    let bot: Bot
-    let isRunning: Bool
-
-    /// A glance at the roster should say which bot is busy and which is stuck on you, without
-    /// reading a word. Waiting beats working: a bot blocked on a decision is the one that needs
-    /// attention, even though it is also technically running.
-    private var mood: BotMood {
-        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
-        if isRunning { return .working }
-        return .idle
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            BotFace(hue: bot.avatarHue, mood: mood)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(bot.name)
-                    .fontWeight(.medium)
-                HStack(spacing: 4) {
-                    Text(bot.engine.displayName)
-                    if let model = bot.model {
-                        Text("· \(model)")
-                    }
-                    if bot.machineID == nil {
-                        Text("· this Mac")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            if isRunning && !model.isWaitingForApproval(bot.id) {
-                ThinkingOrbs(hue: bot.avatarHue)
-            }
-        }
-        .padding(.vertical, 3)
-    }
-}
-
-/// Shows whether each engine can actually run, not merely whether it is signed in.
-struct EngineStatusBar: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Divider()
-            ForEach(EngineID.allCases.filter { model.engineStatus[$0] != nil }, id: \.self) { engine in
-                if let status = model.engineStatus[engine] {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(status.isUsable ? .green : .orange)
-                            .frame(width: 6, height: 6)
-                        Text(engine.displayName)
-                            .font(.caption)
-                        Spacer(minLength: 0)
-                        Text(label(for: status))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .help(detail(for: status))
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
-    }
-
-    private func label(for status: AuthStatus) -> String {
-        switch status {
-        case .signedIn(let method): method == .apiKey ? "API key" : "subscription"
-        case .signedInWithoutModelAccess: "no model access"
-        case .signedOut: "signed out"
-        case .unknown: "unknown"
-        }
-    }
-
-    /// The distinction worth surfacing: a signed-in engine whose plan cannot run a model would
-    /// otherwise look healthy and fail at 3am. See docs/01-spikes.md spike 6b.
-    private func detail(for status: AuthStatus) -> String {
-        switch status {
-        case .signedIn: "Ready."
-        case .signedInWithoutModelAccess(let detail):
-            "Signed in, but this account cannot run a model.\n\(detail)"
-        case .signedOut: "Sign in from Settings → Engines."
-        case .unknown(let reason): reason
-        }
     }
 }
 
@@ -258,30 +181,60 @@ struct NewBotSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var engine = EngineID.claude
+    @State private var job = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Theme.Space.step) {
             Text("New bot").font(.headline)
-            TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
-            Picker("Engine", selection: $engine) {
-                ForEach([EngineID.claude, .codex], id: \.self) { Text($0.displayName).tag($0) }
+
+            HStack(spacing: Theme.Space.step) {
+                BotFace(hue: previewHue, mood: .idle, size: 52)
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Name", text: $name, prompt: Text("Scout"))
+                        .textFieldStyle(.roundedBorder)
+                    Picker("", selection: $engine) {
+                        ForEach([EngineID.claude, .codex], id: \.self) {
+                            Text($0.displayName).tag($0)
+                        }
+                    }
+                    .labelsHidden()
+                }
             }
-            Text("New bots start fully gated and have no cloud machine.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("What's its job?").font(.caption).foregroundStyle(.secondary)
+                TextField("", text: $job,
+                          prompt: Text("Research things and report back plainly."),
+                          axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(2...4)
+            }
+
+            Text("Starts fully gated — it asks before doing anything beyond reading.")
+                .font(.caption).foregroundStyle(.secondary)
+
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Create") {
-                    model.addBot(name: name.trimmingCharacters(in: .whitespaces), engine: engine)
+                    model.addBot(
+                        name: name.trimmingCharacters(in: .whitespaces),
+                        engine: engine,
+                        job: job.trimmingCharacters(in: .whitespaces))
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .padding(20)
-        .frame(width: 340)
+        .padding(Theme.Space.wide)
+        .frame(width: 400)
+    }
+
+    /// Shows the colour the bot will get as you type its name, since the hue is derived from it.
+    private var previewHue: Double {
+        var hash = 5381
+        for byte in name.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
+        return name.isEmpty ? 0.55 : Double(abs(hash) % 360) / 360
     }
 }
