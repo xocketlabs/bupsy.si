@@ -176,3 +176,47 @@ struct TierPromiseTests {
         #expect(plist["Label"] as? String == "si.bupsy.routines")
     }
 }
+
+@Suite("Routine storage")
+struct RoutineStorageTests {
+    @Test("a routine survives being written and read back")
+    func roundTrips() throws {
+        let store = try Store.inMemory()
+        let bot = BotRecord(name: "Scout", engine: "claude")
+        try store.save(bot)
+
+        let routine = Routine(
+            botID: bot.id, name: "Morning brief", prompt: "What happened overnight?",
+            cron: "0 7 * * 1-5", tier: .launchAgent, lastFiredAt: Date(timeIntervalSince1970: 1_000_000))
+        try store.save(routine)
+
+        let loaded = try #require(try store.routines().first)
+        #expect(loaded.id == routine.id)
+        #expect(loaded.name == "Morning brief")
+        #expect(loaded.cron == "0 7 * * 1-5")
+        #expect(loaded.tier == .launchAgent)
+        #expect(loaded.lastFiredAt == routine.lastFiredAt)
+    }
+
+    /// Routine fields live in the trigger's config blob, so a new field needs no migration.
+    @Test("a routine that has never fired reads back as never fired")
+    func neverFiredStaysNil() throws {
+        let store = try Store.inMemory()
+        let bot = BotRecord(name: "Scout", engine: "claude")
+        try store.save(bot)
+        try store.save(Routine(botID: bot.id, name: "x", prompt: "p", cron: "0 7 * * *"))
+
+        #expect(try store.routines().first?.lastFiredAt == nil)
+    }
+
+    @Test("deleting a bot takes its routines with it")
+    func deletingBotRemovesRoutines() throws {
+        let store = try Store.inMemory()
+        let bot = BotRecord(name: "Scout", engine: "claude")
+        try store.save(bot)
+        try store.save(Routine(botID: bot.id, name: "x", prompt: "p", cron: "0 7 * * *"))
+
+        try store.deleteBot(id: bot.id)
+        #expect(try store.routines().isEmpty)
+    }
+}

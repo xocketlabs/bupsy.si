@@ -9,13 +9,17 @@ final class AppModel {
     var bots: [Bot] = []
     var selectedBotID: BotID?
     var engineStatus: [EngineID: AuthStatus] = [:]
+    var routines: [Routine] = []
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?
+    /// Set when a schedule could not be installed, so the UI can say a routine will not fire.
+    var routineProblem: String?
 
     private var threads: [BotID: Thread] = [:]
     private var running: [BotID: Task<Void, Never>] = [:]
     private var gates: [BotID: ApprovalGate] = [:]
     private var awake: [BotID: PowerAssertion] = [:]
+    private var routineTimer: Task<Void, Never>?
     private let store: Store?
 
     private let host: any ExecutionHost = LocalHost()
@@ -38,7 +42,98 @@ final class AppModel {
             }
         }
         loadBots()
+        // `self.store`, not `store` — the initialiser parameter shadows the property, and is nil
+        // in normal use. Written as `store?` this silently loaded zero routines on every launch,
+        // with `try?` swallowing the nothing that happened. Routines then never fired, and no
+        // error appeared anywhere.
+        routines = (try? self.store?.routines()) ?? []
         selectedBotID = bots.first?.id
+        // Sync at launch, not only when a routine changes. Otherwise an agent removed by hand,
+        // or a database restored onto a different Mac, leaves routines that quietly never fire.
+        syncLaunchAgent()
+    }
+
+    // MARK: - Routines
+
+    func addRoutine(to bot: Bot, name: String, prompt: String, cron: String,
+                    tier: Routine.Tier) {
+        // A tier the bot cannot honour is downgraded rather than silently failing later.
+        let effective = (tier == .machine && bot.machineID == nil) ? .appOpen : tier
+        let routine = Routine(
+            botID: bot.id.rawValue, name: name, prompt: prompt, cron: cron, tier: effective)
+        routines.append(routine)
+        try? store?.save(routine)
+        syncLaunchAgent()
+    }
+
+    func deleteRoutine(_ routine: Routine) {
+        routines.removeAll { $0.id == routine.id }
+        try? store?.deleteRoutine(id: routine.id)
+        syncLaunchAgent()
+    }
+
+    func setRoutineEnabled(_ routine: Routine, _ enabled: Bool) {
+        guard let index = routines.firstIndex(where: { $0.id == routine.id }) else { return }
+        routines[index].enabled = enabled
+        try? store?.save(routines[index])
+        syncLaunchAgent()
+    }
+
+    /// Keeps launchd in step with whatever routines currently want to run with the app closed.
+    ///
+    /// Rewritten from scratch each time rather than patched: one agent describing the current
+    /// truth is far easier to reason about than a set of incremental edits, and launchd is a
+    /// user-visible resource we should leave tidy.
+    private func syncLaunchAgent() {
+        let intervals = RoutineScheduler().launchdIntervals(for: routines)
+        let appPath = Bundle.main.bundlePath
+        Task.detached { [weak self] in
+            do {
+                if intervals.isEmpty {
+                    try LaunchAgent.uninstall()
+                } else {
+                    try LaunchAgent.install(intervals: intervals, appPath: appPath)
+                }
+            } catch {
+                // Never swallowed: a routine that silently never fires is this feature's worst
+                // failure, so the reason reaches the user rather than a debug log.
+                FileHandle.standardError.write(Data("bupsy: launch agent — \(error)\n".utf8))
+                await MainActor.run { self?.routineProblem = error.localizedDescription }
+            }
+        }
+    }
+
+    /// Runs whatever is due. Called at launch — including when launchd started us for exactly
+    /// this reason — and on a timer while the app is open.
+    func runDueRoutines(now: Date = Date()) {
+        for due in RoutineScheduler().due(routines: routines, now: now) {
+            guard let bot = bots.first(where: { $0.id.rawValue == due.routine.botID })
+            else { continue }
+
+            // Record the slot before running, not after. A crash mid-run must not cause the
+            // routine to fire again on the next launch.
+            if let index = routines.firstIndex(where: { $0.id == due.routine.id }) {
+                routines[index].lastFiredAt = due.scheduledFor
+                try? store?.save(routines[index])
+            }
+
+            let note = due.isLate
+                ? "\n\n(Running late — this was scheduled for "
+                    + due.scheduledFor.formatted(date: .omitted, time: .shortened) + ".)"
+                : ""
+            send(due.routine.prompt + note, to: bot)
+        }
+    }
+
+    /// Ticks while the app is open so `appOpen`-tier routines fire on their minute.
+    func startRoutineTimer() {
+        guard routineTimer == nil else { return }
+        routineTimer = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                await self?.runDueRoutines()
+            }
+        }
     }
 
     private func loadBots() {
