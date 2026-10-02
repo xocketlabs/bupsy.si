@@ -9,59 +9,49 @@ import SwiftUI
 /// worse failure than any bug in here.
 struct MachinesSheet: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.palette) private var palette
     @State private var isCreating = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Machines").font(.headline)
-                Spacer()
+        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+            SectionHeader(
+                icon: "server.rack",
+                title: "Machines",
+                badge: model.machines.isEmpty ? nil : "\(model.machines.count)",
+                subtitle: "Rented on your own boat.dev account, billed to you"
+            ) {
                 if model.hasComputeKey {
                     Button("New machine") { isCreating = true }
+                        .buttonStyle(QuietButton())
                 }
             }
-            .padding(16)
-
-            Divider()
 
             if !model.hasComputeKey {
                 ComputeKeySetup()
             } else if model.machines.isEmpty {
-                VStack(spacing: 6) {
-                    Text("No machines yet").font(.callout)
-                    Text("A machine is a computer in the cloud your bots can use. "
-                         + "Give one to a bot and its routines keep running with your Mac closed.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 340)
+                EmptyRow(text: "No machines yet. One lets a bot keep working with your Mac closed.") {
+                    isCreating = true
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(40)
             } else {
-                List {
+                VStack(spacing: Theme.Space.snug) {
                     ForEach(model.machines) { machine in
                         MachineRow(machine: machine)
                     }
                 }
-                .listStyle(.inset)
             }
 
-            Divider()
-            HStack {
-                if let problem = model.machineProblem {
-                    Label(problem, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .lineLimit(2)
-                }
-                Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            if let problem = model.machineProblem {
+                Label(problem, systemImage: "exclamationmark.triangle")
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(palette.primary)
             }
-            .padding(12)
+
+            Spacer(minLength: 0)
         }
-        .frame(width: 580, height: 440)
+        .padding(.horizontal, 32)
+        .padding(.top, 28)
+        .frame(maxWidth: Theme.Size.contentMaxWidth, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
         .sheet(isPresented: $isCreating) { NewMachineSheet() }
     }
 }
@@ -103,6 +93,7 @@ struct ComputeKeySetup: View {
 
 struct MachineRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     let machine: MachineRecord
 
     private var assignedBots: [Bot] {
@@ -110,30 +101,31 @@ struct MachineRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Circle()
-                .fill(machine.state == "running" ? Color.green : Color.secondary.opacity(0.4))
-                .frame(width: 8, height: 8)
-                .padding(.top, 5)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(machine.name).fontWeight(.medium)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if assignedBots.isEmpty {
-                    Text("No bots assigned — this machine is costing you nothing useful.")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                } else {
-                    Text(assignedBots.map(\.name).joined(separator: ", "))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+        CardRow {
+            IconTile(systemName: "server.rack")
+        } content: {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: Theme.Space.tight) {
+                    Circle()
+                        .fill(machine.state == "running" ? Color.green : palette.mutedForeground)
+                        .frame(width: 6, height: 6)
+                    Text(machine.name)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
                 }
+                HStack(spacing: Theme.Space.snug) {
+                    Text(subtitle)
+                    MetaDot()
+                    Text(assignedBots.isEmpty
+                         ? "No bots assigned"
+                         : assignedBots.map(\.name).joined(separator: ", "))
+                        .foregroundStyle(assignedBots.isEmpty
+                                         ? palette.primary : palette.mutedForeground)
+                }
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
             }
-
-            Spacer(minLength: 0)
-
+        } trailing: {
             Menu {
                 Button(machine.state == "running" ? "Stop" : "Start") {
                     model.toggleMachine(machine)
@@ -141,12 +133,12 @@ struct MachineRow: View {
                 Divider()
                 Button("Delete", role: .destructive) { model.deleteMachine(machine) }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: "ellipsis")
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            .foregroundStyle(palette.mutedForeground)
         }
-        .padding(.vertical, 4)
     }
 
     /// Cost is shown per machine, up front. An always-on machine is the one part of bupsy that

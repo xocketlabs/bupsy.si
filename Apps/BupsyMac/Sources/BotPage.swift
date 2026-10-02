@@ -23,27 +23,21 @@ struct BotPage: View {
         VStack(spacing: 0) {
             Topbar(trail: ["Bots", bot.name]) { EmptyView() }
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Theme.Space.page - 8) {
-                        header
-                        chips
-                        Rule()
-                        conversation
-                        Rule()
-                        goals
-                        routineSection
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.top, 28)
-                    .padding(.bottom, Theme.Space.page)
-                    .frame(maxWidth: Theme.Size.contentMaxWidth)
-                    .frame(maxWidth: .infinity)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.section) {
+                    header
+                    chips
+                    Rule()
+                    conversation
+                    Rule()
+                    goals
+                    routineSection
                 }
-                .onChange(of: thread.entries.count) {
-                    guard let last = thread.entries.last else { return }
-                    withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(last.id, anchor: .bottom) }
-                }
+                .padding(.horizontal, 32)
+                .padding(.top, 28)
+                .padding(.bottom, Theme.Space.section)
+                .frame(maxWidth: Theme.Size.contentMaxWidth)
+                .frame(maxWidth: .infinity)
             }
 
             Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
@@ -163,15 +157,35 @@ struct BotPage: View {
             if thread.entries.isEmpty {
                 EmptyConversation(bot: bot)
             } else {
-                VStack(alignment: .leading, spacing: Theme.Space.step) {
-                    ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
-                        if showsDaySeparator(at: index) { DaySeparator(date: entry.at) }
-                        Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index))
-                            .id(entry.id)
+                // The transcript scrolls inside its own box rather than growing the page.
+                //
+                // Sharing one scroll with the sections below seemed simpler and is wrong in use:
+                // after a few exchanges, standing goals and routines sit under an unbounded
+                // conversation and effectively cease to exist. A bounded transcript keeps the
+                // whole page reachable no matter how long a thread runs.
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: Theme.Space.step) {
+                            ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
+                                if showsDaySeparator(at: index) { DaySeparator(date: entry.at) }
+                                Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index))
+                                    .id(entry.id)
+                            }
+                            if thread.isRunning { TypingIndicator(bot: bot) }
+                        }
+                        .padding(.vertical, Theme.Space.tight)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    // Tall enough to read, short enough that what is below it stays in view.
+                    .frame(minHeight: 180, maxHeight: 460)
+                    .onChange(of: thread.entries.count) {
+                        guard let last = thread.entries.last else { return }
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                 }
             }
-            if thread.isRunning { TypingIndicator(bot: bot) }
         }
     }
 
@@ -425,6 +439,6 @@ struct EmptyConversation: View {
                 .foregroundStyle(palette.mutedForeground)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Space.page)
+        .padding(.vertical, Theme.Space.section)
     }
 }

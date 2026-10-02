@@ -73,11 +73,11 @@ struct RootView: View {
                     NothingSelected()
                 }
             case .machines:
-                PageSheetHost(title: "Machines") { MachinesSheet() }
+                Page(trail: ["Machines"]) { MachinesSheet() }
             case .connectors:
-                PageSheetHost(title: "Apps") { ConnectorsSheet() }
+                Page(trail: ["Apps"]) { ConnectorsSheet() }
             case .attention:
-                PageSheetHost(title: "Waiting on you") { AttentionInbox() }
+                Page(trail: ["Waiting on you"]) { AttentionInbox() }
             case .none:
                 NothingSelected()
             }
@@ -103,17 +103,16 @@ private struct PaletteBackground: View {
     var body: some View { palette.sidebar.ignoresSafeArea() }
 }
 
-/// Wraps a sheet-shaped view so it can live as a page while those screens are still sheets.
-struct PageSheetHost<Content: View>: View {
-    @Environment(\.palette) private var palette
-    let title: String
+/// A page under the topbar. Everything in the panel wears the same chrome, so moving between a
+/// bot and the machines list does not feel like crossing into a different application.
+struct Page<Content: View>: View {
+    let trail: [String]
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(spacing: 0) {
-            Topbar(trail: [title]) { EmptyView() }
+            Topbar(trail: trail) { EmptyView() }
             content
-            Spacer(minLength: 0)
         }
     }
 }

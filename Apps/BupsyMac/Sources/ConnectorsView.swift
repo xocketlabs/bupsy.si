@@ -8,72 +8,76 @@ import SwiftUI
 /// keeps its own credentials, and we only ever learn whether it is configured.
 struct ConnectorsSheet: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.palette) private var palette
     @State private var isAdding = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Apps").font(.headline)
-                Spacer()
-                Button("Add a server") { isAdding = true }
-            }
-            .padding(16)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Space.section) {
+                SectionHeader(
+                    icon: "puzzlepiece.extension",
+                    title: "Apps",
+                    badge: model.connectors.isEmpty ? nil : "\(model.connectors.count)",
+                    subtitle: "Your MCP servers, run on your machine. bupsy never sees their sign-ins."
+                ) {
+                    Button("Add a server") { isAdding = true }
+                        .buttonStyle(QuietButton())
+                }
 
-            Divider()
-
-            List {
                 if !model.connectors.isEmpty {
-                    Section("Yours") {
+                    VStack(spacing: Theme.Space.snug) {
                         ForEach(model.connectors) { server in
                             ConnectorRow(server: server)
                         }
                     }
                 }
-                Section(model.connectors.isEmpty ? "Common ones" : "Add another") {
-                    ForEach(MCPSuggestions.all) { suggestion in
-                        SuggestionRow(suggestion: suggestion)
+
+                VStack(alignment: .leading, spacing: Theme.Space.step) {
+                    Text((model.connectors.isEmpty ? "Common ones" : "Add another").uppercased())
+                        .font(Theme.Typography.badge)
+                        .foregroundStyle(palette.sidebarMuted)
+                        .tracking(0.7)
+                    VStack(spacing: Theme.Space.snug) {
+                        ForEach(MCPSuggestions.all) { suggestion in
+                            SuggestionRow(suggestion: suggestion)
+                        }
                     }
                 }
-            }
-            .listStyle(.inset)
 
-            Divider()
-            HStack {
-                Text("These are other people's software, run on your machine. bupsy never sees "
-                     + "their sign-ins.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                Spacer(minLength: 0)
             }
-            .padding(12)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 28)
+            .frame(maxWidth: Theme.Size.contentMaxWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(width: 580, height: 460)
         .sheet(isPresented: $isAdding) { AddServerSheet() }
     }
 }
 
 struct ConnectorRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     let server: MCPServer
 
     private var missing: [String] { server.missingEnv() }
     private var live: ConnectorState? { model.liveStatus(of: server) }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        CardRow {
             Toggle("", isOn: Binding(
                 get: { server.enabled },
                 set: { model.setConnectorEnabled(server, $0) }
             ))
             .labelsHidden().toggleStyle(.switch).controlSize(.small)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(server.name).fontWeight(.medium)
+        } content: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(server.name)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
                 Text("\(server.command) \(server.args.joined(separator: " "))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
                     .lineLimit(1)
 
                 // The engine's own verdict wins over our guess: a server can be configured
@@ -81,29 +85,29 @@ struct ConnectorRow: View {
                 // break a run is worse than no tick at all.
                 if let live, live.status != .connected {
                     Text(describe(live.status))
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.primary)
                 } else if let live, live.status == .connected {
                     Text("Connected")
-                        .font(.caption2)
-                        .foregroundStyle(.green)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Color.green)
                 } else if !missing.isEmpty {
                     // Named plainly, because the alternative is a bot failing mid-run with a
                     // message from someone else's server that nobody can act on.
                     Text("Set \(missing.joined(separator: " and ")) in your shell, then restart bupsy.")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.primary)
                 }
             }
-            Spacer(minLength: 0)
+        } trailing: {
             Button(role: .destructive) {
                 model.removeConnector(server)
             } label: {
-                Image(systemName: "trash")
+                Image(systemName: "trash").font(.system(size: 12))
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(palette.mutedForeground)
         }
-        .padding(.vertical, 3)
         .opacity(server.enabled ? 1 : 0.5)
     }
 
@@ -120,6 +124,7 @@ struct ConnectorRow: View {
 
 struct SuggestionRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     let suggestion: MCPSuggestions.Suggestion
 
     private var alreadyAdded: Bool {
@@ -127,19 +132,22 @@ struct SuggestionRow: View {
     }
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
+        CardRow {
+            IconTile(systemName: "shippingbox")
+        } content: {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(suggestion.title)
-                Text(suggestion.detail).font(.caption2).foregroundStyle(.secondary)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                Text(suggestion.detail)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
             }
-            Spacer(minLength: 0)
-            Button(alreadyAdded ? "Added" : "Add") {
-                model.addConnector(suggestion.server)
-            }
-            .disabled(alreadyAdded)
-            .controlSize(.small)
+        } trailing: {
+            Button(alreadyAdded ? "Added" : "Add") { model.addConnector(suggestion.server) }
+                .buttonStyle(QuietButton(compact: true))
+                .disabled(alreadyAdded)
         }
-        .padding(.vertical, 2)
     }
 }
 
