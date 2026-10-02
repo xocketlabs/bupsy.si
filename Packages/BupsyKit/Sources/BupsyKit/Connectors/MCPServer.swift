@@ -70,7 +70,8 @@ public enum MCPSuggestions {
             detail: "Read and write a folder you choose. No account needed.",
             server: MCPServer(
                 name: "filesystem", command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-filesystem", NSHomeDirectory()])),
+                args: ["-y", "@modelcontextprotocol/server-filesystem",
+                       FileManager.default.homeDirectoryForCurrentUser.path])),
         Suggestion(
             id: "slack",
             title: "Slack",

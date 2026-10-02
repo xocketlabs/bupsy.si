@@ -25,6 +25,24 @@ jobs:
       - name: Test
         run: swift test --package-path Packages/BupsyKit
 
+  # Proves the core carries no hidden Apple dependency. Most of BupsyKit — engines, event
+  # normalisation, the store, cron, objectives, the approval gate — is plain Foundation, and a
+  # port of any kind depends on that staying true. Linux is the cheap, reliable way to check:
+  # if an AppKit or Security import creeps in, this fails before anyone discovers it mid-port.
+  portable:
+    name: Core builds without Apple frameworks
+    runs-on: ubuntu-latest
+    continue-on-error: true   # informational until a port is actually committed to
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0"
+      - name: Build BupsyKit
+        run: swift build --package-path Packages/BupsyKit
+      - name: Test BupsyKit
+        run: swift test --package-path Packages/BupsyKit
+
   boundaries:
     name: Credential boundary
     runs-on: ubuntu-latest
