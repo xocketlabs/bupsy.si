@@ -40,6 +40,12 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [x] Which machine it uses
 - [x] Whether it keeps your Mac awake
 
+### Standing goals
+- [x] A goal plus how to tell it's met — the bot judges each check
+- [x] Asks you rather than guessing
+- [x] Remembers what it learns, in plain text you can edit
+- [x] Everything waiting on you in one tray
+
 ### Apps
 - [x] Your MCP servers, run on your machine — not integrations we wrote
 - [x] Tokens go in your own shell, never through us
@@ -96,12 +102,14 @@ they act. Routines and cloud machines are built underneath but have no buttons y
 - [x] See which apps actually connected, reported by the engine itself
 - [x] bupsy never stores an app's password or token
 
-### 5. Standing goals ← **doing next**
-- [ ] "Keep my inbox at zero" — not a one-off job, an ongoing one
-- [ ] Bots that learn from your feedback
-- [ ] One place showing everything waiting on you
+### 5. Standing goals ✅ **done**
+- [x] "Keep my inbox at zero" — ongoing, not a one-off job
+- [x] Checks on a schedule and does nothing when all is well
+- [x] Bots learn as they go, and you can read and correct what they learned
+- [x] One place showing everything waiting on you, with a count in the toolbar
+- [x] Never claims a goal is handled when it isn't sure
 
-### 6. Ship it
+### 6. Ship it ← **doing next**
 - [ ] Signed app you can actually download
 - [ ] Auto-updates
 - [ ] Website

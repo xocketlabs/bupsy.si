@@ -8,6 +8,7 @@ struct RosterView: View {
     @State private var isAddingBot = false
     @State private var showsMachines = false
     @State private var showsConnectors = false
+    @State private var showsAttention = false
 
     var body: some View {
         List(selection: Binding(
@@ -43,10 +44,22 @@ struct RosterView: View {
                 }
                 .help("Apps your bots can use")
             }
+            ToolbarItem {
+                Button { showsAttention = true } label: {
+                    Label("Waiting on you", systemImage: model.attentionItems.isEmpty
+                          ? "tray" : "tray.full.fill")
+                }
+                .help(model.attentionItems.isEmpty
+                      ? "Nothing needs you"
+                      : "\(model.attentionItems.count) waiting on you")
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(model.attentionItems.isEmpty ? Color.secondary : Color.orange)
+            }
         }
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
         .sheet(isPresented: $showsMachines) { MachinesSheet() }
         .sheet(isPresented: $showsConnectors) { ConnectorsSheet() }
+        .sheet(isPresented: $showsAttention) { AttentionInbox() }
     }
 }
 
