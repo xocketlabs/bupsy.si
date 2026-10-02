@@ -1,7 +1,9 @@
 bupsy.si
 Copyright 2026 the bupsy.si contributors
 
-Licensed under the Apache License, Version 2.0 (the "License"); see LICENSE.
+Source-available under the Business Source License 1.1; see LICENSE. Each version
+converts to the Apache License, Version 2.0 four years after it is published.
+See docs/02-licence.md.
 
 This product runs, but does not include or redistribute, third-party coding agent
 binaries (Claude Code, Codex, Grok CLI, OpenCode). Each is installed by the user and
@@ -9,7 +11,8 @@ authenticated with that user's own credentials under their own agreement with th
 relevant vendor. bupsy.si neither modifies those binaries nor holds their credentials.
 See docs/00-compliance-and-auth.md.
 
-Third-party components bundled by this project are listed here as they are added,
-with their licenses in third_party/.
+Third-party components bundled by this project keep their own licenses and are
+listed here as they are added, with license texts in third_party/. The Business
+Source License applies to this project's own code, not to them.
 
   (none yet)

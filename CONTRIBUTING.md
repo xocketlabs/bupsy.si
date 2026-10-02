@@ -22,6 +22,11 @@ authenticates. A PR that crosses this line will be closed rather than revised.
 Do not copy code into this repository from other agent-fleet projects, and prefer not to read
 their source while writing ours. Their READMEs, docs and public discussion are fair study.
 
+This rule got *stricter* when we moved to BSL, not looser. Pulling Apache-2.0 code into a
+source-available work is legally possible but genuinely messy: the attribution and NOTICE
+obligations survive, those files keep their own terms, and that boundary has to be maintained
+for the life of the project.
+
 Two reasons:
 
 - **Provenance.** Permissive licences allow reuse *with* attribution and NOTICE obligations.
@@ -63,5 +68,19 @@ messaging cleaner.
 4. Open a PR describing *why*, not just what. Note any new dependency and update `NOTICE`.
 5. Squash-merge once review passes.
 
-Contributions are under Apache-2.0. No CLA, and there will never be one — there is no proprietary
-tier for your work to be absorbed into.
+## Licence and the CLA
+
+bupsy.si is source-available under [BSL 1.1](LICENSE), converting to Apache-2.0 four years after
+each version is published.
+
+Contributions require a one-time CLA. The reason is mechanical rather than defensive: the Licensor
+has to be able to relicense the work for that automatic Apache-2.0 conversion to happen at all, and
+a contribution with no agreement attached would be code we cannot convert — quietly breaking the
+promise the licence makes.
+
+An earlier version of this file said "No CLA, and there will never be one." That was written when
+the project was going to be Apache-2.0, and it is retracted here, before anyone had relied on it.
+If you contributed under the old wording, say so and we will honour it.
+
+What the CLA does **not** do: there is no paid tier, no `enterprise/` folder, and no plan for
+either. See [docs/02-licence.md](docs/02-licence.md).
