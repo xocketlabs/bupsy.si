@@ -30,6 +30,9 @@ struct BotMenu: View {
             }
         }
         Divider()
+        Button("Duplicate") { model.duplicate(bot) }
+        Button("Copy conversation") { model.copyTranscript(of: bot) }
+        Divider()
         Button("Delete bot", role: .destructive) { model.deleteBot(bot) }
     }
 }

@@ -176,3 +176,72 @@ struct EventCodecTests {
         #expect(decoded == .unknown(raw: #"{"a":1}"#))
     }
 }
+
+@Suite("Run history")
+struct RunHistoryTests {
+    /// Runs and their events were being written from the first commit and never read back, so
+    /// work done overnight was invisible even after it happened.
+    @Test("summarises a past run from its stored events")
+    func summarisesARun() throws {
+        let store = try Store.inMemory()
+        let bot = BotRecord(name: "Scout", engine: "claude")
+        try store.save(bot)
+        let conversation = ConversationRecord(botID: bot.id, engine: "claude")
+        try store.save(conversation)
+
+        var run = RunRecord(botID: bot.id, conversationID: conversation.id, host: "local")
+        try store.save(run)
+        try store.append([
+            EventRecord(runID: run.id, seq: 0, type: "userMessage",
+                        payload: #"{"text":"check the deploy"}"#),
+            EventRecord(runID: run.id, seq: 1, type: "toolCall", payload: "{}"),
+            EventRecord(runID: run.id, seq: 2, type: "toolCall", payload: "{}"),
+            EventRecord(runID: run.id, seq: 3, type: "text",
+                        payload: #"{"text":"Deploy is green."}"#),
+        ])
+        run.status = "finished"
+        run.endedAt = run.startedAt.addingTimeInterval(42)
+        try store.save(run)
+
+        let summary = try #require(try store.recentRuns(forBot: bot.id).first)
+        #expect(summary.prompt == "check the deploy")
+        #expect(summary.reply == "Deploy is green.")
+        #expect(summary.toolCalls == 2)
+        #expect(summary.succeeded)
+        #expect(summary.duration == 42)
+    }
+
+    @Test("newest first, and capped")
+    func ordersAndLimits() throws {
+        let store = try Store.inMemory()
+        let bot = BotRecord(name: "Scout", engine: "claude")
+        try store.save(bot)
+        let conversation = ConversationRecord(botID: bot.id, engine: "claude")
+        try store.save(conversation)
+
+        for offset in 0..<5 {
+            try store.save(RunRecord(
+                botID: bot.id, conversationID: conversation.id, host: "local",
+                startedAt: Date(timeIntervalSince1970: 1_000_000 + Double(offset * 60))))
+        }
+
+        let runs = try store.recentRuns(forBot: bot.id, limit: 3)
+        #expect(runs.count == 3)
+        #expect(runs[0].startedAt > runs[1].startedAt)
+    }
+
+    /// A run still in flight has no end time, and the view must not pretend otherwise.
+    @Test("an unfinished run reports no duration")
+    func unfinishedRun() throws {
+        let store = try Store.inMemory()
+        let bot = BotRecord(name: "Scout", engine: "claude")
+        try store.save(bot)
+        let conversation = ConversationRecord(botID: bot.id, engine: "claude")
+        try store.save(conversation)
+        try store.save(RunRecord(botID: bot.id, conversationID: conversation.id, host: "local"))
+
+        let summary = try #require(try store.recentRuns(forBot: bot.id).first)
+        #expect(summary.duration == nil)
+        #expect(!summary.succeeded)
+    }
+}

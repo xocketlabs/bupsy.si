@@ -32,6 +32,7 @@ struct BotPage: View {
                     Rule()
                     goals
                     routineSection
+                    history
                 }
                 .padding(.horizontal, 32)
                 .padding(.top, 28)
@@ -319,6 +320,66 @@ struct BotPage: View {
                 }
             }
         }
+    }
+
+    /// What a bot has actually done, including while nobody was watching.
+    ///
+    /// Every run and its events have been stored since the first commit; nothing read them back,
+    /// so unattended work was invisible even after it happened — which is most of the reason to
+    /// have done it unattended.
+    @ViewBuilder
+    private var history: some View {
+        let runs = model.recentRuns(for: bot)
+        if !runs.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                SectionHeader(
+                    icon: "clock.arrow.circlepath",
+                    title: "Recent runs",
+                    badge: nil,
+                    subtitle: "Including the ones that happened while you were away"
+                ) { EmptyView() }
+
+                VStack(spacing: Theme.Space.snug) {
+                    ForEach(runs.prefix(8)) { run in
+                        CardRow {
+                            IconTile(systemName: run.succeeded
+                                     ? "checkmark" : (run.endedAt == nil ? "ellipsis" : "xmark"))
+                        } content: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(run.prompt ?? "No prompt recorded")
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(palette.foreground)
+                                    .lineLimit(1)
+                                HStack(spacing: Theme.Space.snug) {
+                                    Text(Theme.stamp(run.startedAt))
+                                    if let duration = run.duration {
+                                        MetaDot()
+                                        Text(durationLabel(duration))
+                                    }
+                                    if run.toolCalls > 0 {
+                                        MetaDot()
+                                        Text(run.toolCalls == 1
+                                             ? "1 action" : "\(run.toolCalls) actions")
+                                    }
+                                    if run.host != "local" {
+                                        MetaDot()
+                                        Text("on a machine")
+                                    }
+                                }
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(palette.mutedForeground)
+                            }
+                        } trailing: { EmptyView() }
+                    }
+                }
+            }
+        }
+    }
+
+    private func durationLabel(_ seconds: TimeInterval) -> String {
+        seconds < 60
+            ? "\(Int(seconds))s"
+            : "\(Int(seconds / 60))m \(Int(seconds.truncatingRemainder(dividingBy: 60)))s"
     }
 
     private func send() {

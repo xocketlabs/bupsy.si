@@ -23,6 +23,14 @@ struct BupsyApp: App {
         .defaultSize(width: 1000, height: 680)
         .windowToolbarStyle(.unified)
         .commands { UpdaterCommands(updater: updater) }
+
+        // Present whether or not the window is. A bot that works for ten minutes and then asks a
+        // question should be able to reach you without the window coming forward.
+        MenuBarExtra {
+            MenuBarView().environment(model)
+        } label: {
+            MenuBarLabel().environment(model)
+        }
     }
 }
 

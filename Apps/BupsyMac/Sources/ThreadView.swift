@@ -1,3 +1,4 @@
+import AppKit
 import BupsyKit
 import SwiftUI
 
@@ -99,7 +100,15 @@ struct ToolAside: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
-            Button { expanded.toggle() } label: {
+            Button {
+                // A path the bot touched is almost always something you want to look at, and
+                // retyping it into Finder is a small, repeated annoyance.
+                if let path = revealablePath, NSEvent.modifierFlags.contains(.command) {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                } else {
+                    expanded.toggle()
+                }
+            } label: {
                 HStack(spacing: Theme.Space.tight) {
                     Image(systemName: icon)
                         .font(.caption)
@@ -110,6 +119,11 @@ struct ToolAside: View {
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    if revealablePath != nil {
+                        Image(systemName: "arrow.up.forward.square")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
                     if result == nil && !failed {
                         ProgressView().controlSize(.mini)
                     }
@@ -169,6 +183,18 @@ struct ToolAside: View {
             if let value = object[key] as? String, !value.isEmpty { return value }
         }
         return name
+    }
+
+    /// A real file this tool call touched, if there is one. ⌘-click reveals it in Finder.
+    private var revealablePath: String? {
+        guard let data = arguments.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        for key in ["file_path", "path", "notebook_path"] {
+            if let value = object[key] as? String,
+               FileManager.default.fileExists(atPath: value) { return value }
+        }
+        return nil
     }
 }
 
@@ -245,7 +271,9 @@ struct TypingIndicator: View {
 }
 
 struct Composer: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
+    @State private var dropping = false
     @Binding var draft: String
     let bot: Bot
     let isRunning: Bool
@@ -263,8 +291,18 @@ struct Composer: View {
                 .background(palette.card, in: .rect(cornerRadius: Theme.Radius.base))
                 .overlay {
                     RoundedRectangle(cornerRadius: Theme.Radius.base)
-                        .strokeBorder(palette.border)
+                        .strokeBorder(dropping ? palette.primary : palette.border,
+                                      lineWidth: dropping ? 1.5 : 1)
                 }
+                // Paths, not contents. The bot can open the file itself, and pasting a megabyte
+                // into a prompt would spend the user's own quota to tell it something it could
+                // have read.
+                .dropDestination(for: URL.self) { urls, _ in
+                    let paths = model.attach(urls, to: bot)
+                    guard !paths.isEmpty else { return false }
+                    draft = draft.isEmpty ? paths : draft + "\n" + paths
+                    return true
+                } isTargeted: { dropping = $0 }
                 .borderBeam(hue: bot.avatarHue, active: isRunning, cornerRadius: Theme.Radius.base)
                 .onSubmit(onSend)
 

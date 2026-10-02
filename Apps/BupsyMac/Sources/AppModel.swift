@@ -558,6 +558,10 @@ final class AppModel {
 
     func isRunning(_ botID: BotID) -> Bool { running[botID] != nil }
 
+    func recentRuns(for bot: Bot) -> [RunSummary] {
+        (try? store?.recentRuns(forBot: bot.id.rawValue, limit: 20)) ?? []
+    }
+
     /// True when a bot is blocked on a decision from you, which the roster shows differently
     /// from merely working — it is the state that needs a human.
     func isWaitingForApproval(_ botID: BotID) -> Bool {
@@ -802,6 +806,76 @@ final class AppModel {
         bots.append(bot)
         try? store?.save(bot.record(sortIndex: bots.count - 1))
         selectedBotID = bot.id
+    }
+
+    /// Clones a bot's setup, not its history.
+    ///
+    /// Everything that took effort to get right — the job description, engine, model, folder,
+    /// trust level, allowed apps — carries over. The conversation does not: a copy of someone
+    /// else's transcript is confusing, and the point of duplicating is a fresh start with the
+    /// same settings.
+    func duplicate(_ bot: Bot) {
+        var copy = Bot(name: nextName(basedOn: bot.name), engine: bot.engine,
+                       model: bot.model, machineID: bot.machineID,
+                       personaPrompt: bot.personaPrompt)
+        copy.autonomy = bot.autonomy
+        copy.keepAwake = bot.keepAwake
+        copy.workdir = bot.workdir
+        copy.toolAllowlist = bot.toolAllowlist
+
+        bots.append(copy)
+        try? store?.save(copy.record(sortIndex: bots.count - 1))
+        selectedBotID = copy.id
+    }
+
+    private func nextName(basedOn name: String) -> String {
+        let base = name.replacingOccurrences(
+            of: #" \d+$"#, with: "", options: .regularExpression)
+        var candidate = "\(base) 2"
+        var number = 2
+        while bots.contains(where: { $0.name == candidate }) {
+            number += 1
+            candidate = "\(base) \(number)"
+        }
+        return candidate
+    }
+
+    /// The whole conversation as plain text, for pasting into a ticket or an email.
+    func copyTranscript(of bot: Bot) {
+        let thread = thread(for: bot.id)
+        var lines = ["\(bot.name) — \(bot.engine.displayName)", ""]
+
+        for entry in thread.entries {
+            switch entry.kind {
+            case .userMessage(let text): lines.append("You: \(text)")
+            case .assistantText(let text): lines.append("\(bot.name): \(text)")
+            case .tool(let name, let arguments, _, _): lines.append("  [\(name)] \(arguments)")
+            case .approval(let approval):
+                let decision = switch approval.decided {
+                case .allowed: "allowed"
+                case .denied: "denied"
+                case .expired: "denied, nobody answered"
+                case nil: "waiting"
+                }
+                lines.append("  [approval: \(approval.summary) — \(decision)]")
+            case .failure(let failure): lines.append("  [failed: \(failure.message)]")
+            default: continue
+            }
+            lines.append("")
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+    }
+
+    /// Files dropped onto the composer. Paths rather than contents: the bot can read them
+    /// itself, and pasting a megabyte of file into a prompt wastes the user's own quota.
+    func attach(_ urls: [URL], to bot: Bot) -> String {
+        let paths = urls.map(\.path)
+        guard !paths.isEmpty else { return "" }
+        return paths.count == 1
+            ? paths[0]
+            : paths.map { "- \($0)" }.joined(separator: "\n")
     }
 
     func deleteBot(_ bot: Bot) {
