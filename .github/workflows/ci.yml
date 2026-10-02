@@ -25,6 +25,31 @@ jobs:
       - name: Test
         run: swift test --package-path Packages/BupsyKit
 
+  # Proves our own code carries no hidden Apple dependency. It has already earned its keep twice:
+  # it found that URLSession lives in FoundationNetworking off-Apple, and that
+  # FileHandle.bytes.lines — the call draining every agent process — does not exist outside
+  # Darwin at all. Both are fixed.
+  #
+  # What it cannot get past is GRDB, which fails to LINK on Linux (undefined sqlite3_snapshot_*).
+  # GRDB's own README says Linux support is contributor-provided, untested and unmaintained, and
+  # its CI runs macOS only. That is a dependency problem rather than ours, and it is the real
+  # finding: our Swift is portable; the SQLite layer under it is not.
+  #
+  # Left informational on purpose. It is a tripwire for our own code, not a promise about a port.
+  portable:
+    name: Core builds without Apple frameworks
+    runs-on: ubuntu-latest
+    continue-on-error: true   # informational until a port is actually committed to
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0"
+      - name: Build BupsyKit
+        run: swift build --package-path Packages/BupsyKit
+      - name: Test BupsyKit
+        run: swift test --package-path Packages/BupsyKit
+
   boundaries:
     name: Credential boundary
     runs-on: ubuntu-latest

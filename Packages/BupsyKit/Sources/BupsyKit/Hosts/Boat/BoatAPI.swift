@@ -1,4 +1,9 @@
 import Foundation
+// On Apple platforms URLSession lives in Foundation; everywhere else it was split into
+// FoundationNetworking. Caught by the Linux CI job rather than by a port discovering it later.
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Thin client over boat.dev's v1 REST API.
 ///
@@ -10,7 +15,10 @@ import Foundation
 /// service**. Every response shape below is read from docs rather than observed, so decoding is
 /// deliberately forgiving: unknown fields are ignored and absent optionals degrade rather than
 /// throw. Expect a round of corrections the first time it meets the real server.
-public struct BoatAPI: Sendable {
+/// `@unchecked Sendable` rather than `Sendable`: URLSession is Sendable on Apple platforms and
+/// merely AnyObject elsewhere, so the compiler cannot verify it off-Apple. The session is created
+/// once and only read, which is the usual contract URLSession is used under anyway.
+public struct BoatAPI: @unchecked Sendable {
     public static let defaultBaseURL = URL(string: "https://boat.dev/api/v1")!
 
     let baseURL: URL

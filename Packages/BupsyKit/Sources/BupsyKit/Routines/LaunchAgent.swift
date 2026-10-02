@@ -1,6 +1,11 @@
+#if os(macOS)
 import Foundation
 
 /// Installs a user LaunchAgent so routines run with bupsy closed.
+///
+/// macOS only, and unavoidably so: launchd has no equivalent elsewhere. A port needs its own
+/// scheduler behind the same idea — Task Scheduler on Windows, a systemd user timer on Linux —
+/// which is why `RoutineScheduler` decides *what is due* and this only installs it.
 ///
 /// Chosen after `pmset schedule wake` turned out to need root. A user agent needs no
 /// authorisation at all, and launchd starts the app when a routine is due — verified by
@@ -90,3 +95,4 @@ public enum LaunchAgent {
         return output
     }
 }
+#endif

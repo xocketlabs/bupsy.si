@@ -113,13 +113,13 @@ private final class ProcessBox: @unchecked Sendable {
     }
 
     private func drain(_ pipe: Pipe, emit: @Sendable (String) -> Void) async {
-        do {
-            for try await line in pipe.fileHandleForReading.bytes.lines {
-                if Task.isCancelled { return }
-                emit(line)
-            }
-        } catch {
-            // A closed pipe at exit is normal; a real read error shows up in the exit code.
+        // LineReader rather than FileHandle.bytes.lines: the latter is Apple-only and does not
+        // exist in corelibs-foundation, which the Linux CI job found. One implementation on every
+        // platform is worth more here than a platform branch — this is the code that drains every
+        // agent process, so it should be the same code everywhere it runs.
+        for await line in LineReader.lines(of: pipe.fileHandleForReading) {
+            if Task.isCancelled { return }
+            emit(line)
         }
     }
 
