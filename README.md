@@ -1,6 +1,6 @@
 # bupsy.si
 
-**A native macOS app. A roster of AI bots you chat with like contacts. Free and open source.**
+**A native macOS app. A roster of AI bots you chat with like contacts. Free to use.**
 
 Every bot is a real agent — `claude`, `codex` or `grok` running on **your own subscription** —
 with its own personality, model, cloud computer and connected apps. Talk to them like coworkers.
@@ -22,7 +22,6 @@ work living on their servers. bupsy takes the opposite shape.
 - **Native, not Electron.** A signed Swift app, tens of megabytes, launching instantly.
 - **Always-on that means it.** Routines are scheduled inside your own VM, so they fire whether
   your Mac is open, closed, or in a bag.
-- **Actually all open.** Apache-2.0, no `enterprise/` folder, no licence keys, no feature gates.
 
 ## Architecture in one paragraph
 
@@ -56,7 +55,13 @@ projects into this one.** The reasons are in that file and they are not merely l
 
 ## Licence
 
-[Apache-2.0](LICENSE), with no carve-out.
+**Source-available** under the [Business Source License 1.1](LICENSE), converting automatically to
+Apache-2.0 four years after each version is published.
+
+In short: read it, use it free for yourself or inside your company, modify it, self-host it. You may
+not offer it to third parties as a product or hosted service until the Change Date. This is not an
+open-source licence by the OSI definition and we don't call it one — see
+[docs/02-licence.md](docs/02-licence.md) for why we chose it and what we gave up.
 
 Not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI, xAI, or any other vendor.
 Product names are their owners' trademarks and are used only to say, factually, which tools

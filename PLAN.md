@@ -1,13 +1,13 @@
 # bupsy.si — end-to-end plan
 
-**A native macOS app. A roster of AI bots you chat with like contacts. Free and open source.**
+**A native macOS app. A roster of AI bots you chat with like contacts. Free to use.**
 
 Every bot is a real agent — `claude`, `codex` or `grok` running under your own subscription — with its
 own personality, model, cloud computer, and connected apps. Talk to them. Give them standing goals.
 They keep working with the lid closed.
 
 Decisions taken: build fresh (no fork), chat-first UI, full Grokbot **and** Dots parity, **native
-macOS first** (Swift/SwiftUI, not Electron). Greenfield — nothing written yet.
+macOS first** (Swift/SwiftUI, not Electron), source-available under BSL 1.1. Greenfield — nothing written yet.
 
 ---
 
@@ -18,7 +18,7 @@ macOS first** (Swift/SwiftUI, not Electron). Greenfield — nothing written yet.
 | Shape | chat roster | background goals | chat roster | **both** |
 | Model access | xAI sub | $500/mo tier | BYO CLI | **BYO CLI** |
 | Client | native | native | Electron | **native Swift** |
-| Open | no | no | open-core (`enterprise/` proprietary) | **fully Apache-2.0** |
+| Source | closed | closed | open-core (`enterprise/` proprietary) | source-available, BSL 1.1 → Apache-2.0 |
 | Always-on when laptop sleeps | yes (cloud) | yes (cloud) | no — local harness | **yes (VM-side scheduler)** |
 | Price | sub | $500/mo tier | free + sponsors | **free** |
 
@@ -35,10 +35,15 @@ are *structurally* better at something it cannot easily copy, so these four are 
 2. **Always-on that survives a closed lid.** A local harness stops when the Mac sleeps. We put the
    scheduler **inside the user's own VM**, so routines fire whether the Mac is awake or in a bag.
    This is the Dots half, and §4 is how.
-3. **Actually all open.** Apache-2.0 with no carve-out, no entitlement folder, no license keys.
-   "Hosting it for third parties needs a partner agreement" will never appear in our LICENSING.md.
-4. **MCP-native, not broker-dependent.** Connectors are MCP servers the user owns, not a hosted
+3. **MCP-native, not broker-dependent.** Connectors are MCP servers the user owns, not a hosted
    marketplace account. Works identically on the Mac and in the VM, and needs no third-party key.
+   Composio stays available for long-tail reach once there is demand, but nothing core depends on it.
+
+**Three, not four.** An earlier draft claimed openness as a fourth differentiator against
+OpenMausBot's `enterprise/` carve-out. We chose BSL 1.1 instead, which forecloses that argument:
+Apache-2.0 would let anyone rebrand and ship bupsy, exactly as we could have forked them. The
+licence that prevents it is the licence that prevents the claim. Retired rather than weakened —
+three real advantages beat four where one is contested. See [docs/02-licence.md](docs/02-licence.md).
 
 **The honest risk:** parity across two products is a very large surface, and OpenMausBot has a
 seven-week head start with 661 source files. §9 sequences this so that something genuinely good
@@ -46,8 +51,9 @@ ships at M3 even if M4–M7 slip, and the M0 spikes fail fast on the premise bef
 
 **Clean-room rule:** we are building fresh, so **do not read OpenMausBot's source while writing
 ours.** Its README, docs and screenshots are fair study. Its code is not — copying Apache-2.0 code
-without attribution is a licence violation, and reading-then-reimplementing muddies provenance for
-a project we want others to adopt. If we ever decide to take code, we take it deliberately, with
+without attribution is a licence violation, and pulling it into a source-available work is messy
+even when done correctly, since the attribution obligations survive and that boundary has to be
+maintained forever. If we ever decide to take code, we take it deliberately, with
 NOTICE attribution, as its own commit. Put this in CONTRIBUTING.md.
 
 ---
@@ -398,7 +404,7 @@ Do not drop a web view in to get the React ones. That forfeits the differentiato
 
 ## 8. Economics
 
-Free app, Apache-2.0, no accounts, no backend, nothing metered by us.
+Free to use, source-available, no accounts, no backend, nothing metered by us.
 
 | | |
 |---|---|
@@ -406,7 +412,7 @@ Free app, Apache-2.0, no accounts, no backend, nothing metered by us.
 | Our fixed cost | $99/yr Apple Developer |
 | User's compute | their own boat key, $1–5/mo on the wake-on-cron pattern |
 | User's models | subscriptions they already hold |
-| Sustainability | GitHub Sponsors; optional paid hosted relay much later |
+| Sustainability | GitHub Sponsors; BSL keeps a commercial-licensing option open if ever needed |
 
 Against Dots' $500/mo tier: **we have no token COGS and no servers, so we need no price at all.**
 
@@ -506,8 +512,8 @@ three parallel tracks (§9).
    for long-tail reach? Recommend MCP-only through 1.0.
 2. **`bupsy-run` language** — Swift static binary (one language) or Go (smaller, trivially
    cross-compiled for the Linux VM)? Lean Go for the VM side.
-3. **Licence** — Apache-2.0 (patent grant, matches the ecosystem) or MIT (simpler)? Recommend
-   Apache-2.0, with **no carve-out**, as the stated contrast.
+3. ~~**Licence**~~ — *settled: BSL 1.1, converting to Apache-2.0 after four years. The remaining
+   open item is the `<LICENSOR>` legal entity and a lawyer's review — see docs/02-licence.md.*
 4. **Windows/Linux** — never, community-maintained, or post-1.0? Say it publicly either way.
 
 ---

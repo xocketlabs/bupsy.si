@@ -161,8 +161,9 @@ first-class fallback, and why no feature may depend on exactly one vendor.
 
 ## Our own licence, and the clean-room rule
 
-bupsy ships **Apache-2.0 with no carve-out** — no `enterprise/`, no entitlements, no licence keys.
-That contrast with the incumbent is part of the product; keep it true.
+bupsy is **source-available under BSL 1.1**, converting to Apache-2.0 four years after each version
+is published. It is not an open-source licence by the OSI definition and we never call it one — see
+[02-licence.md](02-licence.md) for the reasoning and the copy rules.
 
 **Do not read OpenMausBot's source code while writing ours.** Its README, docs, screenshots and
 public discussion are fair study. Its 661 source files are not. Two reasons:
@@ -178,7 +179,7 @@ If we ever want their code, we take it deliberately: its own commit, NOTICE attr
 header preserved, called out in the PR. Put this rule in CONTRIBUTING.md.
 
 Third-party obligations we will carry: noVNC (MPL-2.0) if we embed the desktop viewer, Sparkle
-(MIT), GRDB (MIT), libraries.dev packages (MIT). Maintain `NOTICE` and `third_party/` from the first
+(MIT), GRDB (MIT), libraries.dev packages (MIT). BSL governs our code only; theirs keeps its terms. Maintain `NOTICE` and `third_party/` from the first
 dependency, not retroactively.
 
 ---
