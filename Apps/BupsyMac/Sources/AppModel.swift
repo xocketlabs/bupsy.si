@@ -971,9 +971,12 @@ final class AppModel {
         let joined = [sender.id.rawValue, sender.name, message].joined(separator: "\u{1}")
         persist(.text(joined), run: run.id, seq: 0, asMessageFrom: true)
 
-        // The recipient has something new to look at, and nobody has looked at it.
-        if let index = bots.firstIndex(where: { $0.id == recipient.id }) {
-            bots[index].lastReadAt = bots[index].lastReadAt.map { min($0, Date().addingTimeInterval(-1)) }
+        // Unread only when you are not already looking at it. Marking the open conversation
+        // unread leaves a dot you cannot clear by doing the one thing that clears it.
+        if selectedBotID != recipient.id,
+           let index = bots.firstIndex(where: { $0.id == recipient.id }) {
+            bots[index].lastReadAt = bots[index].lastReadAt
+                .map { min($0, Date().addingTimeInterval(-1)) }
         }
     }
 
@@ -1016,6 +1019,11 @@ final class AppModel {
 
     /// Whether a bot has said something since you last looked at it.
     func isUnread(_ bot: Bot) -> Bool {
+        // The conversation you are looking at is never unread. `markRead` fires when the
+        // selection changes, so a reply arriving in the thread already on screen left a dot that
+        // nothing could clear — the one thing that clears it had already happened.
+        guard selectedBotID != bot.id else { return false }
+
         let thread = thread(for: bot.id)
         // Only the bot's own messages count. Your own last message making the row bold would
         // mark everything unread the moment you sent anything.

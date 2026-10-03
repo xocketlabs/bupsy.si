@@ -11,11 +11,15 @@ struct FormattedReply: View {
             ForEach(MarkdownBlock.parse(markdown)) { block in
                 switch block {
                 case .prose(let text):
+                    // No `maxWidth: .infinity` here. It made every reply bubble stretch to the
+                    // full 560pt whatever it said, so "Hey!" drew a bubble the width of a
+                    // paragraph — the single thing that stopped these reading as messages.
+                    // A code block still sets the bubble's width, which is what should.
                     Text(inline(text))
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
                         .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
                 case .code(let language, let text):
                     CodeBlock(language: language, text: text)
                 }

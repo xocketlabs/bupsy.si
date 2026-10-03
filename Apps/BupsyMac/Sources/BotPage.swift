@@ -391,6 +391,7 @@ struct BotPage: View {
                 EmptyConversation(bot: bot)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                GeometryReader { geometry in
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: Theme.Space.step) {
@@ -407,6 +408,10 @@ struct BotPage: View {
                         .padding(.horizontal, Theme.Space.section)
                         .frame(maxWidth: Theme.Size.contentMaxWidth)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        // Short threads sit on the composer rather than floating at the top of an
+                        // empty pane. Every messaging app does this, and the first reply in a new
+                        // conversation is exactly when the difference is most obvious.
+                        .frame(minHeight: geometry.size.height, alignment: .bottom)
                     }
                     .onChange(of: thread.entries.count) {
                         guard let last = thread.entries.last else { return }
@@ -414,6 +419,7 @@ struct BotPage: View {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
+                }
                 }
             }
         }
