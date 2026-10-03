@@ -15,6 +15,7 @@ struct BotPage: View {
     @State private var showsRoutines = false
     @State private var showsObjectives = false
     @State private var showsDetails = false
+    @State private var tab = DetailTab.details
 
     private var thread: Thread { model.thread(for: bot.id) }
     private var routines: [Routine] { model.routines.filter { $0.botID == bot.id.rawValue } }
@@ -91,23 +92,102 @@ struct BotPage: View {
     /// is something you do *while* looking at what it said, and a sheet would cover exactly the
     /// evidence you are deciding from.
     private var details: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.section) {
-                header
-                settings
-                usage
-                goals
-                routineSection
-                history
+        VStack(spacing: 0) {
+            detailsHead
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.section) {
+                    switch tab {
+                    case .details:
+                        settings
+                        goals
+                        routineSection
+                    case .activity:
+                        usage
+                        history
+                    case .computer:
+                        computer
+                    }
+                }
+                .padding(.horizontal, Theme.Space.gutter)
+                .padding(.vertical, Theme.Space.section)
             }
-            .padding(.horizontal, Theme.Space.gutter)
-            .padding(.vertical, Theme.Space.section)
         }
         .frame(width: 340)
-        // Clipped, because a card that is wider than the panel should truncate rather than draw
-        // over the conversation beside it.
+        // Clipped, because a card wider than the panel should truncate rather than draw over the
+        // conversation beside it.
         .clipped()
         .background(palette.sidebar)
+    }
+
+    /// Who the bot is, then what you want to know about it.
+    ///
+    /// The identity sits above the tabs rather than inside one of them: it is the answer to
+    /// "which bot am I looking at", which stays true whichever tab is open.
+    private var detailsHead: some View {
+        VStack(spacing: Theme.Space.snug) {
+            BotFace(hue: bot.avatarHue, mood: mood, size: 64)
+            Text(bot.name)
+                .font(Theme.Typography.heading)
+                .foregroundStyle(palette.foreground)
+            if let job = bot.personaPrompt, !job.isEmpty {
+                Text(job)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+            }
+
+            Picker("", selection: $tab) {
+                ForEach(DetailTab.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.top, Theme.Space.tight)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, Theme.Space.gutter)
+        .padding(.top, Theme.Space.section)
+        .padding(.bottom, Theme.Space.gutter)
+    }
+
+    /// Where this bot's work actually happens.
+    ///
+    /// Grok Bot shows a live screen here. bupsy cannot yet — a cloud machine has no screen to
+    /// stream and the local host has no window of its own — so this says what is true rather than
+    /// drawing an empty frame labelled as one.
+    private var computer: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+            SettingsGroup(title: "Runs on") {
+                SettingRow(label: "Machine", value: machineName,
+                           icon: bot.machineID == nil ? "laptopcomputer" : "server.rack",
+                           showsDivider: false) {
+                    Button("This Mac") { model.assign(bot, to: nil) }
+                    if !model.machines.isEmpty {
+                        Divider()
+                        ForEach(model.machines) { machine in
+                            Button(machine.name) { model.assign(bot, to: machine.id) }
+                        }
+                    }
+                }
+                FactRow(label: "Survives sleep",
+                        value: bot.scheduleTier == .alwaysOn ? "Yes" : "No")
+                SettingRow(label: "Folder", value: folderLabel, icon: "folder") {
+                    Button("Choose folder…") { model.chooseWorkdir(for: bot) }
+                    if bot.workdir != nil {
+                        Button("No folder") { model.setWorkdir(bot, nil) }
+                    }
+                }
+            }
+
+            Text(bot.machineID == nil
+                 ? "Running on this Mac, under your own sign-in. Routines only fire while the Mac "
+                   + "is awake."
+                 : "Running on a cloud machine on your own boat.dev account.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     /// What this bot has actually used, and nothing it has not.
@@ -651,5 +731,24 @@ struct EmptyConversation: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Space.section)
+    }
+}
+
+
+/// The three questions worth asking about a bot, in the order people ask them.
+///
+/// Named for what each holds rather than copied wholesale from Grok Bot, which has a "Library"
+/// tab for a concept bupsy does not have. An empty tab is the same mistake as a dead menu item.
+enum DetailTab: CaseIterable {
+    case details
+    case activity
+    case computer
+
+    var label: String {
+        switch self {
+        case .details: "Details"
+        case .activity: "Activity"
+        case .computer: "Computer"
+        }
     }
 }

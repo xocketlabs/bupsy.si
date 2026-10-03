@@ -37,6 +37,7 @@ struct BupsyApp: App {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.palette) private var palette
     @State private var destination: NavRail.Destination?
     @State private var isStartingChat = false
     @State private var isAddingBot = false
@@ -100,6 +101,10 @@ struct RootView: View {
                 }
         }
         .background(PaletteBackground())
+        // One tint for the whole app, so system controls — segmented pickers, focus rings,
+        // toggles — stop arriving in macOS blue next to a pink accent. Set once here rather than
+        // remembered at each call site, which is how the blue got in.
+        .tint(palette.primary)
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
     }
 
