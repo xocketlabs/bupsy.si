@@ -67,4 +67,67 @@ struct MarkdownTests {
         let code = blocks.compactMap { if case .code(_, let t) = $0 { t } else { nil } }
         #expect(code == ["one", "two"])
     }
+
+    // MARK: - Lists
+
+    /// Captured from a real reply, which rendered every item as a line starting with a literal
+    /// hyphen. The exact shape that broke.
+    @Test("a bulleted list becomes one bullets block")
+    func bulletsFromARealReply() {
+        let blocks = MarkdownBlock.parse("""
+            No repository or file was provided, so here is a minimal Swift value type.
+
+            - `struct` chosen over `class` — value semantics.
+            - Both properties are `let`.
+            - `Codable` and `Equatable` come free.
+            """)
+        #expect(blocks.count == 2)
+        #expect(blocks.last == .bullets([
+            "`struct` chosen over `class` — value semantics.",
+            "Both properties are `let`.",
+            "`Codable` and `Equatable` come free.",
+        ]))
+    }
+
+    /// A hyphen in a sentence is a dash, and a leading minus is a number. Neither is a list.
+    @Test("a hyphen without a space after it stays prose")
+    func dashesAreNotBullets() {
+        #expect(MarkdownBlock.parse("-5 degrees overnight") == [.prose("-5 degrees overnight")])
+        #expect(MarkdownBlock.parse("--verbose is required") == [.prose("--verbose is required")])
+    }
+
+    /// Models routinely leave a blank line between items. Splitting there would turn one list
+    /// into several stacked lists with gaps.
+    @Test("blank lines between items do not break a list")
+    func looseListsStayTogether() {
+        let blocks = MarkdownBlock.parse("- one\n\n- two\n\n- three")
+        #expect(blocks == [.bullets(["one", "two", "three"])])
+    }
+
+    /// Order is preserved: prose, list, prose, code. Hoisting lists to the end — the easy bug in
+    /// a two-pass approach — would reorder an answer.
+    @Test("lists keep their place between prose and code")
+    func orderIsPreserved() {
+        let blocks = MarkdownBlock.parse("""
+            Before.
+            - item
+            After.
+            ```swift
+            let x = 1
+            ```
+            """)
+        #expect(blocks == [
+            .prose("Before."),
+            .bullets(["item"]),
+            .prose("After."),
+            .code(language: "swift", text: "let x = 1"),
+        ])
+    }
+
+    /// A `- ` inside a fence is code, not a list. A diff is the case that matters.
+    @Test("hyphens inside a code fence are left alone")
+    func codeIsNotParsedAsAList() {
+        let blocks = MarkdownBlock.parse("```diff\n- old line\n+ new line\n```")
+        #expect(blocks == [.code(language: "diff", text: "- old line\n+ new line")])
+    }
 }

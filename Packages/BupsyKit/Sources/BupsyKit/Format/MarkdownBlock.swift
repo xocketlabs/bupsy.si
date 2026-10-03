@@ -9,12 +9,32 @@ import Foundation
 public enum MarkdownBlock: Identifiable, Equatable {
     case prose(String)
     case code(language: String?, text: String)
+    /// A run of bulleted lines, each item's text without its marker.
+    ///
+    /// Lists are a block, not prose. SwiftUI's markdown is inline-only, so a bulleted list
+    /// arrived as lines starting with a literal "- ", and every list a model wrote — which is
+    /// most of them — rendered as raw hyphens. Measured on a real reply before this existed.
+    case bullets([String])
 
     public var id: String {
         switch self {
         case .prose(let text): "p\(text.hashValue)"
         case .code(let language, let text): "c\(language ?? "")\(text.hashValue)"
+        case .bullets(let items): "b\(items.joined(separator: "\u{1}").hashValue)"
         }
+    }
+
+    /// The item text if this line is a bullet, nil otherwise.
+    ///
+    /// `-`, `*` and `•` followed by a space. A hyphen with no space after it is a dash or a
+    /// negative number in a sentence, not a list, and must stay prose.
+    static func bulletItem(_ line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        for marker in ["- ", "* ", "• "] where trimmed.hasPrefix(marker) {
+            let item = trimmed.dropFirst(marker.count).trimmingCharacters(in: .whitespaces)
+            return item.isEmpty ? nil : item
+        }
+        return nil
     }
 
     /// Parses triple-backtick fences. Deliberately only fences: that is what engines emit, and a
@@ -27,8 +47,37 @@ public enum MarkdownBlock: Identifiable, Equatable {
         var inCode = false
 
         func flushProse() {
-            let text = prose.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty { blocks.append(.prose(text)) }
+            // Prose is split into its own paragraphs and bullet runs here, so a reply that mixes
+            // the two keeps them in order rather than having every list hoisted to the end.
+            var paragraph: [String] = []
+            var items: [String] = []
+
+            func flushParagraph() {
+                let text = paragraph.joined(separator: "\n")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty { blocks.append(.prose(text)) }
+                paragraph.removeAll()
+            }
+            func flushItems() {
+                if !items.isEmpty { blocks.append(.bullets(items)) }
+                items.removeAll()
+            }
+
+            for line in prose {
+                if let item = bulletItem(line) {
+                    flushParagraph()
+                    items.append(item)
+                } else if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // A blank line ends a paragraph but not a list: models routinely put one
+                    // between items, and splitting there would break one list into several.
+                    flushParagraph()
+                } else {
+                    flushItems()
+                    paragraph.append(line)
+                }
+            }
+            flushParagraph()
+            flushItems()
             prose.removeAll()
         }
 

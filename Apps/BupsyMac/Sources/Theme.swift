@@ -97,8 +97,13 @@ struct MenuChip<Content: View>: View {
                 if let icon {
                     Image(systemName: icon).font(.system(size: 12))
                 }
+                // Coloured here rather than left to the enclosing `foregroundStyle`. A
+                // `.borderlessButton` menu adopts the app tint for its label, so once a tint was
+                // set at the root every settings value turned accent-pink — six rows all
+                // shouting, and nothing left to mark the one that matters.
                 Text(text)
                     .font(Theme.Typography.body)
+                    .foregroundStyle(tone ?? (emphasised ? palette.foreground : palette.mutedForeground))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if !compact {

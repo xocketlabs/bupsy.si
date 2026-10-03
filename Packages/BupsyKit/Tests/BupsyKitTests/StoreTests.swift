@@ -279,3 +279,27 @@ struct RunHistoryTests {
         #expect(!summary.succeeded)
     }
 }
+
+@Suite("Loading a long transcript")
+struct LongTranscriptTests {
+    /// With more events than the limit, the *latest* must load — the bug returned the earliest,
+    /// so a busy bot's recent conversation silently stopped appearing.
+    @Test("the most recent events load, in order, once a thread passes the limit")
+    func newestEventsLoad() throws {
+        let store = try Store.inMemory()
+        try store.save(BotRecord(id: "b", name: "B", engine: "claude"))
+        let conversation = ConversationRecord(botID: "b", engine: "claude")
+        try store.save(conversation)
+        let run = RunRecord(botID: "b", conversationID: conversation.id, host: "local")
+        try store.save(run)
+
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        try store.append((0..<10).map { index in
+            EventRecord(runID: run.id, seq: index, type: "text",
+                        payload: "\(index)", at: start.addingTimeInterval(Double(index)))
+        })
+
+        let loaded = try store.transcript(forBot: "b", limit: 3)
+        #expect(loaded.map(\.payload) == ["7", "8", "9"])
+    }
+}

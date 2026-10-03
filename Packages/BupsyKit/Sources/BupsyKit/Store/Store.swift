@@ -59,6 +59,17 @@ public struct Store: Sendable {
                       AND botID NOT IN (SELECT id FROM bots)
                     """)
             }
+
+            // Events hang off runs, not bots, so the sweep above never reached them. Found on a
+            // real database after the first version of this shipped: six events from an early
+            // conversation whose run had gone, still sitting in the log. Last, because removing
+            // runs above can orphan more of them.
+            if try db.tableExists("events") {
+                try db.execute(sql: """
+                    DELETE FROM events
+                    WHERE runID NOT IN (SELECT id FROM runs)
+                    """)
+            }
         }
     }
 
@@ -385,14 +396,20 @@ public struct Store: Sendable {
     }
 
     /// The whole transcript for a bot, oldest first, across every run.
+    /// The most recent `limit` events for a bot, oldest first.
+    ///
+    /// Newest-first then reversed, not oldest-first then limited. The latter returned the *first*
+    /// 500 events a bot ever produced, so once a thread grew past that its recent conversation —
+    /// the part anyone opens a thread to see — stopped loading at all.
     public func transcript(forBot botID: String, limit: Int = 500) throws -> [EventRecord] {
         try database.read { db in
             try EventRecord
                 .joining(required: EventRecord.belongsTo(RunRecord.self, using: ForeignKey(["runID"]))
                     .filter(Column("botID") == botID))
-                .order(Column("at"))
+                .order(Column("at").desc, Column("seq").desc)
                 .limit(limit)
                 .fetchAll(db)
+                .reversed()
         }
     }
 

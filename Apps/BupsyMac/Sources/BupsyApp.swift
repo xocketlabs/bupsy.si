@@ -22,6 +22,10 @@ struct BupsyApp: App {
                 }
         }
         .defaultSize(width: 1000, height: 680)
+        // Left as the standard window on purpose. `.hiddenTitleBar` is the look this design was
+        // drawn for and what Grok Bot uses, but it has to be done with the close, minimise and
+        // zoom buttons verifiably still reachable — shipping a window someone cannot close is
+        // not a trade worth making for a strip of chrome. Worth a deliberate pass, not a guess.
         .windowToolbarStyle(.unified)
         .commands { UpdaterCommands(updater: updater) }
 
@@ -102,6 +106,15 @@ struct RootView: View {
                 }
         }
         .overlay(alignment: .top) { storageBanner }
+        // Anything that sets the selected bot — the attention inbox's "Open", the menu bar, a
+        // notification — now actually goes there. The page was driven by local state alone, so
+        // setting `selectedBotID` from anywhere else changed a value nothing was watching, and
+        // "Open" did nothing at all.
+        .onChange(of: model.selectedBotID) { _, id in
+            guard let id, destination != .bot(id) else { return }
+            destination = .bot(id)
+            if let bot = model.bots.first(where: { $0.id == id }) { model.markRead(bot) }
+        }
         .background(PaletteBackground())
         // One tint for the whole app, so system controls — segmented pickers, focus rings,
         // toggles — stop arriving in macOS blue next to a pink accent. Set once here rather than

@@ -167,6 +167,9 @@ final class Thread {
     /// Resume handle, captured from `.started` so a thread stays resumable even if a run fails.
     var conversationID: ConversationID?
     var latestLimits: RateLimit?
+    /// What the last run reported it used. Kept so the run record can be written with it when the
+    /// run ends — the usage line arrives before `.done`, and is the only place the figure exists.
+    var latestUsage: Usage?
     var connectorStates: [ConnectorState] = []
 
     init(botID: BotID) { self.botID = botID }
@@ -251,8 +254,11 @@ final class Thread {
                 id: request.id, tool: request.tool, summary: request.summary,
                 inputJSON: request.argumentsJSON, reason: request.summary))))
 
-        case .usage:
-            break
+        case .usage(let usage):
+            // Was `break`. The event was parsed, normalised, conformance-tested — and then
+            // dropped on the floor, so `runs.inputTokens` was null for every run ever recorded
+            // and the usage panel could not appear for anyone. The one place the number exists.
+            latestUsage = usage
 
         case .done(let outcome):
             if let id = outcome.conversationID { conversationID = id }
@@ -285,7 +291,14 @@ final class Thread {
     /// Replays a stored row. `userMessage` is written as its own type so a reloaded transcript
     /// shows who said what, which `AgentEvent` alone does not carry — it only ever describes the
     /// engine's side of the conversation.
-    func applyStored(type: String, payload: String) {
+    /// `at` is the time the event was recorded. Without it every replayed entry was stamped with
+    /// the moment the thread was *loaded*, so a week-old conversation reopened today showed
+    /// "Today" on every message and could not be ordered by when anything actually happened.
+    func applyStored(type: String, payload: String, at: Date) {
+        let before = entries.count
+        defer {
+            for index in before..<entries.count { entries[index].at = at }
+        }
         // Stored as "<fromBotID>\u{1}<fromName>\u{1}<text>" inside a text payload, so replaying a
         // transcript keeps the attribution. A unit separator rather than JSON because the event
         // log is append-only and already carries its own encoding; nesting a second one inside it

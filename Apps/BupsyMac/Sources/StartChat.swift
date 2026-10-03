@@ -20,7 +20,6 @@ struct StartChatPalette: View {
 
     @State private var query = ""
     @State private var highlighted = 0
-    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -34,7 +33,7 @@ struct StartChatPalette: View {
             RoundedRectangle(cornerRadius: Theme.Radius.card)
                 .strokeBorder(palette.border))
         .shadow(color: .black.opacity(0.35), radius: 24, y: 8)
-        .onAppear { focused = true }
+
     }
 
     private var field: some View {
@@ -42,12 +41,13 @@ struct StartChatPalette: View {
             Text("To:")
                 .font(Theme.Typography.body)
                 .foregroundStyle(palette.mutedForeground)
-            TextField("", text: $query, prompt: Text("Start a chat with…"))
-                .textFieldStyle(.plain)
-                .font(Theme.Typography.body)
-                .foregroundStyle(palette.foreground)
-                .focused($focused)
-                .onSubmit(activate)
+            PaletteField(
+                text: $query,
+                placeholder: "Start a chat with…",
+                onSubmit: activate,
+                onMove: move,
+                onCancel: onDismiss)
+                .frame(height: 22)
                 .onChange(of: query) { highlighted = 0 }
             Button { onDismiss() } label: {
                 Image(systemName: "xmark")
@@ -58,11 +58,6 @@ struct StartChatPalette: View {
         }
         .padding(.horizontal, Theme.Space.gutter)
         .frame(height: 46)
-        // Arrow keys move the highlight; the field keeps focus throughout, so typing and
-        // choosing never need two different hands.
-        .onKeyPress(.downArrow) { move(1); return .handled }
-        .onKeyPress(.upArrow) { move(-1); return .handled }
-        .onKeyPress(.escape) { onDismiss(); return .handled }
     }
 
     private var list: some View {
@@ -98,7 +93,10 @@ struct StartChatPalette: View {
         if needle.isEmpty || "create new bot".contains(needle) {
             items.append(PaletteItem(kind: .create))
         }
-        for bot in model.bots where needle.isEmpty || bot.name.lowercased().contains(needle) {
+        // Most recently active first. "Start a chat with…" is nearly always "pick up where I
+        // left off", and creation order put the bot made first at the top forever.
+        let ordered = model.bots.sorted { model.lastActivity(for: $0) > model.lastActivity(for: $1) }
+        for bot in ordered where needle.isEmpty || bot.name.lowercased().contains(needle) {
             items.append(PaletteItem(kind: .bot(bot)))
         }
         return items
@@ -170,6 +168,14 @@ private struct PaletteRow: View {
                     }
                 }
                 Spacer(minLength: 0)
+                // Only on the highlighted row, and only the key that is true there. Grok Bot
+                // prints ⌘1–⌘9 beside every row, but here those shortcuts follow sidebar order;
+                // printed beside a recency-ordered list they would point at the wrong bots.
+                if highlighted {
+                    Text("↩")
+                        .font(Theme.Typography.badge)
+                        .foregroundStyle(palette.mutedForeground)
+                }
             }
             .padding(.horizontal, Theme.Space.snug)
             .frame(height: 38)
@@ -236,6 +242,72 @@ struct IntroductionSheet: View {
                 .buttonStyle(QuietButton())
             Button("Allow") { model.decideIntroduction(introduction, allow: true) }
                 .buttonStyle(PrimaryButton())
+        }
+    }
+}
+
+/// The palette's text field, in AppKit.
+///
+/// A SwiftUI `TextField` inside an overlay never received focus on macOS — neither set in
+/// `onAppear` nor deferred — so the palette opened with the *window* as first responder and
+/// typing, Enter and the arrow keys all did nothing. This field takes focus itself the moment it
+/// lands in a window, and routes ↑ ↓ ↩ Esc through AppKit's own command handling, which is what
+/// those keys are actually delivered as.
+struct PaletteField: NSViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let onSubmit: () -> Void
+    let onMove: (Int) -> Void
+    let onCancel: () -> Void
+
+    func makeNSView(context: Context) -> AutoFocusTextField {
+        let field = AutoFocusTextField()
+        field.placeholderString = placeholder
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .systemFont(ofSize: 13)
+        field.textColor = .labelColor
+        field.delegate = context.coordinator
+        return field
+    }
+
+    func updateNSView(_ field: AutoFocusTextField, context: Context) {
+        if field.stringValue != text { field.stringValue = text }
+        context.coordinator.parent = self
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: PaletteField
+        init(parent: PaletteField) { self.parent = parent }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            parent.text = field.stringValue
+        }
+
+        func control(_ control: NSControl, textView: NSTextView,
+                     doCommandBy selector: Selector) -> Bool {
+            switch selector {
+            case #selector(NSResponder.moveDown(_:)): parent.onMove(1); return true
+            case #selector(NSResponder.moveUp(_:)): parent.onMove(-1); return true
+            case #selector(NSResponder.insertNewline(_:)): parent.onSubmit(); return true
+            case #selector(NSResponder.cancelOperation(_:)): parent.onCancel(); return true
+            default: return false
+            }
+        }
+    }
+}
+
+final class AutoFocusTextField: NSTextField {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Next turn, once the window has finished installing the view.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else { return }
+            window.makeFirstResponder(self)
         }
     }
 }

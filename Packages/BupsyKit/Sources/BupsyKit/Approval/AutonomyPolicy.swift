@@ -51,17 +51,17 @@ public enum AutonomyPolicy {
             if readOnlyTools.contains(tool) { return .allow(rule: "read-only tool") }
             if covers(allowlist, tool: tool) { return .allow(rule: "on this bot's allowlist") }
             if isMCP(tool) || outboundTools.contains(tool) {
-                return .ask(reason: "\(tool) can act outside this machine")
+                return .ask(reason: "This could reach beyond your Mac, so it always asks.")
             }
             return .allow(rule: "autonomy: trusted")
 
         case .allowlist:
             if covers(allowlist, tool: tool) { return .allow(rule: "on this bot's allowlist") }
             if readOnlyTools.contains(tool) { return .allow(rule: "read-only tool") }
-            return .ask(reason: "\(tool) is not on this bot's allowlist")
+            return .ask(reason: "Not on the list of things this bot may do without asking.")
 
         case .ask:
-            return .ask(reason: "this bot asks before every action")
+            return .ask(reason: "This bot asks before every action.")
         }
     }
 

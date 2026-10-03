@@ -75,6 +75,7 @@ struct BotMenu: View {
 
 struct NewBotSheet: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var engine = EngineID.claude
@@ -86,8 +87,15 @@ struct NewBotSheet: View {
             HStack(spacing: Theme.Space.step) {
                 BotFace(hue: previewHue, mood: .idle, size: 52)
                 VStack(alignment: .leading, spacing: Theme.Space.snug) {
-                    TextField("", text: $name, prompt: Text("Scout"))
+                    // Not "Scout": that is a starter bot's name, and suggesting it invited a
+                    // duplicate of a bot the person already has.
+                    TextField("", text: $name, prompt: Text("Give it a name"))
                         .textFieldStyle(BupsyFieldStyle())
+                    if model.isNameTaken(name) {
+                        Text("You already have a bot called that.")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.destructive)
+                    }
                     Picker("", selection: $engine) {
                         ForEach([EngineID.claude, .codex], id: \.self) {
                             Text($0.displayName).tag($0)
@@ -101,7 +109,7 @@ struct NewBotSheet: View {
             Field(label: "What's its job?",
                   hint: "Written to the bot as standing instructions, every time you talk to it.") {
                 TextField("", text: $job,
-                          prompt: Text("Research things and report back plainly. Be concise."),
+                          prompt: Text("What should it do? e.g. watch my inbox and flag anything urgent"),
                           axis: .vertical)
                     .textFieldStyle(BupsyFieldStyle())
                     .lineLimit(3...5)
@@ -118,7 +126,7 @@ struct NewBotSheet: View {
             }
             .buttonStyle(PrimaryButton())
             .keyboardShortcut(.defaultAction)
-            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || model.isNameTaken(name))
         }
     }
 
