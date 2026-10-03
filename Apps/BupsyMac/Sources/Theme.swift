@@ -78,9 +78,12 @@ enum Theme {
 /// the thing you can change.
 struct MenuChip<Content: View>: View {
     @Environment(\.palette) private var palette
-    let icon: String
+    /// nil inside a settings row, where the row already carries the icon.
+    let icon: String?
     let text: String
     var emphasised = false
+    /// Shorter and quieter, for sitting at the end of a row rather than standing alone on a page.
+    var compact = false
     var tone: Color?
     @ViewBuilder var menu: Content
     @State private var hovering = false
@@ -89,16 +92,23 @@ struct MenuChip<Content: View>: View {
         Menu {
             menu
         } label: {
-            HStack(spacing: Theme.Space.snug) {
-                Image(systemName: icon).font(.system(size: 12))
-                Text(text).font(Theme.Typography.body)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(palette.mutedForeground.opacity(hovering ? 1 : 0.45))
+            HStack(spacing: compact ? Theme.Space.tight : Theme.Space.snug) {
+                if let icon {
+                    Image(systemName: icon).font(.system(size: 12))
+                }
+                Text(text)
+                    .font(Theme.Typography.body)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if !compact {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(palette.mutedForeground.opacity(hovering ? 1 : 0.45))
+                }
             }
             .foregroundStyle(tone ?? (emphasised ? palette.foreground : palette.mutedForeground))
-            .padding(.horizontal, Theme.Space.step)
-            .frame(height: Theme.Size.control)
+            .padding(.horizontal, compact ? Theme.Space.snug : Theme.Space.step)
+            .frame(height: compact ? 28 : Theme.Size.control)
             .background(hovering ? palette.cardHover : palette.secondary,
                         in: .rect(cornerRadius: Theme.Radius.control))
             .overlay {
@@ -239,6 +249,78 @@ struct SectionHeader<Trailing: View>: View {
             }
             Spacer(minLength: 0)
             trailing
+        }
+    }
+}
+
+/// A settings group: a quiet label, then a card of rows.
+///
+/// The pattern every macOS settings screen uses, and the one bupsy was not using. A horizontal
+/// row of chips reads fine on a wide page and falls apart in a column — it cannot wrap, the
+/// labels truncate, and there is nowhere to say what a setting means. Rows in a card stack at any
+/// width and leave room on the left for a word.
+struct SettingsGroup<Content: View>: View {
+    @Environment(\.palette) private var palette
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            Text(title)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .padding(.horizontal, 2)
+
+            VStack(spacing: 0) { content }
+                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.card)
+                        .stroke(palette.border, lineWidth: 1))
+        }
+    }
+}
+
+/// One row inside a `SettingsGroup`: what it is on the left, the control that changes it on the
+/// right.
+///
+/// The menu is a compact control at the end of the row rather than the row itself. SwiftUI's
+/// `Menu` sizes to its label on macOS, so a full-width label collapses to its content and centres
+/// — which is what the first attempt at this did. Keeping the control discrete also means the
+/// name of the setting stays plain text and holds its place when the value is long.
+struct SettingRow<Menu: View>: View {
+    @Environment(\.palette) private var palette
+    let label: String
+    let value: String
+    var icon: String?
+    var tone: Color?
+    /// Drawn between rows, never above the first one.
+    var showsDivider = true
+    @ViewBuilder var menu: Menu
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if showsDivider {
+                Rectangle()
+                    .fill(palette.border)
+                    .frame(height: 1)
+                    .padding(.leading, Theme.Space.step)
+            }
+            HStack(spacing: Theme.Space.snug) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 11))
+                        .foregroundStyle(palette.mutedForeground)
+                        .frame(width: 14)
+                }
+                Text(label)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                    .lineLimit(1)
+                Spacer(minLength: Theme.Space.tight)
+                MenuChip(icon: nil, text: value, compact: true, tone: tone) { menu }
+            }
+            .padding(.horizontal, Theme.Space.step)
+            .frame(minHeight: 40)
         }
     }
 }
