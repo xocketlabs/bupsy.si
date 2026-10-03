@@ -20,6 +20,7 @@ struct NavRail: View {
     @State private var query = ""
     @State private var renamingFolder: FolderName?
     @State private var filingBot: Bot?
+    @State private var renamingBot: Bot?
     @FocusState private var searchFocused: Bool
 
     enum Destination: Hashable {
@@ -48,6 +49,7 @@ struct NavRail: View {
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
         .sheet(item: $renamingFolder) { RenameFolderSheet(folder: $0.id) }
         .sheet(item: $filingBot) { NewFolderSheet(bot: $0) }
+        .sheet(item: $renamingBot) { RenameBotSheet(bot: $0) }
     }
 
     // MARK: - Header
@@ -126,8 +128,10 @@ struct NavRail: View {
     /// Enter in the search field opens the one you were looking for, rather than making you
     /// reach for the mouse to finish a keyboard gesture.
     private func selectFirstMatch() {
-        if let first = matches(model.bots).first {
-            destination = .bot(first.id)
+        if let first = ranked.first {
+            destination = .bot(first.bot.id)
+            isSearching = false
+            query = ""
         }
     }
 
@@ -136,29 +140,44 @@ struct NavRail: View {
     private var conversations: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.step) {
-                let loose = matches(model.ungroupedBots)
-                if !loose.isEmpty {
-                    VStack(alignment: .leading, spacing: 1) {
-                        ForEach(loose) { row(for: $0) }
-                    }
-                }
-
-                ForEach(model.folders, id: \.self) { folder in
-                    let members = matches(model.bots(in: folder))
-                    // A folder whose bots are all filtered out disappears with them. Showing an
-                    // empty heading during a search is just noise shaped like a result.
-                    if !members.isEmpty {
+                if searching {
+                    results
+                } else {
+                    if !model.pinnedBots.isEmpty {
                         VStack(alignment: .leading, spacing: 1) {
-                            folderHeader(folder)
-                            ForEach(members) { row(for: $0) }
+                            sectionHeader("Pinned")
+                            ForEach(model.pinnedBots) { row(for: $0) }
                         }
                     }
-                }
 
-                if model.bots.isEmpty {
-                    empty
-                } else if matches(model.bots).isEmpty {
-                    noMatches
+                    let loose = model.ungroupedBots
+                    if !loose.isEmpty {
+                        VStack(alignment: .leading, spacing: 1) {
+                            ForEach(loose) { row(for: $0) }
+                        }
+                    }
+
+                    ForEach(model.folders, id: \.self) { folder in
+                        let members = model.bots(in: folder)
+                        if !members.isEmpty {
+                            VStack(alignment: .leading, spacing: 1) {
+                                sectionHeader(folder)
+                                    .contextMenu {
+                                        Button("Rename folder…") {
+                                            renamingFolder = FolderName(folder)
+                                        }
+                                        // Named for what it does. "Delete folder" would read as
+                                        // deleting the bots inside it, which it never does.
+                                        Button("Ungroup these bots") {
+                                            model.dissolveFolder(folder)
+                                        }
+                                    }
+                                ForEach(members) { row(for: $0) }
+                            }
+                        }
+                    }
+
+                    if model.bots.isEmpty { empty }
                 }
             }
             .padding(.bottom, Theme.Space.snug)
@@ -167,41 +186,82 @@ struct NavRail: View {
         .frame(maxHeight: .infinity)
     }
 
-    private func matches(_ bots: [Bot]) -> [Bot] {
-        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return bots }
-        // Matches the preview as well as the name, so searching for something a bot *said* finds
-        // it. That is usually what you remember.
-        return bots.filter {
-            $0.name.lowercased().contains(needle)
-                || (model.thread(for: $0.id).preview ?? "").lowercased().contains(needle)
+    private var searching: Bool {
+        !query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Search results are a flat ranked list, not the same folders with gaps in them.
+    ///
+    /// Searching is a different task from browsing: you already know what you want and you want it
+    /// at the top. Keeping the folder structure during a search buries the best match under
+    /// headings and makes the first result's position depend on which folder it happens to be in.
+    @ViewBuilder
+    private var results: some View {
+        let hits = ranked
+        if hits.isEmpty {
+            noMatches
+        } else {
+            VStack(alignment: .leading, spacing: 1) {
+                sectionHeader(hits.count == 1 ? "1 result" : "\(hits.count) results")
+                ForEach(hits) { hit in
+                    row(for: hit.bot, matchedOn: hit.matchedPreview ? hit.bot.id : nil)
+                }
+            }
         }
     }
 
-    private func folderHeader(_ folder: String) -> some View {
-        Text(folder.uppercased())
+    /// Name matches first, then matches on what the bot said.
+    ///
+    /// A name match is almost always what you meant; a preview match is a recall aid. Sorting by
+    /// where the match landed — and, within that, how early in the string — puts the obvious
+    /// answer first instead of leaving it to the order bots happen to be stored in.
+    private var ranked: [SearchHit] {
+        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !needle.isEmpty else { return [] }
+
+        return model.bots.compactMap { bot -> SearchHit? in
+            let name = bot.name.lowercased()
+            if let position = name.range(of: needle)?.lowerBound {
+                return SearchHit(bot: bot, rank: 0,
+                                 offset: name.distance(from: name.startIndex, to: position),
+                                 matchedPreview: false)
+            }
+            let preview = (model.thread(for: bot.id).preview ?? "").lowercased()
+            if let position = preview.range(of: needle)?.lowerBound {
+                return SearchHit(bot: bot, rank: 1,
+                                 offset: preview.distance(from: preview.startIndex, to: position),
+                                 matchedPreview: true)
+            }
+            return nil
+        }
+        .sorted { ($0.rank, $0.offset) < ($1.rank, $1.offset) }
+    }
+
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text.uppercased())
             .font(Theme.Typography.badge)
             .foregroundStyle(palette.sidebarMuted)
             .tracking(0.7)
             .padding(.horizontal, Theme.Space.snug)
             .padding(.bottom, Theme.Space.tight)
-            .contextMenu {
-                Button("Rename folder…") { renamingFolder = FolderName(folder) }
-                // Named for what it does. "Delete folder" would read as deleting the bots
-                // inside it, which is never what this does.
-                Button("Ungroup these bots") { model.dissolveFolder(folder) }
-            }
     }
 
-    private func row(for bot: Bot) -> some View {
+    private func row(for bot: Bot, matchedOn previewOf: BotID? = nil) -> some View {
         BotRow(
             bot: bot,
             preview: model.thread(for: bot.id).preview,
             mood: mood(for: bot),
             selected: destination == .bot(bot.id),
+            // Says *why* a bot is in the results when the name does not contain what you typed.
+            // Without it a preview match looks like a mistake.
+            matchedOnMessage: previewOf == bot.id,
             action: { destination = .bot(bot.id) }
         )
-        .contextMenu { BotMenu(bot: bot, onNewFolder: { filingBot = bot }) }
+        .contextMenu {
+            BotMenu(bot: bot,
+                    onNewFolder: { filingBot = bot },
+                    onRename: { renamingBot = bot })
+        }
         .keyboardShortcut(shortcut(for: bot), modifiers: .command)
     }
 
@@ -353,6 +413,7 @@ struct BotRow: View {
     let preview: String?
     let mood: BotMood
     let selected: Bool
+    var matchedOnMessage = false
     let action: () -> Void
 
     @State private var hovering = false
@@ -371,17 +432,29 @@ struct BotRow: View {
                             .foregroundStyle(palette.foreground)
                             .lineLimit(1)
                         Spacer(minLength: 0)
+                        if bot.pinned {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 8))
+                                .foregroundStyle(palette.sidebarMuted)
+                        }
                         if mood == .waitingForYou {
                             Circle()
                                 .fill(palette.primary)
                                 .frame(width: 6, height: 6)
                         }
                     }
-                    Text(subtitle)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(subtitleColour)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    HStack(spacing: 4) {
+                        if matchedOnMessage {
+                            Image(systemName: "text.quote")
+                                .font(.system(size: 8))
+                                .foregroundStyle(palette.sidebarMuted)
+                        }
+                        Text(subtitle)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(subtitleColour)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
             }
             .padding(.horizontal, Theme.Space.snug)
@@ -484,6 +557,18 @@ struct RenameFolderSheet: View {
 /// `sheet(item:)` needs an Identifiable. A wrapper rather than a retroactive conformance on
 /// String: that conformance would apply everywhere in the app and can quietly change which
 /// SwiftUI overload gets picked somewhere unrelated.
+/// One search result, with enough about *how* it matched to rank it and to explain itself.
+struct SearchHit: Identifiable {
+    let bot: Bot
+    /// 0 for a name match, 1 for a match on what the bot said.
+    let rank: Int
+    /// Where in the string the match started. Earlier reads as more relevant.
+    let offset: Int
+    let matchedPreview: Bool
+
+    var id: BotID { bot.id }
+}
+
 struct FolderName: Identifiable, Hashable {
     let id: String
     init(_ name: String) { id = name }
@@ -523,6 +608,68 @@ struct NewFolderSheet: View {
 
     private func commit() {
         model.setFolder(bot, name)
+        dismiss()
+    }
+}
+
+/// Renames a bot, and edits what it is for.
+///
+/// Both in one place because they are the same thought — "this bot is actually for something
+/// else" — and splitting them across two menu items means doing half the edit and forgetting the
+/// rest.
+struct RenameBotSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let bot: Bot
+    @State private var name = ""
+    @State private var job = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.step) {
+            Text("Edit bot").font(.headline)
+
+            HStack(spacing: Theme.Space.step) {
+                // The face does not change with the name: the colour is set once at creation, so
+                // a rename stays a rename rather than looking like a different bot.
+                BotFace(hue: bot.avatarHue, mood: .idle, size: 44)
+                TextField("", text: $name, prompt: Text(bot.name))
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(commit)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("What's its job?")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(.secondary)
+                TextField("", text: $job,
+                          prompt: Text("Research things and report back plainly."),
+                          axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(2...5)
+                Text("Takes effect on the next thing you say — it does not rewrite the thread.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save", action: commit)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(Theme.Space.section)
+        .frame(width: 400)
+        .onAppear {
+            name = bot.name
+            job = bot.personaPrompt ?? ""
+        }
+    }
+
+    private func commit() {
+        model.rename(bot, to: name)
+        model.setJob(bot, job)
         dismiss()
     }
 }

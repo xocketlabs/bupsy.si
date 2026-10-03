@@ -36,6 +36,20 @@ struct BotFace: View {
     let mood: BotMood
     var size: CGFloat = 26
 
+    /// Which silhouette this bot wears, 0...3.
+    ///
+    /// Hue alone was not enough to tell bots apart. In a list of two-line rows the avatar is about
+    /// 34pt, every face has the same two eyes and the same smile, and two bots a few degrees apart
+    /// on the colour wheel are indistinguishable at a glance — which defeats the point of having a
+    /// face at all. Varying the outline gives a second, stronger signal that survives being small.
+    ///
+    /// Derived from the hue rather than stored, so it is stable for a given name and costs no
+    /// schema. Multiplied by a prime first so that form and hue do not move together — otherwise
+    /// every yellow bot would also be the same shape.
+    private var form: Int {
+        Int((hue * 97).truncatingRemainder(dividingBy: 4))
+    }
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
             Canvas { context, canvasSize in
@@ -56,6 +70,28 @@ struct BotFace: View {
         }
     }
 
+    /// A circle with one corner pulled square — the same silhouette at four rotations.
+    ///
+    /// Four variants of one shape rather than four different shapes: the bots still look like a
+    /// family, which is the whole point of them having a shared face. `UnevenRoundedRectangle`
+    /// does the work, so there is no hand-rolled path arithmetic to get subtly wrong at small
+    /// sizes.
+    static func bodyPath(in rect: CGRect, form: Int) -> Path {
+        let round = min(rect.width, rect.height) / 2
+        let corner = round * 0.3
+        let radii: RectangleCornerRadii = switch form {
+        case 0: .init(topLeading: round, bottomLeading: corner,
+                      bottomTrailing: round, topTrailing: round)
+        case 1: .init(topLeading: corner, bottomLeading: round,
+                      bottomTrailing: round, topTrailing: round)
+        case 2: .init(topLeading: round, bottomLeading: round,
+                      bottomTrailing: corner, topTrailing: round)
+        default: .init(topLeading: round, bottomLeading: round,
+                       bottomTrailing: round, topTrailing: corner)
+        }
+        return UnevenRoundedRectangle(cornerRadii: radii).path(in: rect)
+    }
+
     private func draw(in context: inout GraphicsContext, size canvas: CGSize, time: TimeInterval) {
         let rect = CGRect(origin: .zero, size: canvas)
         let unit = canvas.width / 26
@@ -63,12 +99,12 @@ struct BotFace: View {
         // Body. Two stops of the same hue so a bot reads as one colour at a glance but still
         // has some depth up close.
         context.fill(
-            Circle().path(in: rect),
+            Self.bodyPath(in: rect, form: form),
             with: .linearGradient(
                 Gradient(colors: [
-                    Color(hue: hue, saturation: 0.5, brightness: 0.96),
+                    Color(hue: hue, saturation: 0.46 + Double(form) * 0.06, brightness: 0.97),
                     Color(hue: (hue + 0.09).truncatingRemainder(dividingBy: 1),
-                          saturation: 0.72, brightness: 0.78),
+                          saturation: 0.74, brightness: 0.74),
                 ]),
                 startPoint: CGPoint(x: rect.minX, y: rect.minY),
                 endPoint: CGPoint(x: rect.maxX, y: rect.maxY))
@@ -121,8 +157,10 @@ struct BotFace: View {
             // Pulsed only while working. A static dot for "needs you" is easier to notice in
             // peripheral vision than another thing moving.
             let alpha = mood == .working ? 0.55 + 0.45 * abs(sin(time * 2.4)) : 1
+            // Follows the body's outline rather than being a circle around a squared-off corner,
+            // which looked like the ring belonged to a different avatar.
             context.stroke(
-                Circle().path(in: rect.insetBy(dx: -unit * 1.1, dy: -unit * 1.1)),
+                Self.bodyPath(in: rect.insetBy(dx: -unit * 1.1, dy: -unit * 1.1), form: form),
                 with: .color(ring.opacity(alpha)),
                 lineWidth: unit * 0.85)
         }

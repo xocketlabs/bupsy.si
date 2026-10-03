@@ -159,6 +159,14 @@ public struct Store: Sendable {
             }
         }
 
+        // Pinning is per bot rather than a separate list, so a pinned bot cannot end up in the
+        // pinned list and nowhere else — the usual way these two get out of step.
+        migrator.registerMigration("v4-pinned-bots") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "pinned", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 

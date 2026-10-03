@@ -12,8 +12,14 @@ struct BotMenu: View {
     /// Opens the "new folder" sheet. A closure rather than a binding because a context menu is
     /// torn down the instant it is clicked, so the sheet has to belong to the view behind it.
     var onNewFolder: () -> Void
+    /// Same reason as `onNewFolder`: a context menu is gone the moment it is clicked, so the
+    /// sheet has to belong to the view behind it.
+    var onRename: () -> Void = {}
 
     var body: some View {
+        Button("Rename…", action: onRename)
+        Button(bot.pinned ? "Unpin" : "Pin to top") { model.togglePin(bot) }
+        Divider()
         Menu("Engine") {
             ForEach([EngineID.claude, .codex], id: \.self) { engine in
                 Button {

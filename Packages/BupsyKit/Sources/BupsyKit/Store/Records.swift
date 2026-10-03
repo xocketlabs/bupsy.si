@@ -51,15 +51,18 @@ public struct BotRecord: Codable, FetchableRecord, MutablePersistableRecord, Sen
     public var sortIndex: Int
     /// The folder the user filed this bot under, or nil for the ungrouped bots shown first.
     public var folder: String?
+    /// Kept at the top of the sidebar, above the folders.
+    public var pinned: Bool
 
     public init(id: String = UUID().uuidString, name: String, engine: String,
                 model: String? = nil, machineID: String? = nil, autonomy: String = "ask",
                 personaPrompt: String? = nil, workdir: String? = nil, avatarHue: Double = 0.5,
-                createdAt: Date = Date(), sortIndex: Int = 0, folder: String? = nil) {
+                createdAt: Date = Date(), sortIndex: Int = 0, folder: String? = nil,
+                pinned: Bool = false) {
         self.id = id; self.name = name; self.engine = engine; self.model = model
         self.machineID = machineID; self.autonomy = autonomy; self.personaPrompt = personaPrompt
         self.workdir = workdir; self.avatarHue = avatarHue; self.createdAt = createdAt
-        self.sortIndex = sortIndex; self.folder = folder
+        self.sortIndex = sortIndex; self.folder = folder; self.pinned = pinned
     }
 }
 

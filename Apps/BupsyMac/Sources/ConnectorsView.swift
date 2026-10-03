@@ -32,16 +32,21 @@ struct ConnectorsSheet: View {
                     }
                 }
 
+                if !unaddedSuggestions.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Space.step) {
                     Text((model.connectors.isEmpty ? "Common ones" : "Add another").uppercased())
                         .font(Theme.Typography.badge)
                         .foregroundStyle(palette.sidebarMuted)
                         .tracking(0.7)
                     VStack(spacing: Theme.Space.snug) {
-                        ForEach(MCPSuggestions.all) { suggestion in
+                        // Filtered rather than disabled in place. A server you have added is
+                        // already listed above, and leaving a greyed-out "Added" copy below it
+                        // showed every connector twice — which reads as a bug, because it is one.
+                        ForEach(unaddedSuggestions) { suggestion in
                             SuggestionRow(suggestion: suggestion)
                         }
                     }
+                }
                 }
 
                 Spacer(minLength: 0)
@@ -52,6 +57,13 @@ struct ConnectorsSheet: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .sheet(isPresented: $isAdding) { AddServerSheet() }
+    }
+
+    /// The catalogue minus what is already set up.
+    private var unaddedSuggestions: [MCPSuggestions.Suggestion] {
+        MCPSuggestions.all.filter { suggestion in
+            !model.connectors.contains { $0.name == suggestion.server.name }
+        }
     }
 }
 
@@ -127,10 +139,6 @@ struct SuggestionRow: View {
     @Environment(\.palette) private var palette
     let suggestion: MCPSuggestions.Suggestion
 
-    private var alreadyAdded: Bool {
-        model.connectors.contains { $0.name == suggestion.server.name }
-    }
-
     var body: some View {
         CardRow {
             IconTile(systemName: "shippingbox")
@@ -144,9 +152,8 @@ struct SuggestionRow: View {
                     .foregroundStyle(palette.mutedForeground)
             }
         } trailing: {
-            Button(alreadyAdded ? "Added" : "Add") { model.addConnector(suggestion.server) }
+            Button("Add") { model.addConnector(suggestion.server) }
                 .buttonStyle(QuietButton(compact: true))
-                .disabled(alreadyAdded)
         }
     }
 }

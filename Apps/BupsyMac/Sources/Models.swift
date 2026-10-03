@@ -30,6 +30,8 @@ struct Bot: Identifiable, Hashable, Sendable {
     /// The folder the user filed this bot under. nil is the normal case — ungrouped bots are
     /// shown first rather than swept under an "Uncategorised" heading nobody chose.
     var folder: String?
+    /// Kept at the top of the sidebar, above the folders.
+    var pinned = false
 
     /// Deterministic from the name, so a bot keeps its colour between launches without
     /// anything being stored.
@@ -61,6 +63,7 @@ struct Bot: Identifiable, Hashable, Sendable {
         self.workdir = record.workdir
         self.avatarHue = record.avatarHue
         self.folder = record.folder
+        self.pinned = record.pinned
     }
 
     func record(sortIndex: Int = 0) -> BotRecord {
@@ -68,7 +71,7 @@ struct Bot: Identifiable, Hashable, Sendable {
             id: id.rawValue, name: name, engine: engine.rawValue, model: model,
             machineID: machineID, autonomy: autonomy.rawValue,
             personaPrompt: personaPrompt, workdir: workdir,
-            avatarHue: avatarHue, sortIndex: sortIndex, folder: folder)
+            avatarHue: avatarHue, sortIndex: sortIndex, folder: folder, pinned: pinned)
     }
 }
 

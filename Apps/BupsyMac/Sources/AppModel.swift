@@ -830,6 +830,38 @@ final class AppModel {
         selectedBotID = copy.id
     }
 
+    // MARK: - Naming and pinning
+
+    /// Renames a bot. The colour does not follow, on purpose.
+    ///
+    /// A bot's hue is derived from its name the first time it is created, so a rename would
+    /// otherwise change its face — and the face is how you find it in the list. Keeping the
+    /// colour means a rename is a rename rather than a new bot wearing the old one's history.
+    func rename(_ bot: Bot, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != bot.name,
+              let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].name = trimmed
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Edits what a bot is for. Takes effect on the next thing you say to it, not retroactively.
+    func setJob(_ bot: Bot, _ job: String) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        let trimmed = job.trimmingCharacters(in: .whitespaces)
+        bots[index].personaPrompt = trimmed.isEmpty ? nil : trimmed
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    func togglePin(_ bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].pinned.toggle()
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Pinned bots, in the order they appear. Shown above everything else.
+    var pinnedBots: [Bot] { bots.filter(\.pinned) }
+
     // MARK: - Folders
 
     /// The folders in use, in the order their first bot appears.
@@ -839,7 +871,7 @@ final class AppModel {
     /// of every "create a folder, then put things in it" design.
     var folders: [String] {
         var seen: [String] = []
-        for bot in bots {
+        for bot in bots where !bot.pinned {
             if let folder = bot.folder, !folder.isEmpty, !seen.contains(folder) {
                 seen.append(folder)
             }
@@ -849,11 +881,13 @@ final class AppModel {
 
     /// Bots with no folder. Shown first, above the named folders, because filing is optional.
     var ungroupedBots: [Bot] {
-        bots.filter { ($0.folder ?? "").isEmpty }
+        bots.filter { ($0.folder ?? "").isEmpty && !$0.pinned }
     }
 
+    /// Excludes pinned bots, which are already listed at the top. Showing a bot in both places
+    /// is the bug that makes a pinned list feel broken rather than useful.
     func bots(in folder: String) -> [Bot] {
-        bots.filter { $0.folder == folder }
+        bots.filter { $0.folder == folder && !$0.pinned }
     }
 
     func setFolder(_ bot: Bot, _ folder: String?) {
