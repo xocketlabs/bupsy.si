@@ -51,7 +51,7 @@ struct StartChatPalette: View {
                 .onChange(of: query) { highlighted = 0 }
             Button { onDismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: Theme.scaled(10), weight: .medium))
                     .foregroundStyle(palette.mutedForeground)
             }
             .buttonStyle(.plain)
@@ -147,7 +147,7 @@ private struct PaletteRow: View {
                 switch row.kind {
                 case .create:
                     Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: Theme.scaled(12), weight: .medium))
                         .foregroundStyle(palette.foreground)
                         .frame(width: 24, height: 24)
                         .background(palette.secondary, in: .rect(cornerRadius: 6))
@@ -156,7 +156,7 @@ private struct PaletteRow: View {
                         .foregroundStyle(palette.foreground)
 
                 case .bot(let bot):
-                    BotFace(hue: bot.avatarHue, mood: .idle, size: 24)
+                    BotFace(hue: bot.avatarHue, mood: .idle, size: Theme.scaled(24))
                     Text(bot.name)
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
@@ -208,7 +208,7 @@ struct IntroductionSheet: View {
             HStack(spacing: Theme.Space.step) {
                 BotFace(hue: introduction.from.avatarHue, mood: .idle, size: 40)
                 Image(systemName: "arrow.right")
-                    .font(.system(size: 11))
+                    .font(.system(size: Theme.scaled(11)))
                     .foregroundStyle(palette.mutedForeground)
                 BotFace(hue: introduction.to.avatarHue, mood: .idle, size: 40)
                 Spacer(minLength: 0)
@@ -266,7 +266,7 @@ struct PaletteField: NSViewRepresentable {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 13)
+        field.font = .systemFont(ofSize: Theme.scaled(13))
         field.textColor = .labelColor
         field.delegate = context.coordinator
         return field

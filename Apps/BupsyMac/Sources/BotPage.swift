@@ -53,7 +53,7 @@ struct BotPage: View {
     private var titlePill: some View {
         Button { withAnimation(.easeOut(duration: 0.16)) { showsDetails.toggle() } } label: {
             HStack(spacing: Theme.Space.tight) {
-                BotFace(hue: bot.avatarHue, mood: mood, size: 20)
+                BotFace(hue: bot.avatarHue, mood: mood, size: Theme.scaled(20))
                 Text(bot.name)
                     .font(Theme.Typography.body)
                     .fontWeight(.medium)
@@ -64,7 +64,7 @@ struct BotPage: View {
                         .foregroundStyle(palette.mutedForeground)
                 }
                 Image(systemName: showsDetails ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: Theme.scaled(8), weight: .semibold))
                     .foregroundStyle(palette.mutedForeground)
             }
             .padding(.leading, Theme.Space.snug)
@@ -681,7 +681,7 @@ struct MachineButton: View {
         } label: {
             HStack(spacing: Theme.Space.tight) {
                 Image(systemName: bot.machineID == nil ? "laptopcomputer" : "server.rack")
-                    .font(.system(size: 11))
+                    .font(.system(size: Theme.scaled(11)))
                 Text(label).font(Theme.Typography.body)
             }
         }
@@ -732,7 +732,7 @@ struct EmptyRow: View {
             HStack {
                 Text(text).font(Theme.Typography.body).foregroundStyle(palette.mutedForeground)
                 Spacer(minLength: 0)
-                Image(systemName: "plus").font(.system(size: 11))
+                Image(systemName: "plus").font(.system(size: Theme.scaled(11)))
                     .foregroundStyle(palette.mutedForeground)
             }
             .padding(Theme.Space.gutter)

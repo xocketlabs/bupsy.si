@@ -135,7 +135,7 @@ struct RootView: View {
         if let problem = model.storageProblem {
             HStack(spacing: Theme.Space.snug) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11))
+                    .font(.system(size: Theme.scaled(11)))
                 VStack(alignment: .leading, spacing: 2) {
                     // Two very different failures wear this banner, and saying the wrong one is
                     // its own problem: "nothing will be saved" is alarming and false when a

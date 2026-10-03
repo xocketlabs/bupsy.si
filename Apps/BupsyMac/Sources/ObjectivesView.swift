@@ -15,7 +15,7 @@ struct ObjectivesSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("\(bot.name)'s goals").font(.headline)
+                Text("\(bot.name)'s goals").font(Theme.Typography.heading)
                 Spacer()
                 Button("New goal") { isCreating = true }
             }
@@ -25,10 +25,10 @@ struct ObjectivesSheet: View {
 
             if objectives.isEmpty {
                 VStack(spacing: 6) {
-                    Text("No standing goals").font(.callout)
+                    Text("No standing goals").font(Theme.Typography.body)
                     Text("A goal is something \(bot.name) keeps true, rather than a job it does "
                          + "once. It checks on a schedule and acts only when something is off.")
-                        .font(.caption)
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 340)
@@ -73,7 +73,7 @@ struct ObjectiveRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(objective.goal).fontWeight(.medium)
                     Text("Met when: \(objective.doneWhen)")
-                        .font(.caption)
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(.secondary)
                     HStack(spacing: 4) {
                         if let outcome = objective.lastOutcome {
@@ -85,7 +85,7 @@ struct ObjectiveRow: View {
                         Text("· \(Schedule.describe(objective.checkCron))")
                             .foregroundStyle(.secondary)
                     }
-                    .font(.caption2)
+                    .font(Theme.Typography.badge)
                 }
 
                 Spacer(minLength: 0)
@@ -117,7 +117,7 @@ struct ObjectiveRow: View {
                     RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary)
                 }
                 Text("The bot adds to this as it learns. Edit it if it has got something wrong.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(Theme.Typography.badge).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)

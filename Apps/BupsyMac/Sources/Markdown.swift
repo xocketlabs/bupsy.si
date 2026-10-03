@@ -82,7 +82,7 @@ struct CodeBlock: View {
                 // was squeezed and SwiftUI cut the text with "…" — measured on a real reply whose
                 // stored text was complete while the screen showed `String…` and no brace.
                 Text(text)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(size: Theme.scaled(12), design: .monospaced))
                     .foregroundStyle(palette.foreground)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: true, vertical: true)

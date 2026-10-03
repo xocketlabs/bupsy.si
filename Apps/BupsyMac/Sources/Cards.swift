@@ -20,19 +20,19 @@ struct ApprovalCard: View {
         VStack(alignment: .leading, spacing: Theme.Space.snug) {
             HStack(spacing: Theme.Space.tight) {
                 Image(systemName: icon).foregroundStyle(tint)
-                Text(title).font(.callout.weight(.medium))
+                Text(title).font(Theme.Typography.body.weight(.medium))
                 Spacer(minLength: 0)
             }
 
             if pending {
                 Text(approval.reason)
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.secondary)
             }
 
             // The command in full. An approval you cannot read is not an approval.
             Text(approval.summary)
-                .font(.system(size: 13, design: .monospaced))
+                .font(.system(size: Theme.scaled(13), design: .monospaced))
                 .textSelection(.enabled)
                 .padding(Theme.Space.snug)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -144,7 +144,7 @@ struct LimitsGauge: View {
                     .rotationEffect(.degrees(-90))
                     .frame(width: 12, height: 12)
                 Text("\(percent)%")
-                    .font(.caption2.monospacedDigit())
+                    .font(Theme.Typography.badge.monospacedDigit())
                     .foregroundStyle(colour(percent))
             }
             .help(tooltip)
