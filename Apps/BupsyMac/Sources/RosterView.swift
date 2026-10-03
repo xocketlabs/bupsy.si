@@ -68,51 +68,45 @@ struct NewBotSheet: View {
     @State private var job = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.step) {
-            Text("New bot").font(.headline)
-
+        SheetFrame(title: "New bot",
+                   subtitle: "It starts fully gated — it asks before doing anything beyond reading.") {
             HStack(spacing: Theme.Space.step) {
                 BotFace(hue: previewHue, mood: .idle, size: 52)
-                VStack(alignment: .leading, spacing: 8) {
-                    TextField("Name", text: $name, prompt: Text("Scout"))
-                        .textFieldStyle(.roundedBorder)
+                VStack(alignment: .leading, spacing: Theme.Space.snug) {
+                    TextField("", text: $name, prompt: Text("Scout"))
+                        .textFieldStyle(BupsyFieldStyle())
                     Picker("", selection: $engine) {
                         ForEach([EngineID.claude, .codex], id: \.self) {
                             Text($0.displayName).tag($0)
                         }
                     }
                     .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("What's its job?").font(.caption).foregroundStyle(.secondary)
+            Field(label: "What's its job?",
+                  hint: "Written to the bot as standing instructions, every time you talk to it.") {
                 TextField("", text: $job,
-                          prompt: Text("Research things and report back plainly."),
+                          prompt: Text("Research things and report back plainly. Be concise."),
                           axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...4)
+                    .textFieldStyle(BupsyFieldStyle())
+                    .lineLimit(3...5)
             }
-
-            Text("Starts fully gated — it asks before doing anything beyond reading.")
-                .font(.caption).foregroundStyle(.secondary)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Create") {
-                    model.addBot(
-                        name: name.trimmingCharacters(in: .whitespaces),
-                        engine: engine,
-                        job: job.trimmingCharacters(in: .whitespaces))
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Create") {
+                model.addBot(
+                    name: name.trimmingCharacters(in: .whitespaces),
+                    engine: engine,
+                    job: job.trimmingCharacters(in: .whitespaces))
+                dismiss()
             }
+            .buttonStyle(PrimaryButton())
+            .keyboardShortcut(.defaultAction)
+            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(Theme.Space.section)
-        .frame(width: 400)
     }
 
     /// Shows the colour the bot will get as you type its name, since the hue is derived from it.

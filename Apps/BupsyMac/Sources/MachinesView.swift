@@ -163,44 +163,50 @@ struct NewMachineSheet: View {
     @State private var alwaysOn = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("New machine").font(.headline)
-
-            TextField("Name", text: $name, prompt: Text("work"))
-                .textFieldStyle(.roundedBorder)
-
-            Picker("Size", selection: $size) {
-                ForEach(MachineSize.allCases, id: \.self) { size in
-                    Text(label(for: size)).tag(size)
-                }
+        SheetFrame(title: "New machine",
+                   subtitle: "Created on your own boat.dev account, billed to you.") {
+            Field(label: "Name") {
+                TextField("", text: $name, prompt: Text("work"))
+                    .textFieldStyle(BupsyFieldStyle())
             }
 
-            Toggle("Keep it running", isOn: $alwaysOn)
-            Text(alwaysOn
-                 ? String(format: "Routines run on time even with your Mac closed. "
-                          + "Costs about $%.0f a month on your boat.dev account.",
-                          size.alwaysOnMonthlyUSD)
-                 : "Sleeps when idle, so it costs very little — but routines only run when "
-                   + "something wakes it, which means your Mac has to be awake.")
-                .font(.caption)
-                .foregroundStyle(alwaysOn ? Color.secondary : Color.orange)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Create") {
-                    model.createMachine(
-                        name: name.trimmingCharacters(in: .whitespaces),
-                        size: size, alwaysOn: alwaysOn)
-                    dismiss()
+            Field(label: "Size") {
+                Picker("", selection: $size) {
+                    ForEach(MachineSize.allCases, id: \.self) { size in
+                        Text(label(for: size)).tag(size)
+                    }
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            Field(
+                label: "Availability",
+                // The cost is the whole decision here, so it is stated before the choice is made
+                // rather than discovered on a bill.
+                hint: alwaysOn
+                    ? String(format: "Routines run on time even with your Mac closed. "
+                             + "Costs about $%.0f a month on your boat.dev account.",
+                             size.alwaysOnMonthlyUSD)
+                    : "Sleeps when idle, so it costs very little — but routines only run when "
+                      + "something wakes it, which means your Mac has to be awake."
+            ) {
+                Toggle("Keep it running", isOn: $alwaysOn)
+                    .toggleStyle(.switch)
+            }
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Create") {
+                model.createMachine(
+                    name: name.trimmingCharacters(in: .whitespaces),
+                    size: size, alwaysOn: alwaysOn)
+                dismiss()
+            }
+            .buttonStyle(PrimaryButton())
+            .keyboardShortcut(.defaultAction)
+            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(20)
-        .frame(width: 420)
     }
 
     private func label(for size: MachineSize) -> String {

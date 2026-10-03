@@ -169,44 +169,48 @@ struct AddServerSheet: View {
     @State private var envNames = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Add an MCP server").font(.headline)
-
-            TextField("Name", text: $name, prompt: Text("linear"))
-                .textFieldStyle(.roundedBorder)
-            TextField("Command", text: $command)
-                .textFieldStyle(.roundedBorder)
-            TextField("Arguments", text: $args, prompt: Text("-y @acme/linear-mcp-server"))
-                .textFieldStyle(.roundedBorder)
-            TextField("Environment variables it needs", text: $envNames,
-                      prompt: Text("LINEAR_API_KEY"))
-                .textFieldStyle(.roundedBorder)
-
-            Text("Names only — bupsy never stores the values. Set them in your shell and they "
-                 + "reach the server without passing through us.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Add") {
-                    model.addConnector(MCPServer(
-                        name: name.trimmingCharacters(in: .whitespaces),
-                        command: command.trimmingCharacters(in: .whitespaces),
-                        args: args.split(separator: " ").map(String.init),
-                        requiredEnvNames: envNames
-                            .split(whereSeparator: { $0 == " " || $0 == "," })
-                            .map(String.init)))
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
-                          || command.trimmingCharacters(in: .whitespaces).isEmpty)
+        SheetFrame(
+            title: "Add an MCP server",
+            subtitle: "Runs on your machine, under your own sign-ins.",
+            width: 460
+        ) {
+            Field(label: "Name") {
+                TextField("", text: $name, prompt: Text("linear"))
+                    .textFieldStyle(BupsyFieldStyle())
             }
+            Field(label: "Command") {
+                TextField("", text: $command)
+                    .textFieldStyle(BupsyFieldStyle())
+            }
+            Field(label: "Arguments") {
+                TextField("", text: $args, prompt: Text("-y @acme/linear-mcp-server"))
+                    .textFieldStyle(BupsyFieldStyle())
+            }
+            Field(
+                label: "Environment variables it needs",
+                hint: "Names only — bupsy never stores the values. Set them in your shell and "
+                    + "they reach the server without passing through us."
+            ) {
+                TextField("", text: $envNames, prompt: Text("LINEAR_API_KEY"))
+                    .textFieldStyle(BupsyFieldStyle())
+            }
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Add") {
+                model.addConnector(MCPServer(
+                    name: name.trimmingCharacters(in: .whitespaces),
+                    command: command.trimmingCharacters(in: .whitespaces),
+                    args: args.split(separator: " ").map(String.init),
+                    requiredEnvNames: envNames
+                        .split(whereSeparator: { $0 == " " || $0 == "," })
+                        .map(String.init)))
+                dismiss()
+            }
+            .buttonStyle(PrimaryButton())
+            .keyboardShortcut(.defaultAction)
+            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
+                      || command.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(20)
-        .frame(width: 440)
     }
 }

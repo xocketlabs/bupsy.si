@@ -106,66 +106,67 @@ struct NewRoutineSheet: View {
     @State private var tier = Routine.Tier.launchAgent
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("New routine").font(.headline)
+        SheetFrame(title: "New routine",
+                   subtitle: "A job \(bot.name) does on a schedule, whether or not you are here.") {
+            Field(label: "Name") {
+                TextField("", text: $name, prompt: Text("Morning briefing"))
+                    .textFieldStyle(BupsyFieldStyle())
+            }
 
-            TextField("Name", text: $name, prompt: Text("Morning briefing"))
-                .textFieldStyle(.roundedBorder)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("What should \(bot.name) do?").font(.caption).foregroundStyle(.secondary)
+            Field(label: "What should \(bot.name) do?") {
                 TextField("", text: $prompt, prompt: Text("Summarise what changed overnight"),
                           axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...5)
+                    .textFieldStyle(BupsyFieldStyle())
+                    .lineLimit(3...5)
             }
 
-            Picker("When", selection: $preset) {
-                ForEach(Schedule.presets, id: \.cron) { preset in
-                    Text(preset.label).tag(preset)
+            Field(label: "When") {
+                Picker("", selection: $preset) {
+                    ForEach(Schedule.presets, id: \.cron) { preset in
+                        Text(preset.label).tag(preset)
+                    }
                 }
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Picker("Runs", selection: $tier) {
+            // Each tier states its own limit. A routine that quietly does not run is the worst
+            // failure this feature has, so the caveat is shown before it is created rather than
+            // discovered afterwards.
+            Field(label: "Runs", hint: tier.promise) {
+                Picker("", selection: $tier) {
                     ForEach(availableTiers, id: \.self) { tier in
                         Text(tier.label).tag(tier)
                     }
                 }
-                // Each tier states its own limit. A routine that quietly does not run is the
-                // worst failure this feature has, so the caveat is shown before it is created,
-                // not discovered afterwards.
-                Text(tier.promise)
-                    .font(.caption)
-                    .foregroundStyle(tier.survivesSleep ? Color.secondary : Color.orange)
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if tier == .machine && bot.machineID == nil {
                 Label("\(bot.name) has no cloud machine yet, so this will fall back to "
                       + "running when bupsy is open.", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Create") {
-                    model.addRoutine(
-                        to: bot,
-                        name: name.trimmingCharacters(in: .whitespaces),
-                        prompt: prompt.trimmingCharacters(in: .whitespaces),
-                        cron: preset.cron,
-                        tier: tier)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
-                          || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Create") {
+                model.addRoutine(
+                    to: bot,
+                    name: name.trimmingCharacters(in: .whitespaces),
+                    prompt: prompt.trimmingCharacters(in: .whitespaces),
+                    cron: preset.cron,
+                    tier: tier)
+                dismiss()
             }
+            .buttonStyle(PrimaryButton())
+            .keyboardShortcut(.defaultAction)
+            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
+                      || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(20)
-        .frame(width: 420)
     }
 
     /// Only offer a cloud machine when the bot has one; offering a choice that silently

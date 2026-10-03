@@ -525,26 +525,21 @@ struct RenameFolderSheet: View {
     @State private var name = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.step) {
-            Text("Rename folder").font(.headline)
-            TextField("", text: $name, prompt: Text(folder))
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(commit)
-
-            Text("\(model.bots(in: folder).count) bots move with it.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Rename", action: commit)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+        SheetFrame(title: "Rename folder", width: 380) {
+            Field(label: "Name",
+                  hint: "\(model.bots(in: folder).count) bots move with it.") {
+                TextField("", text: $name, prompt: Text(folder))
+                    .textFieldStyle(BupsyFieldStyle())
+                    .onSubmit(commit)
             }
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Rename", action: commit)
+                .buttonStyle(PrimaryButton())
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(Theme.Space.section)
-        .frame(width: 340)
         .onAppear { name = folder }
     }
 
@@ -586,24 +581,20 @@ struct NewFolderSheet: View {
     @State private var name = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.step) {
-            Text("New folder").font(.headline)
-            TextField("", text: $name, prompt: Text("Outreach"))
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(commit)
-            Text("\(bot.name) moves into it.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(.secondary)
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Create", action: commit)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+        SheetFrame(title: "New folder", width: 380) {
+            Field(label: "Name", hint: "\(bot.name) moves into it.") {
+                TextField("", text: $name, prompt: Text("Outreach"))
+                    .textFieldStyle(BupsyFieldStyle())
+                    .onSubmit(commit)
             }
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Create", action: commit)
+                .buttonStyle(PrimaryButton())
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(Theme.Space.section)
-        .frame(width: 340)
     }
 
     private func commit() {
@@ -625,42 +616,32 @@ struct RenameBotSheet: View {
     @State private var job = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.step) {
-            Text("Edit bot").font(.headline)
-
+        SheetFrame(title: "Edit bot") {
             HStack(spacing: Theme.Space.step) {
                 // The face does not change with the name: the colour is set once at creation, so
                 // a rename stays a rename rather than looking like a different bot.
-                BotFace(hue: bot.avatarHue, mood: .idle, size: 44)
+                BotFace(hue: bot.avatarHue, mood: .idle, size: 52)
                 TextField("", text: $name, prompt: Text(bot.name))
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(BupsyFieldStyle())
                     .onSubmit(commit)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("What's its job?")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.secondary)
+            Field(label: "What's its job?",
+                  hint: "Takes effect on the next thing you say — it does not rewrite the thread.") {
                 TextField("", text: $job,
                           prompt: Text("Research things and report back plainly."),
                           axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...5)
-                Text("Takes effect on the next thing you say — it does not rewrite the thread.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.secondary)
+                    .textFieldStyle(BupsyFieldStyle())
+                    .lineLimit(3...5)
             }
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Save", action: commit)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Save", action: commit)
+                .buttonStyle(PrimaryButton())
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(Theme.Space.section)
-        .frame(width: 400)
         .onAppear {
             name = bot.name
             job = bot.personaPrompt ?? ""

@@ -324,3 +324,126 @@ struct SettingRow<Menu: View>: View {
         }
     }
 }
+
+/// The frame every dialog in the app wears.
+///
+/// Sheets had been hand-assembled one at a time, so each had its own padding, its own idea of
+/// where the buttons go, and the system's blue accent on a pink-accented app. A dialog is the one
+/// place where inconsistency is most obvious, because you see two of them in a row.
+///
+/// Title at the top, content in the middle, actions in a footer behind a rule. The footer is a
+/// separate band so the primary action sits in the same place in every dialog — you learn where
+/// "the button" is once.
+struct SheetFrame<Content: View, Actions: View>: View {
+    @Environment(\.palette) private var palette
+    let title: String
+    var subtitle: String?
+    var width: CGFloat = 420
+    @ViewBuilder var content: Content
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(Theme.Typography.heading)
+                    .foregroundStyle(palette.foreground)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, Theme.Space.section)
+            .padding(.top, Theme.Space.section)
+            .padding(.bottom, Theme.Space.gutter)
+
+            VStack(alignment: .leading, spacing: Theme.Space.gutter) { content }
+                .padding(.horizontal, Theme.Space.section)
+                .padding(.bottom, Theme.Space.section)
+
+            Rectangle().fill(palette.border).frame(height: 1)
+
+            HStack(spacing: Theme.Space.snug) {
+                Spacer(minLength: 0)
+                actions
+            }
+            .padding(.horizontal, Theme.Space.section)
+            .padding(.vertical, Theme.Space.gutter)
+            .background(palette.sidebar)
+        }
+        .frame(width: width)
+        .background(palette.popover)
+        // The app's own accent, so focus rings and default buttons stop arriving in system blue.
+        .tint(palette.primary)
+    }
+}
+
+/// A labelled field, with room under it for the sentence that stops a support question.
+struct Field<Content: View>: View {
+    @Environment(\.palette) private var palette
+    let label: String
+    var hint: String?
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.tight) {
+            Text(label)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+            content
+            if let hint {
+                Text(hint)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// A text field that belongs to this app rather than to the system.
+///
+/// `.roundedBorder` draws a light, system-styled box that reads as pasted on over a dark panel.
+/// This is the same card-and-border treatment every other surface uses.
+struct BupsyFieldStyle: TextFieldStyle {
+    @Environment(\.palette) private var palette
+
+    // swiftlint:disable:next identifier_name
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration
+            .textFieldStyle(.plain)
+            .font(Theme.Typography.body)
+            .foregroundStyle(palette.foreground)
+            .padding(.horizontal, Theme.Space.step)
+            .padding(.vertical, 9)
+            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.control)
+                    .strokeBorder(palette.border)
+            }
+    }
+}
+
+/// The one action a dialog is really asking you to take.
+struct PrimaryButton: ButtonStyle {
+    @Environment(\.palette) private var palette
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Theme.Typography.body)
+            .fontWeight(.medium)
+            // Dark text on the accent: the accent is a light pink, and white on it fails to
+            // separate at this size.
+            .foregroundStyle(isEnabled ? Color.black.opacity(0.85) : palette.mutedForeground)
+            .padding(.horizontal, Theme.Space.gutter)
+            .frame(height: Theme.Size.control)
+            .background(
+                isEnabled
+                    ? palette.primary.opacity(configuration.isPressed ? 0.78 : 1)
+                    : palette.secondary,
+                in: .rect(cornerRadius: Theme.Radius.control))
+    }
+}
