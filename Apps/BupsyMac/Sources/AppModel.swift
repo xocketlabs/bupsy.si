@@ -677,6 +677,11 @@ final class AppModel {
                 var finished = run
                 finished.status = failed ? "failed" : "finished"
                 finished.endedAt = Date()
+                // Carried from the stream's usage line, which arrives before `.done`. Without
+                // this the columns exist and are never written, which is how the usage panel came
+                // to be permanently absent rather than merely empty.
+                finished.inputTokens = thread.latestUsage?.inputTokens
+                finished.outputTokens = thread.latestUsage?.outputTokens
                 try? store?.save(finished)
                 if let id = thread.conversationID {
                     try? store?.save(ConversationRecord(

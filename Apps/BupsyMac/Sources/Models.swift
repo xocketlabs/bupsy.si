@@ -167,6 +167,9 @@ final class Thread {
     /// Resume handle, captured from `.started` so a thread stays resumable even if a run fails.
     var conversationID: ConversationID?
     var latestLimits: RateLimit?
+    /// What the last run reported it used. Kept so the run record can be written with it when the
+    /// run ends — the usage line arrives before `.done`, and is the only place the figure exists.
+    var latestUsage: Usage?
     var connectorStates: [ConnectorState] = []
 
     init(botID: BotID) { self.botID = botID }
@@ -251,8 +254,11 @@ final class Thread {
                 id: request.id, tool: request.tool, summary: request.summary,
                 inputJSON: request.argumentsJSON, reason: request.summary))))
 
-        case .usage:
-            break
+        case .usage(let usage):
+            // Was `break`. The event was parsed, normalised, conformance-tested — and then
+            // dropped on the floor, so `runs.inputTokens` was null for every run ever recorded
+            // and the usage panel could not appear for anyone. The one place the number exists.
+            latestUsage = usage
 
         case .done(let outcome):
             if let id = outcome.conversationID { conversationID = id }
