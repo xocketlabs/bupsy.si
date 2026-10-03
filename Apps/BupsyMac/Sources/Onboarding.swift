@@ -30,7 +30,7 @@ struct OnboardingSheet: View {
                     Button("Back") { withAnimation { page -= 1 } }
                 }
                 Spacer()
-                Text("\(page + 1) of 3").font(.caption).foregroundStyle(.secondary)
+                Text("\(page + 1) of 3").font(Theme.Typography.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button(page == 2 ? "Start" : "Next") {
                     if page == 2 {
@@ -62,9 +62,9 @@ struct OnboardingSheet: View {
 
     private var engines: some View {
         VStack(spacing: 14) {
-            Text("What's signed in").font(.title3).fontWeight(.semibold)
+            Text("What's signed in").font(Theme.Typography.title).fontWeight(.semibold)
             Text("bupsy never sees these sign-ins. The CLIs keep their own, in files you own.")
-                .font(.callout)
+                .font(Theme.Typography.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
@@ -78,7 +78,7 @@ struct OnboardingSheet: View {
                             Text(engine.displayName)
                             Spacer()
                             Text(status.isUsable ? "ready" : "not ready")
-                                .font(.caption)
+                                .font(Theme.Typography.caption)
                                 .foregroundStyle(.secondary)
                         }
                         .padding(10)
@@ -89,7 +89,7 @@ struct OnboardingSheet: View {
             .frame(maxWidth: 320)
 
             Text("Not signed in? Run `claude` or `codex` in Terminal once, and sign in there.")
-                .font(.caption)
+                .font(Theme.Typography.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -112,9 +112,9 @@ struct OnboardingSheet: View {
     private func page(face: some View, title: String, body text: String) -> some View {
         VStack(spacing: 16) {
             face
-            Text(title).font(.title3).fontWeight(.semibold)
+            Text(title).font(Theme.Typography.title).fontWeight(.semibold)
             Text(text)
-                .font(.callout)
+                .font(Theme.Typography.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

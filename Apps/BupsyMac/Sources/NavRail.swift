@@ -67,7 +67,7 @@ struct NavRail: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: 20, height: 20)
             Text("bupsy")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: Theme.scaled(17), weight: .semibold))
                 .foregroundStyle(palette.foreground)
 
             Spacer(minLength: Theme.Space.snug)
@@ -89,7 +89,7 @@ struct NavRail: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: Theme.scaled(11), weight: .medium))
                 .foregroundStyle(palette.sidebarMutedForeground)
                 .frame(width: 26, height: 26)
                 .background(palette.sidebarAccent, in: .circle)
@@ -102,7 +102,7 @@ struct NavRail: View {
     private var searchField: some View {
         HStack(spacing: Theme.Space.tight) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 10))
+                .font(.system(size: Theme.scaled(10)))
                 .foregroundStyle(palette.sidebarMuted)
             TextField("", text: $query, prompt: Text("Search bots"))
                 .textFieldStyle(.plain)
@@ -113,7 +113,7 @@ struct NavRail: View {
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: Theme.scaled(11)))
                         .foregroundStyle(palette.sidebarMuted)
                 }
                 .buttonStyle(.plain)
@@ -267,12 +267,18 @@ struct NavRail: View {
             matchedOnMessage: previewOf == bot.id,
             action: { destination = .bot(bot.id) }
         )
+        // The shortcut goes on the row *before* the context menu, never after.
+        //
+        // Applied after, it propagated into every button inside the menu: right-clicking the
+        // third bot listed ⌘3 against every item, Delete bot included, and with the menu open ⌘3
+        // could fire any of them. A shortcut meant to *go to* a bot must not be able to delete
+        // one.
+        .keyboardShortcut(shortcut(for: bot), modifiers: .command)
         .contextMenu {
             BotMenu(bot: bot,
                     onNewFolder: { filingBot = bot },
                     onRename: { renamingBot = bot })
         }
-        .keyboardShortcut(shortcut(for: bot), modifiers: .command)
     }
 
     private var empty: some View {
@@ -309,12 +315,12 @@ struct NavRail: View {
         if !items.isEmpty {
             Button { destination = .attention } label: {
                 HStack(spacing: Theme.Space.snug) {
-                    Image(systemName: "hand.raised.fill").font(.system(size: 11))
+                    Image(systemName: "hand.raised.fill").font(.system(size: Theme.scaled(11)))
                     Text(items.count == 1 ? "1 needs you" : "\(items.count) need you")
                         .font(Theme.Typography.body)
                         .fontWeight(.medium)
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.system(size: 9))
+                    Image(systemName: "chevron.right").font(.system(size: Theme.scaled(9)))
                 }
                 .foregroundStyle(palette.primary)
                 .padding(.horizontal, Theme.Space.step)
@@ -345,7 +351,7 @@ struct NavRail: View {
     ) -> some View {
         Button(action: action) {
             HStack(spacing: Theme.Space.tight) {
-                Image(systemName: symbol).font(.system(size: 11))
+                Image(systemName: symbol).font(.system(size: Theme.scaled(11)))
                 Text(label).font(Theme.Typography.label)
                 Spacer(minLength: 0)
                 if count > 0 {
@@ -372,7 +378,7 @@ struct NavRail: View {
                 .frame(width: 26, height: 26)
                 .overlay {
                     Image(systemName: "person.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: Theme.scaled(10)))
                         .foregroundStyle(palette.mutedForeground)
                 }
             VStack(alignment: .leading, spacing: 0) {
@@ -432,7 +438,7 @@ struct BotRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Theme.Space.snug) {
-                BotFace(hue: bot.avatarHue, mood: mood, size: 34)
+                BotFace(hue: bot.avatarHue, mood: mood, size: Theme.scaled(34))
                     .overlay(alignment: .bottomTrailing) { statusDot }
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -445,7 +451,7 @@ struct BotRow: View {
                         Spacer(minLength: 0)
                         if bot.pinned {
                             Image(systemName: "pin.fill")
-                                .font(.system(size: 8))
+                                .font(.system(size: Theme.scaled(8)))
                                 .foregroundStyle(palette.sidebarMuted)
                         }
                         // "Needs you" is already on the face and in the subtitle, in the accent.
@@ -463,7 +469,7 @@ struct BotRow: View {
                     HStack(spacing: 4) {
                         if matchedOnMessage {
                             Image(systemName: "text.quote")
-                                .font(.system(size: 8))
+                                .font(.system(size: Theme.scaled(8)))
                                 .foregroundStyle(palette.sidebarMuted)
                         }
                         Text(subtitle)
@@ -636,9 +642,14 @@ struct RenameBotSheet: View {
     var body: some View {
         SheetFrame(title: "Edit bot") {
             HStack(spacing: Theme.Space.step) {
-                // The face does not change with the name: the colour is set once at creation, so
-                // a rename stays a rename rather than looking like a different bot.
-                BotFace(hue: bot.avatarHue, mood: .idle, size: 52)
+                // The face does not change with the name: it is set once at creation, so a rename
+                // stays a rename rather than looking like a different bot. Click it for a new one.
+                Button { model.shuffleFace(bot) } label: {
+                    BotFace(hue: model.bots.first { $0.id == bot.id }?.avatarHue ?? bot.avatarHue,
+                            mood: .idle, size: 52)
+                }
+                .buttonStyle(.plain)
+                .help("Shuffle face")
                 VStack(alignment: .leading, spacing: 4) {
                     TextField("", text: $name, prompt: Text(bot.name))
                         .textFieldStyle(BupsyFieldStyle())

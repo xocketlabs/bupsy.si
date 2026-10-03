@@ -115,7 +115,7 @@ struct ConnectorRow: View {
             Button(role: .destructive) {
                 model.removeConnector(server)
             } label: {
-                Image(systemName: "trash").font(.system(size: 12))
+                Image(systemName: "trash").font(.system(size: Theme.scaled(12)))
             }
             .buttonStyle(.borderless)
             .foregroundStyle(palette.mutedForeground)

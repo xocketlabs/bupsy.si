@@ -15,7 +15,7 @@ struct RoutinesSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("\(bot.name)'s routines").font(.headline)
+                Text("\(bot.name)'s routines").font(Theme.Typography.heading)
                 Spacer()
                 Button("New routine") { isCreating = true }
             }
@@ -25,10 +25,10 @@ struct RoutinesSheet: View {
 
             if routines.isEmpty {
                 VStack(spacing: 6) {
-                    Text("No routines yet").font(.callout)
+                    Text("No routines yet").font(Theme.Typography.body)
                     Text("A routine is a job \(bot.name) does on a schedule — a morning briefing, "
                          + "a nightly check, a weekly summary.")
-                        .font(.caption)
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 320)
@@ -74,12 +74,12 @@ struct RoutineRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(routine.name).fontWeight(.medium)
                 Text(Schedule.describe(routine.cron))
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.secondary)
                 // The tier's own words, so no view can quietly make a bigger claim than the
                 // tier actually delivers.
                 Text(routine.tier.promise)
-                    .font(.caption2)
+                    .font(Theme.Typography.badge)
                     .foregroundStyle(routine.tier.survivesSleep ? Color.secondary : Color.orange)
             }
             Spacer(minLength: 0)

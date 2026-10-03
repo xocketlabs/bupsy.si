@@ -64,11 +64,11 @@ struct ComputeKeySetup: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Connect your own boat.dev account").font(.callout).fontWeight(.medium)
+            Text("Connect your own boat.dev account").font(Theme.Typography.body).fontWeight(.medium)
             // One string literal, not a concatenation: SwiftUI only parses markdown in a
             // literal, so `"a" + "**b**"` renders the asterisks verbatim.
             Text("bupsy has no cloud of its own. Machines run on **your** boat.dev account, billed to you, under your control. Your key is kept in this Mac's Keychain and never leaves it.")
-                .font(.caption)
+                .font(Theme.Typography.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 

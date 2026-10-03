@@ -9,7 +9,7 @@ struct DaySeparator: View {
 
     var body: some View {
         Text(Theme.daySeparator(date))
-            .font(.caption2.weight(.medium))
+            .font(Theme.Typography.badge)
             .foregroundStyle(.tertiary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, Theme.Space.tight)
@@ -43,7 +43,7 @@ struct Bubble: View {
             VStack(alignment: .leading, spacing: Theme.Space.tight) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.turn.down.right")
-                        .font(.system(size: 9))
+                        .font(.system(size: Theme.scaled(9)))
                     Text("Message from \(botName)")
                         .font(Theme.Typography.caption)
                 }
@@ -141,7 +141,7 @@ struct ToolAside: View {
             } label: {
                 HStack(spacing: Theme.Space.tight) {
                     Image(systemName: icon)
-                        .font(.caption)
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(failed ? .orange : .secondary)
                     Text(verb)
                         .foregroundStyle(.secondary)
@@ -151,14 +151,14 @@ struct ToolAside: View {
                         .lineLimit(1)
                     if revealablePath != nil {
                         Image(systemName: "arrow.up.forward.square")
-                            .font(.system(size: 9))
+                            .font(.system(size: Theme.scaled(9)))
                             .foregroundStyle(.tertiary)
                     }
                     if result == nil && !failed {
                         ProgressView().controlSize(.mini)
                     }
                 }
-                .font(.caption)
+                .font(Theme.Typography.caption)
             }
             .buttonStyle(.plain)
 
@@ -236,13 +236,13 @@ struct ThinkingAside: View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
             Button { expanded.toggle() } label: {
                 Label("Thinking", systemImage: "sparkle")
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
                     .foregroundStyle(.tertiary)
             }
             .buttonStyle(.plain)
             if expanded {
                 Text(text)
-                    .font(.callout)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .padding(Theme.Space.snug)
@@ -261,7 +261,7 @@ struct FailureNotice: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).fontWeight(.medium)
                 Text(failure.message)
-                    .font(.callout)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -339,7 +339,7 @@ struct Composer: View {
 
             Button(action: isRunning ? onStop : onSend) {
                 Image(systemName: isRunning ? "stop.fill" : "arrow.up")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: Theme.scaled(13), weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 34, height: 34)
                     .background(sendEnabled ? palette.primary : palette.secondary,

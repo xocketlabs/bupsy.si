@@ -95,7 +95,7 @@ struct AttentionRow: View {
                 if !item.detail.isEmpty {
                     if item.detailIsCommand {
                         Text(item.detail)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.system(size: Theme.scaled(12), design: .monospaced))
                             .foregroundStyle(palette.foreground)
                             .lineLimit(2)
                             .padding(.horizontal, Theme.Space.tight)

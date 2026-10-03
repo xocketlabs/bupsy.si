@@ -33,8 +33,8 @@ enum Theme {
         static let control: CGFloat = 44
         /// size-11 — the square tile that leads a card row.
         static let tile: CGFloat = 44
-        static let rosterAvatar: CGFloat = 36
-        static let bubbleAvatar: CGFloat = 24
+        static let rosterAvatar: CGFloat = Theme.scaled(36)
+        static let bubbleAvatar: CGFloat = Theme.scaled(24)
         static let profileAvatar: CGFloat = 72
         /// max-w-4xl. Content stops here however wide the window is; a line of text that spans a
         /// display is hard to read and stops looking composed.
@@ -43,13 +43,23 @@ enum Theme {
     }
 
     /// Agndex leans on small, tight-tracked type rather than many sizes.
+    /// One knob for the size of every piece of text in the app.
+    ///
+    /// The type had been set at macOS's own defaults — 13pt body, 11pt captions — which read as
+    /// small in an app you sit in for hours rather than glance at, and the owner said so. Every
+    /// token below and every remaining hard-coded size goes through `scaled`, so the whole app
+    /// moves together and tuning it again is this one number rather than thirty edits that drift.
+    static let textScale: CGFloat = 1.12
+
+    static func scaled(_ size: CGFloat) -> CGFloat { size * textScale }
+
     enum Typography {
-        static let title = Font.system(size: 22, weight: .semibold)
-        static let heading = Font.system(size: 15, weight: .medium)
-        static let body = Font.system(size: 13)
-        static let label = Font.system(size: 12)
-        static let caption = Font.system(size: 11)
-        static let badge = Font.system(size: 10, weight: .medium)
+        static let title = Font.system(size: Theme.scaled(22), weight: .semibold)
+        static let heading = Font.system(size: Theme.scaled(15), weight: .medium)
+        static let body = Font.system(size: Theme.scaled(13))
+        static let label = Font.system(size: Theme.scaled(12))
+        static let caption = Font.system(size: Theme.scaled(11))
+        static let badge = Font.system(size: Theme.scaled(10), weight: .medium)
     }
 
     static func stamp(_ date: Date, now: Date = Date()) -> String {
@@ -95,7 +105,7 @@ struct MenuChip<Content: View>: View {
         } label: {
             HStack(spacing: compact ? Theme.Space.tight : Theme.Space.snug) {
                 if let icon {
-                    Image(systemName: icon).font(.system(size: 12))
+                    Image(systemName: icon).font(.system(size: Theme.scaled(12)))
                 }
                 // Coloured here rather than left to the enclosing `foregroundStyle`. A
                 // `.borderlessButton` menu adopts the app tint for its label, so once a tint was
@@ -108,7 +118,7 @@ struct MenuChip<Content: View>: View {
                     .truncationMode(.middle)
                 if !compact {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .semibold))
+                        .font(.system(size: Theme.scaled(8), weight: .semibold))
                         .foregroundStyle(palette.mutedForeground.opacity(hovering ? 1 : 0.45))
                 }
             }
@@ -142,7 +152,7 @@ struct MetaChip: View {
 
     var body: some View {
         HStack(spacing: Theme.Space.snug) {
-            Image(systemName: icon).font(.system(size: 12))
+            Image(systemName: icon).font(.system(size: Theme.scaled(12)))
             Text(text).font(Theme.Typography.body)
         }
         .foregroundStyle(tone ?? (emphasised ? palette.foreground : palette.mutedForeground))
@@ -241,7 +251,7 @@ struct SectionHeader<Trailing: View>: View {
             VStack(alignment: .leading, spacing: Theme.Space.tight) {
                 HStack(spacing: Theme.Space.snug) {
                     Image(systemName: icon)
-                        .font(.system(size: 13))
+                        .font(.system(size: Theme.scaled(13)))
                         .foregroundStyle(palette.mutedForeground)
                     Text(title).font(Theme.Typography.heading).foregroundStyle(palette.foreground)
                     if let badge { Badge(text: badge) }
@@ -314,7 +324,7 @@ struct SettingRow<Menu: View>: View {
             HStack(spacing: Theme.Space.snug) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 11))
+                        .font(.system(size: Theme.scaled(11)))
                         .foregroundStyle(palette.mutedForeground)
                         .frame(width: 14)
                 }
