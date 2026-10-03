@@ -698,6 +698,7 @@ final class AppModel {
                 // to be permanently absent rather than merely empty.
                 finished.inputTokens = thread.latestUsage?.inputTokens
                 finished.outputTokens = thread.latestUsage?.outputTokens
+                finished.costUSD = thread.latestUsage?.costUSD
                 try? store?.save(finished)
                 if let id = thread.conversationID {
                     try? store?.save(ConversationRecord(
@@ -1032,6 +1033,18 @@ final class AppModel {
         return base
             .appendingPathComponent("si.bupsy", isDirectory: true)
             .appendingPathComponent("workspaces", isDirectory: true)
+    }
+
+    // MARK: - Usage
+
+    /// Every bot's usage since a moment, most used first — by tokens, the same unit the bars use,
+    /// so the order and the bar lengths can never disagree.
+    func usage(since start: Date) -> [BotUsage] {
+        ((try? store?.usageByBot(since: start)) ?? []).sorted { $0.sentTokens > $1.sentTokens }
+    }
+
+    func usage(for bot: Bot, since start: Date = .distantPast) -> BotUsage? {
+        (try? store?.usageByBot(since: start))?.first { $0.botID == bot.id.rawValue }
     }
 
     // MARK: - Faces

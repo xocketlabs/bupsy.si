@@ -31,6 +31,7 @@ struct NavRail: View {
         case machines
         case connectors
         case attention
+        case usage
     }
 
     var body: some View {
@@ -340,6 +341,9 @@ struct NavRail: View {
                       selected: destination == .machines) { destination = .machines }
             setupItem("puzzlepiece.extension", label: "Apps", count: model.connectors.count,
                       selected: destination == .connectors) { destination = .connectors }
+            setupItem("chart.bar", label: "Usage", count: 0,
+                      selected: destination == .usage) { destination = .usage }
+            Spacer(minLength: 0)
         }
     }
 
@@ -350,8 +354,12 @@ struct NavRail: View {
         Button(action: action) {
             HStack(spacing: Theme.Space.tight) {
                 Image(systemName: symbol).font(.system(size: Theme.scaled(11)))
-                Text(label).font(Theme.Typography.label)
-                Spacer(minLength: 0)
+                // One line, always. Squeezed into equal thirds, "Machines" and "Usage" wrapped
+                // mid-word the moment the type grew and a third item arrived.
+                Text(label)
+                    .font(Theme.Typography.label)
+                    .lineLimit(1)
+                    .fixedSize()
                 if count > 0 {
                     Text("\(count)")
                         .font(Theme.Typography.badge)
@@ -361,7 +369,6 @@ struct NavRail: View {
             .foregroundStyle(selected ? palette.foreground : palette.sidebarMutedForeground)
             .padding(.horizontal, Theme.Space.snug)
             .frame(height: 32)
-            .frame(maxWidth: .infinity)
             .background(selected ? palette.sidebarAccent : .clear,
                         in: .rect(cornerRadius: Theme.Radius.control))
             .contentShape(.rect)

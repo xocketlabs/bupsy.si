@@ -244,6 +244,11 @@ struct BotPage: View {
                         // Says why a long thread is cheaper than its token count suggests, and
                         // why "sent" is so much larger than anything that was typed.
                         FactRow(label: "Largest turn", value: Self.compact(counted.max() ?? 0))
+                        // Labelled as a value, never a bill: on a subscription nobody pays per
+                        // token. Absent rather than "$0" for engines that report no figure.
+                        if let cost = model.usage(for: bot)?.costUSD {
+                            FactRow(label: "API-equivalent", value: UsageFormat.dollars(cost))
+                        }
                     }
                 }
             }

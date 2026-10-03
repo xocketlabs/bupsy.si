@@ -204,6 +204,8 @@ struct RootView: View {
             floating { Page(trail: ["Apps"]) { ConnectorsSheet() } }
         case .attention:
             floating { Page(trail: ["Waiting on you"]) { AttentionInbox() } }
+        case .usage:
+            floating { Page(trail: ["Usage"]) { UsageSheet() } }
         case .none:
             floating { NothingSelected() }
         }

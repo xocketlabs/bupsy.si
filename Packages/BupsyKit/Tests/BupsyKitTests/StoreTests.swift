@@ -323,3 +323,53 @@ struct ChosenAvatarTests {
         #expect(b.avatarColour == nil)
     }
 }
+
+@Suite("Usage by bot")
+struct UsageByBotTests {
+    private func store(with runs: [(String, Int?, Int?, Double?, Date)]) throws -> Store {
+        let store = try Store.inMemory()
+        for bot in Set(runs.map(\.0)) {
+            try store.save(BotRecord(id: bot, name: bot, engine: "claude"))
+        }
+        for (bot, sent, received, cost, at) in runs {
+            let conversation = ConversationRecord(botID: bot, engine: "claude")
+            try store.save(conversation)
+            try store.save(RunRecord(botID: bot, conversationID: conversation.id, host: "local",
+                                     status: "finished", startedAt: at,
+                                     inputTokens: sent, outputTokens: received, costUSD: cost))
+        }
+        return store
+    }
+
+    @Test("runs are summed per bot")
+    func sums() throws {
+        let now = Date()
+        let usage = try store(with: [
+            ("a", 1000, 10, 0.5, now), ("a", 2000, 20, 0.25, now), ("b", 300, 3, 0.1, now),
+        ]).usageByBot()
+        let a = try #require(usage.first { $0.botID == "a" })
+        #expect(a.runs == 2)
+        #expect(a.sentTokens == 3000)
+        #expect(a.receivedTokens == 30)
+        #expect(a.costUSD == 0.75)
+    }
+
+    /// Codex reports no cost. Showing $0.00 for it would be a false statement, not a small one.
+    @Test("a bot whose engine never reports cost has no cost, not zero")
+    func uncostedIsNil() throws {
+        let usage = try store(with: [("codex", 500, 5, nil, Date())]).usageByBot()
+        #expect(usage.first?.costUSD == nil)
+        #expect(usage.first?.sentTokens == 500)
+    }
+
+    @Test("a period only counts runs inside it")
+    func periods() throws {
+        let now = Date()
+        let usage = try store(with: [
+            ("a", 1000, 10, 1.0, now.addingTimeInterval(-40 * 86_400)),
+            ("a", 50, 5, 0.1, now),
+        ]).usageByBot(since: now.addingTimeInterval(-30 * 86_400))
+        #expect(usage.first?.runs == 1)
+        #expect(usage.first?.sentTokens == 50)
+    }
+}
