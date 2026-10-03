@@ -23,19 +23,28 @@ struct BotPage: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                conversation
-                Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
-                         onSend: send, onStop: { model.stop(bot.id) })
+            PanelSurface {
+                VStack(spacing: 0) {
+                    conversation
+                    Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
+                             onSend: send, onStop: { model.stop(bot.id) })
+                }
+                // The pill floats over the transcript rather than sitting in a bar above it, so
+                // the conversation reaches the top of the window instead of starting below a
+                // strip of chrome that never changes.
+                .overlay(alignment: .top) { titlePill }
             }
-            // The pill floats over the transcript rather than sitting in a bar above it, so the
-            // conversation reaches the top of the window instead of starting below a strip of
-            // chrome that never changes.
-            .overlay(alignment: .top) { titlePill }
+            .padding(.vertical, 8)
+            // Flush to the details panel when it is open, exactly as the card is flush to the rail.
+            .padding(.trailing, showsDetails ? 0 : 8)
 
+            // Outside the card, on the window, full height — the mirror of the rail. It used to be
+            // inside the card, so opening it filled the card's right side with the rail's colour,
+            // swallowed the rounded corner on that edge, and made the two sides of the window
+            // different shapes.
             if showsDetails {
-                Rectangle().fill(palette.border).frame(width: 1)
                 details
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .sheet(isPresented: $showsRoutines) { RoutinesSheet(bot: bot) }
@@ -147,7 +156,8 @@ struct BotPage: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, Theme.Space.gutter)
-        .padding(.top, Theme.Space.section)
+        // The same clearance as the rail, which also runs up under the title bar.
+        .padding(.top, 30)
         .padding(.bottom, Theme.Space.gutter)
     }
 
