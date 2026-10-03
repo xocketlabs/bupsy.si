@@ -9,6 +9,9 @@ import SwiftUI
 struct BotMenu: View {
     @Environment(AppModel.self) private var model
     let bot: Bot
+    /// Opens the "new folder" sheet. A closure rather than a binding because a context menu is
+    /// torn down the instant it is clicked, so the sheet has to belong to the view behind it.
+    var onNewFolder: () -> Void
 
     var body: some View {
         Menu("Engine") {
@@ -27,6 +30,20 @@ struct BotMenu: View {
                 } label: {
                     Label(option.label, systemImage: bot.model == option.id ? "checkmark" : "")
                 }
+            }
+        }
+        Menu("Folder") {
+            ForEach(model.folders, id: \.self) { folder in
+                Button {
+                    model.setFolder(bot, folder)
+                } label: {
+                    Label(folder, systemImage: bot.folder == folder ? "checkmark" : "")
+                }
+            }
+            if !model.folders.isEmpty { Divider() }
+            Button("New folder…", action: onNewFolder)
+            if bot.folder != nil {
+                Button("Remove from folder") { model.setFolder(bot, nil) }
             }
         }
         Divider()

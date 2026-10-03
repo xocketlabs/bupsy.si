@@ -799,10 +799,11 @@ final class AppModel {
         for id in running.keys { stop(id) }
     }
 
-    func addBot(name: String, engine: EngineID, job: String = "") {
-        let bot = Bot(
+    func addBot(name: String, engine: EngineID, job: String = "", folder: String? = nil) {
+        var bot = Bot(
             name: name, engine: engine,
             personaPrompt: job.isEmpty ? nil : job)
+        bot.folder = folder
         bots.append(bot)
         try? store?.save(bot.record(sortIndex: bots.count - 1))
         selectedBotID = bot.id
@@ -822,10 +823,71 @@ final class AppModel {
         copy.keepAwake = bot.keepAwake
         copy.workdir = bot.workdir
         copy.toolAllowlist = bot.toolAllowlist
+        copy.folder = bot.folder
 
         bots.append(copy)
         try? store?.save(copy.record(sortIndex: bots.count - 1))
         selectedBotID = copy.id
+    }
+
+    // MARK: - Folders
+
+    /// The folders in use, in the order their first bot appears.
+    ///
+    /// Derived rather than stored. A folder exists exactly as long as something is in it, so
+    /// there is no way to end up with an empty folder nobody can see or delete — the failure mode
+    /// of every "create a folder, then put things in it" design.
+    var folders: [String] {
+        var seen: [String] = []
+        for bot in bots {
+            if let folder = bot.folder, !folder.isEmpty, !seen.contains(folder) {
+                seen.append(folder)
+            }
+        }
+        return seen
+    }
+
+    /// Bots with no folder. Shown first, above the named folders, because filing is optional.
+    var ungroupedBots: [Bot] {
+        bots.filter { ($0.folder ?? "").isEmpty }
+    }
+
+    func bots(in folder: String) -> [Bot] {
+        bots.filter { $0.folder == folder }
+    }
+
+    func setFolder(_ bot: Bot, _ folder: String?) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        let trimmed = folder?.trimmingCharacters(in: .whitespaces)
+        bots[index].folder = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        persistOrder()
+    }
+
+    /// Renames a folder everywhere at once, since the folder *is* the string on each bot.
+    func renameFolder(_ old: String, to new: String) {
+        let trimmed = new.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != old else { return }
+        for index in bots.indices where bots[index].folder == old {
+            bots[index].folder = trimmed
+        }
+        persistOrder()
+    }
+
+    /// Empties a folder rather than deleting its bots. Deleting a container should never delete
+    /// the things inside it — that is how people lose work they did not mean to.
+    func dissolveFolder(_ folder: String) {
+        for index in bots.indices where bots[index].folder == folder {
+            bots[index].folder = nil
+        }
+        persistOrder()
+    }
+
+    /// Writes every bot back with its current position, which is what both folder membership and
+    /// ordering depend on.
+    private func persistOrder() {
+        for (index, bot) in bots.enumerated() {
+            try? store?.save(bot.record(sortIndex: index))
+        }
     }
 
     private func nextName(basedOn name: String) -> String {

@@ -248,6 +248,7 @@ struct FailureNotice: View {
         case .launchFailed: "Could not start the engine"
         case .protocolError: "Unexpected engine behaviour"
         case .nonZeroExit: "The engine exited with an error"
+        case .untrustedDirectory: "This folder isn't a git repository"
         case .cancelled: "Stopped"
         case .unknown: "Something went wrong"
         }

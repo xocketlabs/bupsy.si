@@ -31,6 +31,30 @@ jobs:
       - name: Conformance
         run: swift test --package-path Packages/BupsyKit --filter Conformance
 
+  # Compiles the app itself, which nothing else here did.
+  #
+  # Added after adding one case to an enum in BupsyKit broke two exhaustive switches in the app
+  # and CI stayed green through all of it: every job built the package, none built the thing
+  # people actually run. A UI that does not compile is not a smaller problem than a failing test.
+  #
+  # The project file is generated, so it is regenerated here rather than committed — xcodegen
+  # enumerates sources at generation time, and a stale checked-in project silently omits new files.
+  app:
+    name: The app compiles
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate the project
+        run: xcodegen generate
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac \
+            -configuration Debug -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO build
+
   # The headless core. Runs on Linux because that is the point of it existing — the Swift core's
   # SQLite layer does not link there, and cloud machines do.
   #

@@ -150,6 +150,15 @@ public struct Store: Sendable {
                 columns: ["botID", "engine"])
         }
 
+        // Bots are filed into folders the user names, because a flat list stops being a list and
+        // starts being a search problem somewhere around a dozen bots. Nullable: a bot with no
+        // folder is the normal case and is shown first, not hidden under "Uncategorised".
+        migrator.registerMigration("v3-bot-folders") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "folder", .text)
+            }
+        }
+
         return migrator
     }
 
