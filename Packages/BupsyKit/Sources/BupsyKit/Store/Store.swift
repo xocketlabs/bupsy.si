@@ -267,7 +267,8 @@ public struct Store: Sendable {
     }
 
     public func save(_ link: BotLinkRecord) throws {
-        var link = link
+        // `PersistableRecord`, not `MutablePersistableRecord`: the primary key is the pair of bot
+        // ids rather than something the database assigns, so saving never writes back.
         try database.write { db in try link.save(db) }
     }
 

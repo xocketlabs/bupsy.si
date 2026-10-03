@@ -165,7 +165,7 @@ final class AppModel {
         // Recorded locally before the call, so a machine created remotely is never invisible
         // here — an orphan on someone's bill that bupsy does not know about is the worst
         // possible outcome of a failed create.
-        var record = MachineRecord(
+        let record = MachineRecord(
             name: name, state: "creating", size: size.rawValue,
             ttlSeconds: alwaysOn ? nil : 3600)
         machines.append(record)
@@ -347,7 +347,12 @@ final class AppModel {
                 // Never swallowed: a routine that silently never fires is this feature's worst
                 // failure, so the reason reaches the user rather than a debug log.
                 FileHandle.standardError.write(Data("bupsy: launch agent — \(error)\n".utf8))
-                await MainActor.run { self?.routineProblem = error.localizedDescription }
+                // The message is read out here and only the String crosses to the main actor.
+                // Capturing `self` inside the hop sends a task-isolated reference into a
+                // main-actor closure, which Swift 6 rejects — and which this app never compiled
+                // in CI to find out until the app build job was added.
+                let message = error.localizedDescription
+                await MainActor.run { [weak self] in self?.routineProblem = message }
             }
         }
     }
