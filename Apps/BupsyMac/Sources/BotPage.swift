@@ -15,6 +15,8 @@ struct BotPage: View {
     @State private var showsRoutines = false
     @State private var showsObjectives = false
     @State private var showsDetails = false
+    /// The message being replied to, shown above the composer until sent or dismissed.
+    @State private var replyingTo: ReplyTarget?
     @State private var tab = DetailTab.details
 
     private var thread: Thread { model.thread(for: bot.id) }
@@ -27,6 +29,7 @@ struct BotPage: View {
                 VStack(spacing: 0) {
                     conversation
                     Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
+                             replyingTo: $replyingTo,
                              onSend: send, onStop: { model.stop(bot.id) })
                 }
                 // The pill floats over the transcript rather than sitting in a bar above it, so
@@ -420,7 +423,10 @@ struct BotPage: View {
                         VStack(alignment: .leading, spacing: Theme.Space.step) {
                             ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
                                 if showsDaySeparator(at: index) { DaySeparator(date: entry.at) }
-                                Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index))
+                                Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index),
+                                       onReply: { author, text in
+                                           replyingTo = ReplyTarget(author: author, text: text)
+                                       })
                                     .id(entry.id)
                             }
                             // Not while it is waiting on you. The dots say "the bot is working" —
@@ -636,9 +642,14 @@ struct BotPage: View {
     }
 
     private func send() {
-        let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { return }
+        let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+        // A reply carries its quote to the engine, so "this" means the message you pointed at.
+        let prompt = replyingTo.map {
+            Reply.compose(quoting: $0.text, from: $0.author, message: message)
+        } ?? message
         draft = ""
+        replyingTo = nil
         model.send(prompt, to: bot)
     }
 }
@@ -772,6 +783,12 @@ struct EmptyConversation: View {
     }
 }
 
+
+/// A message someone has chosen to reply to.
+struct ReplyTarget: Equatable {
+    let author: String
+    let text: String
+}
 
 /// The three questions worth asking about a bot, in the order people ask them.
 ///
