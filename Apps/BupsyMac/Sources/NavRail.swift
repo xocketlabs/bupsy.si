@@ -554,7 +554,7 @@ struct RenameFolderSheet: View {
     @State private var name = ""
 
     var body: some View {
-        SheetFrame(title: "Rename folder", width: 380) {
+        SheetFrame(title: "Rename folder", icon: "folder", width: 380) {
             Field(label: "Name",
                   hint: "\(model.bots(in: folder).count) bots move with it.") {
                 TextField("", text: $name, prompt: Text(folder))
@@ -610,7 +610,7 @@ struct NewFolderSheet: View {
     @State private var name = ""
 
     var body: some View {
-        SheetFrame(title: "New folder", width: 380) {
+        SheetFrame(title: "New folder", icon: "folder.badge.plus", width: 380) {
             Field(label: "Name", hint: "\(bot.name) moves into it.") {
                 TextField("", text: $name, prompt: Text("Outreach"))
                     .textFieldStyle(BupsyFieldStyle())
@@ -650,7 +650,7 @@ struct RenameBotSheet: View {
     @State private var faceChanged = false
 
     var body: some View {
-        SheetFrame(title: "Edit bot", subtitle: "Its name, its job, and the face you'll know it by.",
+        SheetFrame(title: "Edit bot", icon: "pencil", subtitle: "Its name, its job, and the face you'll know it by.",
                    width: 460) {
             HStack(spacing: Theme.Space.step) {
                 // The face shown live as you pick, so the sheet is a preview rather than a form.

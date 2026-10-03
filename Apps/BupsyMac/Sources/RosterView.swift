@@ -88,7 +88,7 @@ struct NewBotSheet: View {
     @State private var faceChosen = false
 
     var body: some View {
-        SheetFrame(title: "New bot",
+        SheetFrame(title: "New bot", icon: "sparkles",
                    subtitle: "It starts fully gated — it asks before doing anything beyond reading.") {
             HStack(spacing: Theme.Space.step) {
                 BotFace(hue: previewHue, mood: .idle, size: 56,

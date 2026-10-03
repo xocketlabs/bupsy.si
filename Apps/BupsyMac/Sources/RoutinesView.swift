@@ -106,7 +106,7 @@ struct NewRoutineSheet: View {
     @State private var tier = Routine.Tier.launchAgent
 
     var body: some View {
-        SheetFrame(title: "New routine",
+        SheetFrame(title: "New routine", icon: "clock.arrow.circlepath",
                    subtitle: "A job \(bot.name) does on a schedule, whether or not you are here.") {
             Field(label: "Name") {
                 TextField("", text: $name, prompt: Text("Morning briefing"))

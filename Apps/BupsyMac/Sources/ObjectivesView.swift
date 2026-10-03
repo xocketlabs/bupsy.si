@@ -138,6 +138,7 @@ struct NewObjectiveSheet: View {
     var body: some View {
         SheetFrame(
             title: "New standing goal",
+            icon: "target",
             subtitle: "Not a job \(bot.name) does once — something it keeps true, and only acts "
                 + "on when it is not.",
             width: 460

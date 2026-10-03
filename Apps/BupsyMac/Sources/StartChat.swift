@@ -201,9 +201,11 @@ struct IntroductionSheet: View {
     var body: some View {
         SheetFrame(
             title: "Let \(introduction.from.name) message \(introduction.to.name)?",
+            icon: "bubble.left.and.bubble.right",
             subtitle: "A bot is trying to send another bot an instruction. "
                 + "\(introduction.to.name) would act on it without you reading it first.",
-            width: 460
+            width: 460,
+            closable: false
         ) {
             HStack(spacing: Theme.Space.step) {
                 BotFace(bot: introduction.from, mood: .idle, size: 40)

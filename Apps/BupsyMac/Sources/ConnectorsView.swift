@@ -171,6 +171,7 @@ struct AddServerSheet: View {
     var body: some View {
         SheetFrame(
             title: "Add an MCP server",
+            icon: "puzzlepiece.extension",
             subtitle: "Runs on your machine, under your own sign-ins.",
             width: 460
         ) {
