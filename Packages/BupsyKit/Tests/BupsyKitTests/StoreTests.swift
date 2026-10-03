@@ -23,6 +23,9 @@ struct StoreTests {
         let knownSafe: Set<String> = [
             "runs.inputTokens",   // count of tokens consumed, reported by the engine
             "runs.outputTokens",  // same
+            "group_messages.author",      // who wrote a message: "user" or a bot's id — "auth" is
+                                          // a substring of "author", nothing more
+            "group_messages.authorName",  // that writer's display name
         ]
 
         try store.database.read { db in

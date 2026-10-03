@@ -115,15 +115,19 @@ public struct RunRecord: Codable, FetchableRecord, MutablePersistableRecord, Sen
     public var outputTokens: Int?
     /// API-equivalent cost as the engine reported it. Not what a subscriber paid.
     public var costUSD: Double?
+    /// The group thread this run was a turn in, or nil for a bot's own thread.
+    public var groupID: String?
 
     public init(id: String = UUID().uuidString, botID: String, conversationID: String,
                 triggerID: String? = nil, host: String, status: String = "running",
                 startedAt: Date = Date(), endedAt: Date? = nil,
-                inputTokens: Int? = nil, outputTokens: Int? = nil, costUSD: Double? = nil) {
+                inputTokens: Int? = nil, outputTokens: Int? = nil, costUSD: Double? = nil,
+                groupID: String? = nil) {
         self.id = id; self.botID = botID; self.conversationID = conversationID
         self.triggerID = triggerID; self.host = host; self.status = status
         self.startedAt = startedAt; self.endedAt = endedAt
         self.inputTokens = inputTokens; self.outputTokens = outputTokens; self.costUSD = costUSD
+        self.groupID = groupID
     }
 }
 
@@ -255,5 +259,50 @@ public struct BotUsage: Sendable, Equatable {
     public init(botID: String, runs: Int, sentTokens: Int, receivedTokens: Int, costUSD: Double?) {
         self.botID = botID; self.runs = runs; self.sentTokens = sentTokens
         self.receivedTokens = receivedTokens; self.costUSD = costUSD
+    }
+}
+
+
+/// A conversation with several bots in it.
+public struct GroupRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Identifiable, Equatable {
+    public static let databaseTableName = "groups"
+
+    public var id: String
+    public var name: String
+    /// Who answers a message that mentions nobody. nil if that bot was deleted.
+    public var leadBotID: String?
+    public var createdAt: Date
+    public var sortIndex: Int
+    public var pinned: Bool
+    public var lastReadAt: Date?
+
+    public init(id: String = UUID().uuidString, name: String, leadBotID: String?,
+                createdAt: Date = Date(), sortIndex: Int = 0, pinned: Bool = false,
+                lastReadAt: Date? = nil) {
+        self.id = id; self.name = name; self.leadBotID = leadBotID; self.createdAt = createdAt
+        self.sortIndex = sortIndex; self.pinned = pinned; self.lastReadAt = lastReadAt
+    }
+}
+
+/// One message in a group thread, from the person or from a bot.
+public struct GroupMessageRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Identifiable, Equatable {
+    public static let databaseTableName = "group_messages"
+    public static let userAuthor = "user"
+
+    public var id: String
+    public var groupID: String
+    public var author: String
+    public var authorName: String
+    public var text: String
+    public var at: Date
+    /// The run that produced it, for a bot's message — the link back to the audited events.
+    public var runID: String?
+
+    public var isFromUser: Bool { author == Self.userAuthor }
+
+    public init(id: String = UUID().uuidString, groupID: String, author: String,
+                authorName: String, text: String, at: Date = Date(), runID: String? = nil) {
+        self.id = id; self.groupID = groupID; self.author = author; self.authorName = authorName
+        self.text = text; self.at = at; self.runID = runID
     }
 }
