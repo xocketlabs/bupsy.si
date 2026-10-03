@@ -303,3 +303,23 @@ struct LongTranscriptTests {
         #expect(loaded.map(\.payload) == ["7", "8", "9"])
     }
 }
+
+@Suite("Chosen avatars")
+struct ChosenAvatarTests {
+    @Test("a chosen face survives a round trip, and an unchosen one stays derived")
+    func chosenFacesPersist() throws {
+        let store = try Store.inMemory()
+        try store.save(BotRecord(id: "a", name: "A", engine: "claude",
+                                 avatarShape: "ghost", avatarColour: 4))
+        try store.save(BotRecord(id: "b", name: "B", engine: "claude"))
+
+        let bots = try store.bots()
+        let a = try #require(bots.first { $0.id == "a" })
+        let b = try #require(bots.first { $0.id == "b" })
+        #expect(a.avatarShape == "ghost")
+        #expect(a.avatarColour == 4)
+        // nil, so the face is derived exactly as it was before faces could be chosen.
+        #expect(b.avatarShape == nil)
+        #expect(b.avatarColour == nil)
+    }
+}

@@ -837,13 +837,16 @@ final class AppModel {
         for id in running.keys { stop(id) }
     }
 
-    func addBot(name: String, engine: EngineID, job: String = "", folder: String? = nil) {
+    func addBot(name: String, engine: EngineID, job: String = "", folder: String? = nil,
+                shape: BotShape? = nil, colour: Int? = nil) {
         guard !isNameTaken(name) else { return }
         var bot = Bot(
             name: name, engine: engine,
             personaPrompt: job.isEmpty ? nil : job)
         bot.folder = folder
         bot.avatarHue = distinctHue(near: bot.avatarHue)
+        bot.avatarShape = shape
+        bot.avatarColour = colour
         bots.append(bot)
         try? store?.save(bot.record(sortIndex: bots.count - 1))
         selectedBotID = bot.id
@@ -1041,37 +1044,37 @@ final class AppModel {
     /// asks for a new face, and uses the hue column that already exists. The first fourteen bots
     /// are guaranteed distinct; past that, repeats are unavoidable and fine.
     func distinctHue(near hue: Double, excluding bot: BotID? = nil) -> Double {
-        let taken = Set(bots.filter { $0.id != bot }.map { BotFace.shapeIndex(forHue: $0.avatarHue) })
+        // A chosen face counts as taken just as much as a derived one.
+        let taken = Set(bots.filter { $0.id != bot }.map(\.effectiveShape))
         let start = BotFace.seed(forHue: hue)
         for step in 0..<360 {
             let candidate = Double((start + step) % 360) / 360
-            if !taken.contains(BotFace.shapeIndex(forHue: candidate)) { return candidate }
+            if !taken.contains(BotFace.derivedShape(forHue: candidate)) { return candidate }
         }
         return hue
     }
 
-    /// Gives a bot a different face, one nobody else has if that is still possible.
+    /// Sets the face a bot wears. nil for either part goes back to deriving it.
     ///
-    /// The only way a face changes. It is how a person fixes two bots that look alike, and it is
-    /// fun, which for a feature whose job is making a list feel like a crowd is not nothing.
-    func shuffleFace(_ bot: Bot) {
+    /// The only way a face changes besides Shuffle. A face is how you find a bot in a list, so it
+    /// never changes on its own — but it is yours to choose.
+    func setAvatar(_ bot: Bot, shape: BotShape?, colour: Int?) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
-        let current = BotFace.shapeIndex(forHue: bot.avatarHue)
-        let taken = Set(bots.filter { $0.id != bot.id }.map { BotFace.shapeIndex(forHue: $0.avatarHue) })
-        let start = BotFace.seed(forHue: bot.avatarHue)
-        // Prefer a shape that is both new to this bot and unused by any other; settle for merely
-        // new to this bot once every shape is taken.
-        var fallback: Double?
-        for step in 1..<360 {
-            let candidate = Double((start + step * 7) % 360) / 360
-            let shape = BotFace.shapeIndex(forHue: candidate)
-            guard shape != current else { continue }
-            if !taken.contains(shape) { fallback = candidate; break }
-            if fallback == nil { fallback = candidate }
-        }
-        guard let hue = fallback else { return }
-        bots[index].avatarHue = hue
+        bots[index].avatarShape = shape
+        bots[index].avatarColour = colour
         try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// A new face, picked for you: a shape nobody else is wearing if one is left, and a colour
+    /// different from the current one so the change is always visible.
+    func shuffleFace(_ bot: Bot) {
+        guard let current = bots.first(where: { $0.id == bot.id }) else { return }
+        let taken = Set(bots.filter { $0.id != bot.id }.map(\.effectiveShape))
+        let free = BotShape.allCases.filter { $0 != current.effectiveShape && !taken.contains($0) }
+        let pool = free.isEmpty ? BotShape.allCases.filter { $0 != current.effectiveShape } : free
+        let currentColour = current.avatarColour ?? BotFace.derivedColour(forHue: current.avatarHue)
+        let colours = Array(0..<BotShape.palette.count).filter { $0 != currentColour }
+        setAvatar(bot, shape: pool.randomElement(), colour: colours.randomElement())
     }
 
     // MARK: - Naming and pinning

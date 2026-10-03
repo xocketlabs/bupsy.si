@@ -53,7 +53,7 @@ struct BotPage: View {
     private var titlePill: some View {
         Button { withAnimation(.easeOut(duration: 0.16)) { showsDetails.toggle() } } label: {
             HStack(spacing: Theme.Space.tight) {
-                BotFace(hue: bot.avatarHue, mood: mood, size: Theme.scaled(20))
+                BotFace(bot: bot, mood: mood, size: Theme.scaled(20))
                 Text(bot.name)
                     .font(Theme.Typography.body)
                     .fontWeight(.medium)
@@ -126,7 +126,7 @@ struct BotPage: View {
     /// "which bot am I looking at", which stays true whichever tab is open.
     private var detailsHead: some View {
         VStack(spacing: Theme.Space.snug) {
-            BotFace(hue: bot.avatarHue, mood: mood, size: 64)
+            BotFace(bot: bot, mood: mood, size: 64)
             Text(bot.name)
                 .font(Theme.Typography.heading)
                 .foregroundStyle(palette.foreground)
@@ -749,7 +749,7 @@ struct EmptyConversation: View {
 
     var body: some View {
         VStack(spacing: Theme.Space.step) {
-            BotFace(hue: bot.avatarHue, mood: .idle, size: 56)
+            BotFace(bot: bot, mood: .idle, size: 56)
             Text("Say something to \(bot.name)")
                 .font(Theme.Typography.heading)
                 .foregroundStyle(palette.foreground)

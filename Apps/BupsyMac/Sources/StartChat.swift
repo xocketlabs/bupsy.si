@@ -156,7 +156,7 @@ private struct PaletteRow: View {
                         .foregroundStyle(palette.foreground)
 
                 case .bot(let bot):
-                    BotFace(hue: bot.avatarHue, mood: .idle, size: Theme.scaled(24))
+                    BotFace(bot: bot, mood: .idle, size: Theme.scaled(24))
                     Text(bot.name)
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
@@ -206,11 +206,11 @@ struct IntroductionSheet: View {
             width: 460
         ) {
             HStack(spacing: Theme.Space.step) {
-                BotFace(hue: introduction.from.avatarHue, mood: .idle, size: 40)
+                BotFace(bot: introduction.from, mood: .idle, size: 40)
                 Image(systemName: "arrow.right")
                     .font(.system(size: Theme.scaled(11)))
                     .foregroundStyle(palette.mutedForeground)
-                BotFace(hue: introduction.to.avatarHue, mood: .idle, size: 40)
+                BotFace(bot: introduction.to, mood: .idle, size: 40)
                 Spacer(minLength: 0)
             }
 

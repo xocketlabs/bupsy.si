@@ -107,7 +107,7 @@ struct Bubble: View {
             // A fixed gutter so bubbles stay aligned whether or not this one shows a face.
             Group {
                 if showsAvatar {
-                    BotFace(hue: bot.avatarHue, mood: .idle, size: Theme.Size.bubbleAvatar)
+                    BotFace(bot: bot, mood: .idle, size: Theme.Size.bubbleAvatar)
                 } else {
                     Color.clear.frame(width: Theme.Size.bubbleAvatar, height: 1)
                 }

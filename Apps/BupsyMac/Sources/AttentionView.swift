@@ -83,7 +83,13 @@ struct AttentionRow: View {
 
     var body: some View {
         CardRow {
-            BotFace(hue: item.hue, mood: .waitingForYou, size: Theme.Size.tile)
+            Group {
+                if let bot {
+                    BotFace(bot: bot, mood: .waitingForYou, size: Theme.Size.tile)
+                } else {
+                    BotFace(hue: item.hue, mood: .waitingForYou, size: Theme.Size.tile)
+                }
+            }
         } content: {
             // Who is asking leads. It was last and faintest, under the tool name — but the first
             // thing anyone deciding needs is which of their bots this is.

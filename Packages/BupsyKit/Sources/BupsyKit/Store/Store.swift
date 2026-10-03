@@ -251,6 +251,18 @@ public struct Store: Sendable {
             }
         }
 
+        // A face someone chose, rather than the one derived from the name.
+        //
+        // Both nullable, and nil means "derive it as before", so every existing bot keeps exactly
+        // the face it already has. The shape is stored by name rather than by position, so adding
+        // or reordering shapes later never silently changes a face someone picked.
+        migrator.registerMigration("v7-chosen-avatars") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "avatarShape", .text)
+                t.add(column: "avatarColour", .integer)
+            }
+        }
+
         return migrator
     }
 
