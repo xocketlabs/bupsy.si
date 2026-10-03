@@ -273,6 +273,54 @@ public struct Store: Sendable {
             }
         }
 
+        // Group threads: several bots in one conversation.
+        //
+        // The visible thread lives in its own table, because it interleaves bots and so cannot be
+        // any one bot's history. Each bot's turn is still an ordinary run — audited, counted in its
+        // usage — marked with the group it belongs to, so it does not leak into that bot's
+        // one-to-one thread.
+        migrator.registerMigration("v9-group-threads") { db in
+            try db.create(table: "groups") { t in
+                t.primaryKey("id", .text)
+                t.column("name", .text).notNull()
+                // setNull, never cascade: deleting a bot must not delete the group it led.
+                t.column("leadBotID", .text).references("bots", onDelete: .setNull)
+                t.column("createdAt", .datetime).notNull()
+                t.column("sortIndex", .integer).notNull().defaults(to: 0)
+                t.column("pinned", .boolean).notNull().defaults(to: false)
+                t.column("lastReadAt", .datetime)
+            }
+            try db.create(table: "group_members") { t in
+                t.primaryKey {
+                    t.column("groupID", .text).references("groups", onDelete: .cascade)
+                    t.column("botID", .text).references("bots", onDelete: .cascade)
+                }
+                t.column("sortIndex", .integer).notNull().defaults(to: 0)
+            }
+            try db.create(table: "group_messages") { t in
+                t.primaryKey("id", .text)
+                t.column("groupID", .text).notNull().references("groups", onDelete: .cascade)
+                // "user", or the bot's id. Not a foreign key: a message must outlive the bot that
+                // wrote it, as a transcript does. The name is kept beside it for the same reason.
+                t.column("author", .text).notNull()
+                t.column("authorName", .text).notNull()
+                t.column("text", .text).notNull()
+                t.column("at", .datetime).notNull()
+                t.column("runID", .text)
+            }
+            try db.create(index: "group_messages_by_group", on: "group_messages",
+                          columns: ["groupID", "at"])
+            try db.alter(table: "runs") { t in
+                t.add(column: "groupID", .text)
+            }
+            // A bot's engine session in a group is separate from its session with you alone.
+            // Resuming the one-to-one session inside a group would hand the group a conversation
+            // it was never part of, and the other way round.
+            try db.alter(table: "conversations") { t in
+                t.add(column: "groupID", .text)
+            }
+        }
+
         return migrator
     }
 
@@ -324,10 +372,13 @@ public struct Store: Sendable {
 
     /// The bot's thread **for this engine**. Switching engines gives a bot a separate thread,
     /// and switching back returns to the one it had.
-    public func conversation(forBot botID: String, engine: String) throws -> ConversationRecord? {
+    /// The bot's session on an engine — its own, or the one it has inside a particular group.
+    public func conversation(forBot botID: String, engine: String,
+                             group groupID: String? = nil) throws -> ConversationRecord? {
         try database.read { db in
             try ConversationRecord
-                .filter(Column("botID") == botID && Column("engine") == engine)
+                .filter(Column("botID") == botID && Column("engine") == engine
+                        && Column("groupID") == groupID)
                 .order(Column("lastEventAt").desc)
                 .fetchOne(db)
         }
@@ -452,12 +503,68 @@ public struct Store: Sendable {
         try database.read { db in
             try EventRecord
                 .joining(required: EventRecord.belongsTo(RunRecord.self, using: ForeignKey(["runID"]))
-                    .filter(Column("botID") == botID))
+                    .filter(Column("botID") == botID)
+                    // Its turns in group threads belong to those threads, not this one.
+                    .filter(Column("groupID") == nil))
                 .order(Column("at").desc, Column("seq").desc)
                 .limit(limit)
                 .fetchAll(db)
                 .reversed()
         }
+    }
+
+    // MARK: - Groups
+
+    public func groups() throws -> [GroupRecord] {
+        try database.read { db in
+            try GroupRecord.order(Column("sortIndex"), Column("createdAt")).fetchAll(db)
+        }
+    }
+
+    public func save(_ group: GroupRecord) throws {
+        try database.write { db in try group.save(db) }
+    }
+
+    public func deleteGroup(id: String) throws {
+        _ = try database.write { db in try GroupRecord.deleteOne(db, key: id) }
+    }
+
+    /// Members in the order they were added, which is the order they are shown.
+    public func members(ofGroup groupID: String) throws -> [String] {
+        try database.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT botID FROM group_members WHERE groupID = ? ORDER BY sortIndex
+                """, arguments: [groupID])
+        }
+    }
+
+    /// Replaces the membership wholesale, in one transaction, so a group is never seen half-edited.
+    public func setMembers(ofGroup groupID: String, to botIDs: [String]) throws {
+        try database.write { db in
+            try db.execute(sql: "DELETE FROM group_members WHERE groupID = ?", arguments: [groupID])
+            for (index, botID) in botIDs.enumerated() {
+                try db.execute(sql: """
+                    INSERT INTO group_members (groupID, botID, sortIndex) VALUES (?, ?, ?)
+                    """, arguments: [groupID, botID, index])
+            }
+        }
+    }
+
+    /// The most recent `limit` messages, oldest first — the same newest-then-reverse shape as a
+    /// bot's transcript, for the same reason.
+    public func messages(inGroup groupID: String, limit: Int = 500) throws -> [GroupMessageRecord] {
+        try database.read { db in
+            try GroupMessageRecord
+                .filter(Column("groupID") == groupID)
+                .order(Column("at").desc)
+                .limit(limit)
+                .fetchAll(db)
+                .reversed()
+        }
+    }
+
+    public func append(_ message: GroupMessageRecord) throws {
+        try database.write { db in try message.insert(db) }
     }
 
     // MARK: - Engine links

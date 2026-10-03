@@ -335,3 +335,54 @@ final class Thread {
         apply(EventCodec.decode(type: type, payload: payload))
     }
 }
+
+/// A conversation with several bots in it.
+struct ChatGroup: Identifiable, Hashable, Sendable {
+    let id: String
+    var name: String
+    /// Who answers a message that mentions nobody.
+    var leadBotID: BotID?
+    var memberIDs: [BotID]
+    var pinned: Bool
+    var lastReadAt: Date?
+
+    init(record: GroupRecord, members: [String]) {
+        id = record.id
+        name = record.name
+        leadBotID = record.leadBotID.map { BotID($0) }
+        memberIDs = members.map { BotID($0) }
+        pinned = record.pinned
+        lastReadAt = record.lastReadAt
+    }
+
+    func record(sortIndex: Int) -> GroupRecord {
+        GroupRecord(id: id, name: name, leadBotID: leadBotID?.rawValue, sortIndex: sortIndex,
+                    pinned: pinned, lastReadAt: lastReadAt)
+    }
+}
+
+/// The live state of a group thread.
+@MainActor
+@Observable
+final class GroupThread {
+    let groupID: String
+    var messages: [GroupMessageRecord] = []
+    /// Which bot is answering right now, for the typing indicator. nil when nobody is.
+    var speaking: BotID?
+
+    init(groupID: String) { self.groupID = groupID }
+
+    /// The latest line, for the sidebar: "Scout: tests are green".
+    var preview: String? {
+        guard let last = messages.last(where: { $0.author != GroupMessageRecord.systemAuthor })
+        else { return nil }
+        let text = last.text.replacingOccurrences(of: "\n", with: " ")
+        return last.isFromUser ? "You: \(text)" : "\(last.authorName): \(text)"
+    }
+}
+
+extension GroupMessageRecord {
+    /// Notes from bupsy itself — "stopped after six replies" — shown centred, never as a bot.
+    static let systemAuthor = "system"
+    var isSystem: Bool { author == Self.systemAuthor }
+}

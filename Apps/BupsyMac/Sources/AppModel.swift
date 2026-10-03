@@ -28,6 +28,12 @@ final class AppModel {
     var routineProblem: String?
 
     private var threads: [BotID: Thread] = [:]
+    /// The thread each bot is running in right now — its own, or its thread inside a group. The
+    /// approval gate is per bot, so a decision has to find whichever one the bot is actually in.
+    private var activeThread: [BotID: Thread] = [:]
+    /// Each bot's hidden thread inside each group, keyed "botID|groupID". Holds that engine
+    /// session and any approval it raises; the group page shows the approvals, not the thread.
+    private var groupSideThreads: [String: Thread] = [:]
     private var running: [BotID: Task<Void, Never>] = [:]
     private var gates: [BotID: ApprovalGate] = [:]
     private var awake: [BotID: PowerAssertion] = [:]
@@ -56,6 +62,7 @@ final class AppModel {
             }
         }
         loadBots()
+        loadGroups()
         // `self.store`, not `store` — the initialiser parameter shadows the property, and is nil
         // in normal use. Written as `store?` this silently loaded zero routines on every launch,
         // with `try?` swallowing the nothing that happened. Routines then never fired, and no
@@ -589,7 +596,7 @@ final class AppModel {
     /// True when a bot is blocked on a decision from you, which the roster shows differently
     /// from merely working — it is the state that needs a human.
     func isWaitingForApproval(_ botID: BotID) -> Bool {
-        threads[botID]?.entries.contains {
+        (activeThread[botID] ?? threads[botID])?.entries.contains {
             if case .approval(let approval) = $0.kind { return approval.decided == nil }
             return false
         } ?? false
@@ -628,17 +635,34 @@ final class AppModel {
         _ prompt: String, to bot: Bot,
         onFinish: (@MainActor @Sendable (String) -> Void)?
     ) {
-        guard running[bot.id] == nil, let adapter = adapters[bot.engine] else { return }
+        startRun(prompt, bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: onFinish)
+    }
 
-        let thread = thread(for: bot.id)
+    /// Runs a bot once, in a given thread.
+    ///
+    /// The thread is a parameter so a bot's turn in a group can use all of the same machinery —
+    /// the approval gate, the audit log, usage — while running in a separate, per-group thread
+    /// that carries its own engine session and catches its own approvals, and never touches the
+    /// bot's one-to-one conversation with you.
+    @discardableResult
+    func startRun(
+        _ prompt: String, bot: Bot, thread: Thread, groupID: String?,
+        onFinish: (@MainActor @Sendable (String) -> Void)?
+    ) -> Bool {
+        // One run per bot at a time, wherever it is. A bot cannot answer in a group while it is
+        // still working on something you asked it directly.
+        guard running[bot.id] == nil, let adapter = adapters[bot.engine] else { return false }
+
         thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
         thread.isRunning = true
+        activeThread[bot.id] = thread
 
-        let conversationID = ensureConversation(for: bot, thread: thread)
+        let conversationID = ensureConversation(for: bot, thread: thread, group: groupID)
         let run = RunRecord(
             botID: bot.id.rawValue,
             conversationID: conversationID,
-            host: bot.machineID.map { "cloud:\($0)" } ?? "local"
+            host: bot.machineID.map { "cloud:\($0)" } ?? "local",
+            groupID: groupID
         )
         try? store?.save(run)
         persist(.text(prompt), run: run.id, seq: 0, asUserMessage: true)
@@ -686,6 +710,7 @@ final class AppModel {
             defer {
                 thread.isRunning = false
                 running[bot.id] = nil
+                activeThread[bot.id] = nil
                 Task { [gate = gates[bot.id]] in await gate?.stop() }
                 gates[bot.id] = nil
                 awake[bot.id]?.release()
@@ -703,7 +728,8 @@ final class AppModel {
                 if let id = thread.conversationID {
                     try? store?.save(ConversationRecord(
                         id: conversationID, botID: bot.id.rawValue, engine: bot.engine.rawValue,
-                        providerConversationID: id.rawValue, lastEventAt: Date()))
+                        providerConversationID: id.rawValue, lastEventAt: Date(),
+                        groupID: groupID))
                 }
                 onFinish?(reply)
             }
@@ -726,6 +752,7 @@ final class AppModel {
                 persist(failure, run: run.id, seq: seq)
             }
         }
+        return true
     }
 
     /// Writes one event to the append-only log. Storage failures never interrupt a run — a bot
@@ -744,13 +771,14 @@ final class AppModel {
         }
     }
 
-    private func ensureConversation(for bot: Bot, thread: Thread) -> String {
+    private func ensureConversation(for bot: Bot, thread: Thread, group: String? = nil) -> String {
         if let store,
            let existing = try? store.conversation(
-               forBot: bot.id.rawValue, engine: bot.engine.rawValue) {
+               forBot: bot.id.rawValue, engine: bot.engine.rawValue, group: group) {
             return existing.id
         }
-        let created = ConversationRecord(botID: bot.id.rawValue, engine: bot.engine.rawValue)
+        let created = ConversationRecord(botID: bot.id.rawValue, engine: bot.engine.rawValue,
+                                         groupID: group)
         try? store?.save(created)
         return created.id
     }
@@ -789,7 +817,7 @@ final class AppModel {
     /// The user's answer on an approval card.
     func decide(_ approval: PendingApproval, allow: Bool, for bot: Bot) {
         guard let gate = gates[bot.id] else { return }
-        let thread = thread(for: bot.id)
+        let thread = activeThread[bot.id] ?? thread(for: bot.id)
         thread.resolveApproval(id: approval.id, as: allow ? .allowed : .denied)
         Task {
             try? await gate.decide(
@@ -873,6 +901,189 @@ final class AppModel {
         bots.append(copy)
         try? store?.save(copy.record(sortIndex: bots.count - 1))
         selectedBotID = copy.id
+    }
+
+    // MARK: - Group threads
+
+    var groups: [ChatGroup] = []
+    private var groupThreads: [String: GroupThread] = [:]
+
+    func loadGroups() {
+        guard let store else { return }
+        groups = ((try? store.groups()) ?? []).map { record in
+            ChatGroup(record: record, members: (try? store.members(ofGroup: record.id)) ?? [])
+        }
+    }
+
+    func groupThread(for group: ChatGroup) -> GroupThread {
+        if let existing = groupThreads[group.id] { return existing }
+        let created = GroupThread(groupID: group.id)
+        created.messages = (try? store?.messages(inGroup: group.id)) ?? []
+        groupThreads[group.id] = created
+        return created
+    }
+
+    func members(of group: ChatGroup) -> [Bot] {
+        group.memberIDs.compactMap { id in bots.first { $0.id == id } }
+    }
+
+    @discardableResult
+    func createGroup(name: String, members: [Bot], lead: Bot?) -> ChatGroup? {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, members.count >= 2 else { return nil }
+        let record = GroupRecord(name: trimmed, leadBotID: (lead ?? members.first)?.id.rawValue,
+                                 sortIndex: groups.count)
+        try? store?.save(record)
+        try? store?.setMembers(ofGroup: record.id, to: members.map(\.id.rawValue))
+        let group = ChatGroup(record: record, members: members.map(\.id.rawValue))
+        groups.append(group)
+        return group
+    }
+
+    func renameGroup(_ group: ChatGroup, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[index].name = trimmed
+        try? store?.save(groups[index].record(sortIndex: index))
+    }
+
+    /// Deletes the conversation, never the bots in it.
+    func deleteGroup(_ group: ChatGroup) {
+        try? store?.deleteGroup(id: group.id)
+        groups.removeAll { $0.id == group.id }
+        groupThreads[group.id] = nil
+    }
+
+    func markGroupRead(_ group: ChatGroup) {
+        guard let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[index].lastReadAt = Date()
+        try? store?.save(groups[index].record(sortIndex: index))
+    }
+
+    func isGroupUnread(_ group: ChatGroup) -> Bool {
+        guard selectedGroupID != group.id,
+              let last = groupThread(for: group).messages.last(where: { !$0.isFromUser && !$0.isSystem })
+        else { return false }
+        guard let seen = group.lastReadAt else { return true }
+        return last.at > seen
+    }
+
+    /// The group page on screen, so a reply arriving there is not marked unread behind you.
+    var selectedGroupID: String?
+
+    /// Each bot's hidden thread inside a group: its engine session there, and its approvals.
+    private func groupSideThread(_ bot: Bot, in group: ChatGroup) -> Thread {
+        let key = "\(bot.id.rawValue)|\(group.id)"
+        if let existing = groupSideThreads[key] { return existing }
+        let created = Thread(botID: bot.id)
+        created.conversationID = (try? store?.conversation(
+            forBot: bot.id.rawValue, engine: bot.engine.rawValue, group: group.id))?
+            .providerConversationID.map { ConversationID($0) }
+        groupSideThreads[key] = created
+        return created
+    }
+
+    /// Approvals a member is waiting on inside this group, for the group page to show.
+    func pendingApprovals(in group: ChatGroup) -> [(Bot, PendingApproval)] {
+        members(of: group).compactMap { bot in
+            guard let side = groupSideThreads["\(bot.id.rawValue)|\(group.id)"] else { return nil }
+            for entry in side.entries.reversed() {
+                if case .approval(let approval) = entry.kind, approval.decided == nil {
+                    return (bot, approval)
+                }
+            }
+            return nil
+        }
+    }
+
+    /// Posts your message and lets the bots it addresses answer, one at a time.
+    func send(_ text: String, toGroup group: ChatGroup) {
+        let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+        appendGroupMessage(GroupMessageRecord(
+            groupID: group.id, author: GroupMessageRecord.userAuthor, authorName: "You",
+            text: message), to: group)
+
+        let routing = members(of: group).map { GroupRouting.Member(id: $0.id.rawValue, name: $0.name) }
+        let first = GroupRouting.addressees(of: message, members: routing,
+                                            lead: group.leadBotID?.rawValue)
+        runTurns(in: group, queue: first, taken: 0)
+    }
+
+    /// Answers one bot at a time, following hand-offs, until the queue is empty or the ceiling
+    /// is reached.
+    ///
+    /// One at a time on purpose. Bots answering in parallel would each reply without seeing the
+    /// others, and the thread would read as several people talking over one another — the thing
+    /// a group conversation is supposed to fix, not reproduce.
+    private func runTurns(in group: ChatGroup, queue: [GroupRouting.Member], taken: Int) {
+        let thread = groupThread(for: group)
+        guard let next = queue.first else {
+            thread.speaking = nil
+            return
+        }
+        let rest = Array(queue.dropFirst())
+
+        guard taken < GroupRouting.maxBotTurnsPerMessage else {
+            thread.speaking = nil
+            appendGroupMessage(GroupMessageRecord(
+                groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
+                text: "Stopped after \(GroupRouting.maxBotTurnsPerMessage) replies so the bots "
+                    + "don't keep each other going on your quota. Mention one to carry on."),
+                to: group)
+            return
+        }
+        guard let bot = bots.first(where: { $0.id.rawValue == next.id }) else {
+            runTurns(in: group, queue: rest, taken: taken)
+            return
+        }
+
+        let routing = members(of: group).map { GroupRouting.Member(id: $0.id.rawValue, name: $0.name) }
+        let prompt = GroupRouting.prompt(group: group.name, members: routing, me: next,
+                                         recent: missedMessages(by: bot, in: thread))
+        thread.speaking = bot.id
+
+        let started = startRun(prompt, bot: bot, thread: groupSideThread(bot, in: group),
+                               groupID: group.id) { [weak self] reply in
+            guard let self else { return }
+            let said = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !said.isEmpty {
+                self.appendGroupMessage(GroupMessageRecord(
+                    groupID: group.id, author: bot.id.rawValue, authorName: bot.name, text: said),
+                    to: group)
+            }
+            // Joining a group is the permission for its members to hand work to each other:
+            // the person chose them, and every hand-off appears in the thread they are reading.
+            // Each bot's *actions* still pass through its own approval gate.
+            var queue = rest
+            for handOff in GroupRouting.handOffs(from: next, reply: said, members: routing)
+            where !queue.contains(handOff) {
+                queue.append(handOff)
+            }
+            self.runTurns(in: group, queue: queue, taken: taken + 1)
+        }
+
+        if !started {
+            // A bot runs one thing at a time. Busy elsewhere is said, not silently skipped.
+            appendGroupMessage(GroupMessageRecord(
+                groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
+                text: "\(bot.name) is busy with something else — mention it again once it's free."),
+                to: group)
+            runTurns(in: group, queue: rest, taken: taken)
+        }
+    }
+
+    /// What a bot has not seen: everything since it last spoke, capped so a long thread is not
+    /// re-sent in full on every turn.
+    private func missedMessages(by bot: Bot, in thread: GroupThread) -> [(author: String, text: String)] {
+        let visible = thread.messages.filter { !$0.isSystem }
+        let since = visible.lastIndex { $0.author == bot.id.rawValue }.map { $0 + 1 } ?? 0
+        return visible[since...].suffix(20).map { ($0.isFromUser ? "You" : $0.authorName, $0.text) }
+    }
+
+    private func appendGroupMessage(_ message: GroupMessageRecord, to group: ChatGroup) {
+        try? store?.append(message)
+        groupThread(for: group).messages.append(message)
     }
 
     // MARK: - Bots talking to each other

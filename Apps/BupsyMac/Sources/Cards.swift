@@ -11,9 +11,12 @@ struct ApprovalCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     let approval: PendingApproval
+    /// Whose approval this is. In a bot's own thread that is the selected bot; in a group it is
+    /// whichever member asked, which is not the same thing.
+    var owner: Bot?
     @State private var showsDetail = false
 
-    private var bot: Bot? { model.selectedBot }
+    private var bot: Bot? { owner ?? model.selectedBot }
     private var pending: Bool { approval.decided == nil }
 
     var body: some View {
