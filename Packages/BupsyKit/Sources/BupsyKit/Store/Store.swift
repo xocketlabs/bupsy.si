@@ -19,10 +19,47 @@ public struct Store: Sendable {
     }
 
     public init(url: URL) throws {
+        // Foreign keys are OFF while migrating, then turned on afterwards.
+        //
+        // This is GRDB's own recommendation, and it is load-bearing here rather than tidiness. A
+        // database that already contains an orphaned row — a conversation pointing at a bot
+        // deleted back when the cascade was not enforced — fails the deferred check that runs
+        // after a schema change. The whole migration then aborts, `Store` throws, and the app
+        // falls back to starter bots: every existing bot silently disappears from the UI while
+        // sitting untouched on disk. Measured on a real database, which had exactly one such row.
+        //
+        // So: migrate without the check, clear the orphans a migration cannot reach, and only
+        // then enforce. Enforcement from that point on is what stops new ones appearing.
         var configuration = Configuration()
-        configuration.foreignKeysEnabled = true
-        database = try DatabaseQueue(path: url.path, configuration: configuration)
-        try Self.migrator.migrate(database)
+        configuration.foreignKeysEnabled = false
+        let queue = try DatabaseQueue(path: url.path, configuration: configuration)
+
+        try Self.migrator.migrate(queue)
+        try Self.removeOrphans(in: queue)
+        try queue.writeWithoutTransaction { db in
+            try db.execute(sql: "PRAGMA foreign_keys = ON")
+        }
+
+        database = queue
+    }
+
+    /// Deletes rows whose bot no longer exists.
+    ///
+    /// Not a migration, because it has to run on every open: a migration records itself as done
+    /// and would never run again, and this is cleaning up after a historical bug whose damage can
+    /// already be present in any state. Cheap — these are indexed columns and the result is
+    /// almost always zero.
+    static func removeOrphans(in queue: DatabaseQueue) throws {
+        try queue.write { db in
+            for table in ["conversations", "runs", "routines", "objectives"] {
+                guard try db.tableExists(table) else { continue }
+                try db.execute(sql: """
+                    DELETE FROM "\(table)"
+                    WHERE botID IS NOT NULL
+                      AND botID NOT IN (SELECT id FROM bots)
+                    """)
+            }
+        }
     }
 
     /// In-memory store for tests.

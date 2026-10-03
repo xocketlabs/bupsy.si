@@ -175,6 +175,13 @@ final class Thread {
     var preview: String? {
         for entry in entries.reversed() {
             switch entry.kind {
+            // A message from another bot is the newest thing in the thread as much as anything
+            // else is. Left out of this switch, a bot whose only content came from another bot
+            // read as "No messages yet" while holding a message.
+            case .messageFrom(_, let name, let text):
+                let flat = text.replacingOccurrences(of: "\n", with: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                if !flat.isEmpty { return "\(name): \(flat)" }
             case .assistantText(let text), .userMessage(let text):
                 let flat = text
                     .replacingOccurrences(of: "\n", with: " ")

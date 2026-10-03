@@ -22,6 +22,8 @@ final class AppModel {
     var needsOnboarding = !UserDefaults.standard.bool(forKey: "si.bupsy.onboarded")
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?
+    /// Whether the database opened at all, which changes what a storage problem means.
+    var hasStore: Bool { store != nil }
     /// Set when a schedule could not be installed, so the UI can say a routine will not fire.
     var routineProblem: String?
 
@@ -636,7 +638,15 @@ final class AppModel {
             resume: thread.conversationID,
             model: bot.model,
             autonomy: bot.autonomy,
-            mcpConfigPaths: (try? MCPConfig.write(connectors)).flatMap { $0 }.map { [$0] } ?? [],
+            mcpConfigPaths: (try? MCPConfig.write(
+                connectors,
+                including: Self.bupsyMCPBinary.map {
+                    MCPConfig.bupsyServer(
+                        binary: $0,
+                        outbox: OutboxWatcher.directory.path,
+                        botID: bot.id.rawValue)
+                }
+            )).flatMap { $0 }.map { [$0] } ?? [],
             gateSettingsPath: gateSettings
         )
 
@@ -834,6 +844,47 @@ final class AppModel {
 
     // MARK: - Bots talking to each other
 
+    private var outbox: OutboxWatcher?
+
+    /// The helper that lets a bot message another bot, shipped inside the app bundle.
+    ///
+    /// nil in a build where it is missing, and then the tool simply is not offered — a bot that
+    /// cannot find the binary should have no `message_bot` tool at all, rather than one that
+    /// fails every time it is called.
+    static var bupsyMCPBinary: String? {
+        Bundle.main.url(forAuxiliaryExecutable: "bupsy-mcp")?.path
+            ?? Bundle.main.url(forResource: "bupsy-mcp", withExtension: nil)?.path
+    }
+
+    /// Starts listening for messages bots want to send each other.
+    func startOutbox() {
+        guard outbox == nil else { return }
+        let watcher = OutboxWatcher { [weak self] from, toName, text in
+            self?.receive(from: from, toName: toName, text: text)
+        }
+        watcher.start()
+        outbox = watcher
+    }
+
+    /// Resolves a dropped message against the roster and hands it to the gate.
+    ///
+    /// The recipient arrives as a *name*, because that is what the model knows. Resolved case
+    /// insensitively and only against an exact match: a bot called "Email" must never receive
+    /// something addressed to "Email Agent 3" because a fuzzy match looked close enough.
+    private func receive(from senderID: String, toName: String, text: String) {
+        guard let sender = bots.first(where: { $0.id.rawValue == senderID }) else { return }
+        guard let recipient = bots.first(where: {
+            $0.name.compare(toName, options: .caseInsensitive) == .orderedSame
+        }) else {
+            // No such bot. Reported into the sender's own thread so the failure is visible to
+            // whoever reads it, rather than vanishing into a deleted file.
+            thread(for: sender.id).entries.append(TranscriptEntry(kind: .failure(
+                EngineFailure(kind: .unknown, message: "No bot named “\(toName)” to message."))))
+            return
+        }
+        deliver(from: sender, to: recipient, text: text)
+    }
+
     /// A message one bot wants to send another, waiting on a person.
     struct PendingIntroduction: Identifiable, Equatable {
         let id = UUID()
@@ -897,11 +948,23 @@ final class AppModel {
         thread.entries.append(TranscriptEntry(kind: .messageFrom(
             botID: sender.id.rawValue, botName: sender.name, text: message)))
 
-        // Stored so a reloaded transcript keeps the attribution rather than showing an
-        // unattributed instruction that looks like the user's own.
+        // Recorded as a run of its own, with the sending bot as the host.
+        //
+        // Events belong to runs — the first version of this passed a *conversation* id and every
+        // delivery failed a foreign key, silently, until the storage banner surfaced it. Beyond
+        // being required, a run is also the honest shape: a message arriving from another bot is
+        // something that happened to this bot at a point in time, and the audit log should hold
+        // it the same way it holds everything else.
+        let run = RunRecord(
+            botID: recipient.id.rawValue,
+            conversationID: ensureConversation(for: recipient, thread: thread),
+            host: "link:\(sender.id.rawValue)",
+            status: "finished",
+            endedAt: Date())
+        try? store?.save(run)
+
         let joined = [sender.id.rawValue, sender.name, message].joined(separator: "\u{1}")
-        persist(.text(joined), run: ensureConversation(for: recipient, thread: thread),
-                seq: thread.entries.count, asMessageFrom: true)
+        persist(.text(joined), run: run.id, seq: 0, asMessageFrom: true)
 
         // The recipient has something new to look at, and nobody has looked at it.
         if let index = bots.firstIndex(where: { $0.id == recipient.id }) {
