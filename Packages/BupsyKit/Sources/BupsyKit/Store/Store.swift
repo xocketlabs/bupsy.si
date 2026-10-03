@@ -59,6 +59,17 @@ public struct Store: Sendable {
                       AND botID NOT IN (SELECT id FROM bots)
                     """)
             }
+
+            // Events hang off runs, not bots, so the sweep above never reached them. Found on a
+            // real database after the first version of this shipped: six events from an early
+            // conversation whose run had gone, still sitting in the log. Last, because removing
+            // runs above can orphan more of them.
+            if try db.tableExists("events") {
+                try db.execute(sql: """
+                    DELETE FROM events
+                    WHERE runID NOT IN (SELECT id FROM runs)
+                    """)
+            }
         }
     }
 

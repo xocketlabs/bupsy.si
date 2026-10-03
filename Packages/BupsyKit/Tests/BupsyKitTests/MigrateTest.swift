@@ -77,4 +77,32 @@ struct DamagedDatabaseTests {
             try reopened.save(ConversationRecord(botID: "nobody", engine: "claude"))
         }
     }
+
+    /// Events belong to runs rather than bots, so a sweep keyed on `botID` missed them. Found on
+    /// a real database: six events whose run was gone survived the first version of this fix.
+    @Test("events whose run is gone are cleared too")
+    func orphanedEventsAreRemoved() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).sqlite")
+        let store = try Store(url: url)
+        try store.save(BotRecord(id: "b", name: "B", engine: "claude"))
+        let conversation = ConversationRecord(botID: "b", engine: "claude")
+        try store.save(conversation)
+        let run = RunRecord(botID: "b", conversationID: conversation.id, host: "local")
+        try store.save(run)
+        try store.append([EventRecord(runID: run.id, seq: 0, type: "text", payload: "{}")])
+
+        try store.database.writeWithoutTransaction { db in
+            try db.execute(sql: "PRAGMA foreign_keys = OFF")
+            try db.execute(sql: "DELETE FROM runs")
+        }
+
+        let reopened = try Store(url: url)
+        let orphans = try reopened.database.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM events WHERE runID NOT IN (SELECT id FROM runs)
+                """) ?? 0
+        }
+        #expect(orphans == 0)
+    }
 }
