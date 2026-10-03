@@ -75,12 +75,17 @@ struct BotFace: View {
     // MARK: - Identity
 
     /// 0...359, from the hue. Everything about the face is derived from this one number.
+    ///
+    /// The static helpers below are `nonisolated`: they are pure arithmetic, and `Bot` — a plain
+    /// data struct, used off the main actor — calls them to know which face a bot wears. A
+    /// `View`'s statics are main-actor isolated on the CI toolchain, which a newer local compiler
+    /// did not enforce, so this compiled here and failed there.
     private var seed: Int { Self.seed(forHue: hue) }
 
-    static func seed(forHue hue: Double) -> Int { Int((hue * 360).rounded()) % 360 }
+    nonisolated static func seed(forHue hue: Double) -> Int { Int((hue * 360).rounded()) % 360 }
 
     /// Which of the fourteen shapes a hue produces — used to keep a roster varied.
-    static func shapeIndex(forHue hue: Double) -> Int {
+    nonisolated static func shapeIndex(forHue hue: Double) -> Int {
         mix(seed(forHue: hue), salt: 1) % BotShape.allCases.count
     }
 
@@ -94,16 +99,16 @@ struct BotFace: View {
         BotShape.palette[(chosenColour ?? Self.derivedColour(forHue: hue)) % BotShape.palette.count]
     }
 
-    static func derivedShape(forHue hue: Double) -> BotShape {
+    nonisolated static func derivedShape(forHue hue: Double) -> BotShape {
         BotShape.allCases[mix(seed(forHue: hue), salt: 1) % BotShape.allCases.count]
     }
 
-    static func derivedColour(forHue hue: Double) -> Int {
+    nonisolated static func derivedColour(forHue hue: Double) -> Int {
         mix(seed(forHue: hue), salt: 2) % BotShape.palette.count
     }
 
     /// A small integer hash (murmur-style finaliser). Deterministic, so a face never changes.
-    static func mix(_ value: Int, salt: UInt32) -> Int {
+    nonisolated static func mix(_ value: Int, salt: UInt32) -> Int {
         var h = UInt32(truncatingIfNeeded: value) &* 0x9E37_79B1 ^ salt &* 0x85EB_CA6B
         h ^= h >> 16
         h = h &* 0x7FEB_352D
