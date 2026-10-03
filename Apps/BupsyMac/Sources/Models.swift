@@ -32,6 +32,10 @@ struct Bot: Identifiable, Hashable, Sendable {
     var folder: String?
     /// Kept at the top of the sidebar, above the folders.
     var pinned = false
+    /// Out of the sidebar, but not deleted — it keeps everything it had.
+    var hidden = false
+    /// nil means never opened.
+    var lastReadAt: Date?
 
     /// Deterministic from the name, so a bot keeps its colour between launches without
     /// anything being stored.
@@ -64,6 +68,8 @@ struct Bot: Identifiable, Hashable, Sendable {
         self.avatarHue = record.avatarHue
         self.folder = record.folder
         self.pinned = record.pinned
+        self.hidden = record.hidden
+        self.lastReadAt = record.lastReadAt
     }
 
     func record(sortIndex: Int = 0) -> BotRecord {
@@ -71,7 +77,8 @@ struct Bot: Identifiable, Hashable, Sendable {
             id: id.rawValue, name: name, engine: engine.rawValue, model: model,
             machineID: machineID, autonomy: autonomy.rawValue,
             personaPrompt: personaPrompt, workdir: workdir,
-            avatarHue: avatarHue, sortIndex: sortIndex, folder: folder, pinned: pinned)
+            avatarHue: avatarHue, sortIndex: sortIndex, folder: folder, pinned: pinned,
+            hidden: hidden, lastReadAt: lastReadAt)
     }
 }
 

@@ -853,6 +853,49 @@ final class AppModel {
         try? store?.save(bots[index].record(sortIndex: index))
     }
 
+    /// Takes a bot out of the sidebar without destroying anything.
+    ///
+    /// Separate from delete on purpose: a bot you are finished with for now still owns its
+    /// history, its routines and its conversation id, and "get this out of my way" must never be
+    /// a destructive act dressed up as tidying. Hidden bots are still reachable by search.
+    func toggleHidden(_ bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].hidden.toggle()
+        if bots[index].hidden, selectedBotID == bot.id {
+            selectedBotID = bots.first { !$0.hidden }?.id
+        }
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Whether a bot has said something since you last looked at it.
+    func isUnread(_ bot: Bot) -> Bool {
+        let thread = thread(for: bot.id)
+        // Only the bot's own messages count. Your own last message making the row bold would
+        // mark everything unread the moment you sent anything.
+        guard let latest = thread.entries.last(where: { $0.isFromBot })?.at else { return false }
+        guard let seen = bot.lastReadAt else { return true }
+        return latest > seen
+    }
+
+    /// Called when a thread is opened. Idempotent and cheap.
+    func markRead(_ bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].lastReadAt = Date()
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Puts a bot back in the unread state so it is still obvious tomorrow.
+    ///
+    /// Backdated to just before its last message rather than cleared to nil: nil means "never
+    /// opened", and a bot you have read and deliberately flagged is a different thing from one
+    /// you have never seen.
+    func markUnread(_ bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        let latest = thread(for: bot.id).entries.last(where: { $0.isFromBot })?.at
+        bots[index].lastReadAt = latest.map { $0.addingTimeInterval(-1) } ?? .distantPast
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
     func togglePin(_ bot: Bot) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         bots[index].pinned.toggle()
@@ -860,7 +903,7 @@ final class AppModel {
     }
 
     /// Pinned bots, in the order they appear. Shown above everything else.
-    var pinnedBots: [Bot] { bots.filter(\.pinned) }
+    var pinnedBots: [Bot] { bots.filter { $0.pinned && !$0.hidden } }
 
     // MARK: - Folders
 
@@ -871,7 +914,7 @@ final class AppModel {
     /// of every "create a folder, then put things in it" design.
     var folders: [String] {
         var seen: [String] = []
-        for bot in bots where !bot.pinned {
+        for bot in bots where !bot.pinned && !bot.hidden {
             if let folder = bot.folder, !folder.isEmpty, !seen.contains(folder) {
                 seen.append(folder)
             }
@@ -881,13 +924,13 @@ final class AppModel {
 
     /// Bots with no folder. Shown first, above the named folders, because filing is optional.
     var ungroupedBots: [Bot] {
-        bots.filter { ($0.folder ?? "").isEmpty && !$0.pinned }
+        bots.filter { ($0.folder ?? "").isEmpty && !$0.pinned && !$0.hidden }
     }
 
     /// Excludes pinned bots, which are already listed at the top. Showing a bot in both places
     /// is the bug that makes a pinned list feel broken rather than useful.
     func bots(in folder: String) -> [Bot] {
-        bots.filter { $0.folder == folder && !$0.pinned }
+        bots.filter { $0.folder == folder && !$0.pinned && !$0.hidden }
     }
 
     func setFolder(_ bot: Bot, _ folder: String?) {
@@ -937,6 +980,17 @@ final class AppModel {
     }
 
     /// The whole conversation as plain text, for pasting into a ticket or an email.
+    /// The engine's own resume handle, for picking a thread up in the CLI directly.
+    ///
+    /// bupsy should never make that harder — the whole premise is that it drives the user's own
+    /// tools rather than replacing them, and a thread you cannot get back out of the app is a
+    /// thread the app has taken hostage.
+    func copyConversationID(of bot: Bot) {
+        guard let id = thread(for: bot.id).conversationID?.rawValue else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(id, forType: .string)
+    }
+
     func copyTranscript(of bot: Bot) {
         let thread = thread(for: bot.id)
         var lines = ["\(bot.name) — \(bot.engine.displayName)", ""]

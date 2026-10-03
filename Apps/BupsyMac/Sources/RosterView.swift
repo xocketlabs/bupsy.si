@@ -17,9 +17,29 @@ struct BotMenu: View {
     var onRename: () -> Void = {}
 
     var body: some View {
-        Button("Rename…", action: onRename)
-        Button(bot.pinned ? "Unpin" : "Pin to top") { model.togglePin(bot) }
+        Button("Pin to top", systemImage: bot.pinned ? "pin.slash" : "pin") {
+            model.togglePin(bot)
+        }
+        Menu("Move to") {
+            ForEach(model.folders, id: \.self) { folder in
+                Button {
+                    model.setFolder(bot, folder)
+                } label: {
+                    Label(folder, systemImage: bot.folder == folder ? "checkmark" : "folder")
+                }
+            }
+            Button {
+                model.setFolder(bot, nil)
+            } label: {
+                Label("Unassigned",
+                      systemImage: (bot.folder ?? "").isEmpty ? "checkmark" : "tray")
+            }
+            Divider()
+            Button("Create section…", action: onNewFolder)
+        }
+        Button("Mark as unread") { model.markUnread(bot) }
         Divider()
+        Button("Rename bot…", action: onRename)
         Menu("Engine") {
             ForEach([EngineID.claude, .codex], id: \.self) { engine in
                 Button {
@@ -38,24 +58,17 @@ struct BotMenu: View {
                 }
             }
         }
-        Menu("Folder") {
-            ForEach(model.folders, id: \.self) { folder in
-                Button {
-                    model.setFolder(bot, folder)
-                } label: {
-                    Label(folder, systemImage: bot.folder == folder ? "checkmark" : "")
-                }
-            }
-            if !model.folders.isEmpty { Divider() }
-            Button("New folder…", action: onNewFolder)
-            if bot.folder != nil {
-                Button("Remove from folder") { model.setFolder(bot, nil) }
-            }
-        }
         Divider()
         Button("Duplicate") { model.duplicate(bot) }
         Button("Copy conversation") { model.copyTranscript(of: bot) }
+        // The engine's own resume handle. Useful when you want to pick a thread up in the CLI
+        // directly, which is a thing this app should never make harder.
+        Button("Copy conversation ID") { model.copyConversationID(of: bot) }
         Divider()
+        // Not destructive, and worded so it cannot be mistaken for one.
+        Button(bot.hidden ? "Show in sidebar" : "Hide from sidebar") {
+            model.toggleHidden(bot)
+        }
         Button("Delete bot", role: .destructive) { model.deleteBot(bot) }
     }
 }

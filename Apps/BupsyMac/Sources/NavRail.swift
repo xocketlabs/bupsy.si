@@ -15,6 +15,9 @@ struct NavRail: View {
     @Environment(\.palette) private var palette
 
     @Binding var destination: Destination
+    /// Owned by the app rather than the rail: the palette opens over the conversation, which the
+    /// rail does not contain.
+    var onStartChat: () -> Void = {}
     @State private var isAddingBot = false
     @State private var isSearching = false
     @State private var query = ""
@@ -73,7 +76,7 @@ struct NavRail: View {
             }
             .keyboardShortcut("f", modifiers: .command)
 
-            circleButton("plus", help: "New bot") { isAddingBot = true }
+            circleButton("plus", help: "Start a chat") { onStartChat() }
                 .keyboardShortcut("n", modifiers: .command)
         }
         .padding(.horizontal, Theme.Space.tight)
@@ -153,6 +156,8 @@ struct NavRail: View {
                     let loose = model.ungroupedBots
                     if !loose.isEmpty {
                         VStack(alignment: .leading, spacing: 1) {
+                            // Only worth a heading once there are sections to tell it apart from.
+                            if !model.folders.isEmpty { sectionHeader("Unassigned") }
                             ForEach(loose) { row(for: $0) }
                         }
                     }
@@ -252,6 +257,7 @@ struct NavRail: View {
             preview: model.thread(for: bot.id).preview,
             mood: mood(for: bot),
             selected: destination == .bot(bot.id),
+            unread: model.isUnread(bot),
             // Says *why* a bot is in the results when the name does not contain what you typed.
             // Without it a preview match looks like a mistake.
             matchedOnMessage: previewOf == bot.id,
@@ -413,6 +419,7 @@ struct BotRow: View {
     let preview: String?
     let mood: BotMood
     let selected: Bool
+    var unread = false
     var matchedOnMessage = false
     let action: () -> Void
 
@@ -428,7 +435,7 @@ struct BotRow: View {
                     HStack(spacing: Theme.Space.tight) {
                         Text(bot.name)
                             .font(Theme.Typography.body)
-                            .fontWeight(.medium)
+                            .fontWeight(unread ? .semibold : .medium)
                             .foregroundStyle(palette.foreground)
                             .lineLimit(1)
                         Spacer(minLength: 0)
@@ -441,6 +448,13 @@ struct BotRow: View {
                             Circle()
                                 .fill(palette.primary)
                                 .frame(width: 6, height: 6)
+                        } else if unread {
+                            // Blue rather than the accent: "there is something new" is a
+                            // different claim from "this is waiting on a decision from you", and
+                            // the two must not look alike.
+                            Circle()
+                                .fill(palette.info)
+                                .frame(width: 6, height: 6)
                         }
                     }
                     HStack(spacing: 4) {
@@ -451,7 +465,8 @@ struct BotRow: View {
                         }
                         Text(subtitle)
                             .font(Theme.Typography.caption)
-                            .foregroundStyle(subtitleColour)
+                            .foregroundStyle(unread && mood == .idle
+                                             ? palette.sidebarMutedForeground : subtitleColour)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }

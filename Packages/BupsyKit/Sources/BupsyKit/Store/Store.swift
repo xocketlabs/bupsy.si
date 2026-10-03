@@ -167,6 +167,21 @@ public struct Store: Sendable {
             }
         }
 
+        // Hiding and unread, both per bot.
+        //
+        // `hidden` is separate from deleting: a bot you are done with for now still owns its
+        // history, its routines and its conversation id, and "get it out of my sidebar" must not
+        // be a destructive act dressed up as tidying.
+        //
+        // `lastReadAt` is nullable and means "never opened", which is how a brand-new bot reads as
+        // unread without anything having to write a row at creation time.
+        migrator.registerMigration("v5-hidden-and-unread") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "hidden", .boolean).notNull().defaults(to: false)
+                t.add(column: "lastReadAt", .datetime)
+            }
+        }
+
         return migrator
     }
 

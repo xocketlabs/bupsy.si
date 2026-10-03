@@ -38,6 +38,8 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
     @State private var destination: NavRail.Destination?
+    @State private var isStartingChat = false
+    @State private var isAddingBot = false
 
     var body: some View {
         content
@@ -56,9 +58,16 @@ struct RootView: View {
                 get: { destination ?? model.bots.first.map { .bot($0.id) } ?? .machines },
                 set: { newValue in
                     destination = newValue
-                    if case .bot(let id) = newValue { model.selectedBotID = id }
+                    if case .bot(let id) = newValue {
+                        model.selectedBotID = id
+                        // Opening a thread is what "reading" means. Done here rather than in the
+                        // page body so it fires once on selection instead of on every redraw.
+                        if let bot = model.bots.first(where: { $0.id == id }) {
+                            model.markRead(bot)
+                        }
+                    }
                 }
-            ))
+            ), onStartChat: { isStartingChat = true })
 
             // The working surface floats inside the rail's colour with a small inset, which is
             // where this layout gets its depth — the panel reads as an object on a ground
@@ -66,8 +75,32 @@ struct RootView: View {
             stage
                 .padding(.leading, 0)
                 .padding([.top, .bottom, .trailing], 8)
+                // Over the conversation rather than in a sheet, so the thread you were reading
+                // stays visible behind it and dismissing costs nothing.
+                .overlay(alignment: .top) {
+                    if isStartingChat {
+                        StartChatPalette(
+                            onPick: { id in
+                                destination = .bot(id)
+                                model.selectedBotID = id
+                                if let bot = model.bots.first(where: { $0.id == id }) {
+                                    model.markRead(bot)
+                                }
+                                isStartingChat = false
+                            },
+                            onCreate: {
+                                isStartingChat = false
+                                isAddingBot = true
+                            },
+                            onDismiss: { isStartingChat = false }
+                        )
+                        .padding(.top, 60)
+                        .transition(.opacity)
+                    }
+                }
         }
         .background(PaletteBackground())
+        .sheet(isPresented: $isAddingBot) { NewBotSheet() }
     }
 
     @ViewBuilder
