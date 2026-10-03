@@ -59,6 +59,7 @@ struct MachinesSheet: View {
 /// Where the user pastes their own key. Says plainly whose account it is and where it goes.
 struct ComputeKeySetup: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
     @State private var key = ""
 
     var body: some View {
@@ -72,22 +73,32 @@ struct ComputeKeySetup: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             SecureField("boat.dev API key", text: $key)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(BupsyFieldStyle())
 
             HStack {
+                // Coloured explicitly: `Link` takes the system link colour rather than the app
+                // tint, so it arrived in macOS blue next to a pink accent.
                 Link("Get a key", destination: URL(string: "https://boat.dev")!)
-                    .font(.caption)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.primary)
                 Spacer()
                 Button("Save") {
                     model.setComputeKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
                     key = ""
                 }
+                .buttonStyle(PrimaryButton())
                 .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .padding(20)
-        .frame(maxWidth: 420)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(Theme.Space.gutter)
+        .frame(maxWidth: 460, alignment: .leading)
+        // No `maxHeight: .infinity`. It made this fill the pane and centre itself, so the setup
+        // card floated in the middle of the window with a few hundred points of nothing between
+        // it and the heading it belongs to.
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.card)
+                .strokeBorder(palette.border))
     }
 }
 
