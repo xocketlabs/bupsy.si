@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"01a0fc87-6711-7501-9d7c-45b0a5cc5307"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"The user wants a file listing."}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"ls -la"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"Three entries: PLAN.md, Packages, docs."}}
+{"type":"turn.completed","usage":{"input_tokens":1430,"output_tokens":62}}
+{"type":"some_future_event","payload":{"unmodelled":true}}

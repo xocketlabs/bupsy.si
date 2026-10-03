@@ -1,0 +1,44 @@
+[
+  {
+    "type": "rateLimit",
+    "windows": {
+      "five_hour": 0.03,
+      "seven_day": 0.01
+    },
+    "status": "allowed"
+  },
+  {
+    "type": "started",
+    "conversationID": "sess-abc123"
+  },
+  {
+    "type": "text",
+    "text": "Let me look at the files."
+  },
+  {
+    "type": "toolCall",
+    "name": "Bash",
+    "arguments": "{\"command\":\"ls -la\"}"
+  },
+  {
+    "type": "toolResult",
+    "callID": "call_1",
+    "isError": false
+  },
+  {
+    "type": "text",
+    "text": "Two entries: PLAN.md and docs."
+  },
+  {
+    "type": "usage",
+    "inputTokens": 1200,
+    "outputTokens": 48
+  },
+  {
+    "type": "done",
+    "conversationID": "sess-abc123"
+  },
+  {
+    "type": "unknown"
+  }
+]

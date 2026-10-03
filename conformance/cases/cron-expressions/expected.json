@@ -1,0 +1,65 @@
+[
+  {
+    "expression": "0 7 * * 1-5",
+    "valid": true,
+    "minutes": [
+      0
+    ],
+    "hours": [
+      7
+    ],
+    "weekdays": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  {
+    "expression": "0 9,17 * * *",
+    "valid": true,
+    "minutes": [
+      0
+    ],
+    "hours": [
+      9,
+      17
+    ]
+  },
+  {
+    "expression": "0 8 * * 0",
+    "valid": true,
+    "weekdays": [
+      0
+    ]
+  },
+  {
+    "expression": "0 8 * * 7",
+    "valid": true,
+    "weekdays": [
+      0
+    ],
+    "why": "cron spells Sunday both ways; normalise at the edge"
+  },
+  {
+    "expression": "*/15 * * * *",
+    "valid": false,
+    "why": "step syntax is REFUSED, not approximated. Every general-purpose cron library accepts it, so a port built on one silently takes schedules this core rejects"
+  },
+  {
+    "expression": "0 7 * *",
+    "valid": false,
+    "why": "four fields"
+  },
+  {
+    "expression": "99 7 * * *",
+    "valid": false,
+    "why": "minute out of range"
+  },
+  {
+    "expression": "0 7 * * 9",
+    "valid": false,
+    "why": "weekday out of range"
+  }
+]

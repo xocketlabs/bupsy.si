@@ -1,0 +1,44 @@
+[
+  {
+    "reply": "OBJECTIVE_MET",
+    "outcome": "met"
+  },
+  {
+    "reply": "Checked everything.\nOBJECTIVE_MET",
+    "outcome": "met"
+  },
+  {
+    "reply": "OBJECTIVE_MET\n\nNothing to do.",
+    "outcome": "met"
+  },
+  {
+    "reply": "I would normally say OBJECTIVE_MET here but I could not check.",
+    "outcome": "unclear",
+    "why": "MET must start a line: a false 'all is well' is the expensive direction"
+  },
+  {
+    "reply": "I'll check the drafts folder.NEEDS_YOU: delete them or send them?",
+    "outcome": "needsYou",
+    "detail": "delete them or send them?",
+    "why": "captured verbatim from a real run; escalation is matched anywhere"
+  },
+  {
+    "reply": "Done. OBJECTIVE_ACTED: archived 12 newsletters",
+    "outcome": "acted",
+    "detail": "archived 12 newsletters"
+  },
+  {
+    "reply": "OBJECTIVE_ACTED: archived 12\nNEEDS_YOU: reply to Acme?",
+    "outcome": "needsYou",
+    "detail": "reply to Acme?",
+    "why": "a question outranks an action; the part only a person can settle must not be buried"
+  },
+  {
+    "reply": "I had a look at things.",
+    "outcome": "unclear"
+  },
+  {
+    "reply": "",
+    "outcome": "unclear"
+  }
+]

@@ -36,6 +36,8 @@ Reversing one is fine. Reversing one without reading why it was made is not.
 | 25 | Privileged wake helper (tier 2b) | **Yes, opt-in in onboarding — post-certificate** | Root daemon with a one-call interface. Threat model in [04-wake-helper.md](04-wake-helper.md) |
 | 26 | Distribution | **GitHub Releases only, for now** | Auto-updates deliberately off until a feed has a home — a dead feed is worse than none |
 | 27 | Licensor | **Xocket Labs Inc., a Delaware corporation** | Named in LICENSE and NOTICE; a BSL is only enforceable by a named licensor |
+| 28 | Windows / Linux | **A headless core, not a second GUI** — and not before macOS 1.0 | See below. Electron was considered and argued against with evidence |
+| 29 | Guarding against drift | **Conformance cases, written first** | `conformance/` — one set of cases every implementation must pass |
 
 ### Always-on is three tiers, not one (#23)
 
@@ -103,6 +105,36 @@ Native rather than Electron · lid-closed always-on · MCP-native connectors.
 The fourth was "actually all open", aimed at OpenMausBot's proprietary `enterprise/` folder. BSL
 forecloses it, because Apache-2.0 would let anyone rebrand and ship bupsy. Retired rather than
 softened — a padded list of four reads weaker than a tight list of three.
+
+### Cross-platform: a core, not a second app (#28)
+
+Researched properly rather than assumed. The findings that decided it:
+
+- **Readdle ran this exact experiment.** Spark shared a Swift core with an Electron Windows app
+  via a Node addon in 2020, and in 2022 gave up and rebuilt the *Mac* app in Electron too. The
+  gravity pulls the native app into the Electron one, not the reverse.
+- **Raycast is the version that worked**: one shared core in Rust, a different native shell per
+  platform. Nobody ships a shared *Swift* core cross-platform except the project that abandoned it.
+- **Our core is ~3,900 lines.** Too small to justify the C-ABI and build machinery Readdle needed
+  at 255,000 — but a TypeScript rewrite would be a *third* implementation, because `bupsy-run` is
+  already Go (#10) and already reimplements the engine adapter, normaliser and gate.
+- **Our own Linux CI job agreed**, independently: our Swift is portable once two Darwin-only APIs
+  are replaced, but GRDB does not link there and its Linux support is unmaintained.
+
+So: finish macOS 1.0. If cross-platform demand is real, grow `bupsy-run` into the whole headless
+core rather than building a second GUI — it runs on Windows and Linux from day one, and it
+*reduces* the number of implementations instead of raising it.
+
+Not a promise either way until 1.0 ships (#16 stands).
+
+### Conformance cases come first (#29)
+
+Before any second implementation, not after. A second core drifts silently, and precisely in the
+places a comment explains: markers matched asymmetrically, appends idempotent on `(runID, seq)`,
+cron refusing `*/n` where every general-purpose library accepts it.
+
+`conformance/` holds one set of cases every implementation must pass. Verified by deliberately
+introducing both of those drifts and confirming the suite fails with the reasoning attached.
 
 ## Still open
 

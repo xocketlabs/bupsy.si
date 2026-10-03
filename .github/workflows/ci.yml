@@ -25,6 +25,12 @@ jobs:
       - name: Test
         run: swift test --package-path Packages/BupsyKit
 
+      # Run separately so a conformance failure is legible in the checks list. These are the
+      # cases every implementation must pass, and "the Swift one stopped agreeing with the
+      # shared definition" deserves its own line rather than being one failure among 140.
+      - name: Conformance
+        run: swift test --package-path Packages/BupsyKit --filter Conformance
+
   # Proves our own code carries no hidden Apple dependency. It has already earned its keep twice:
   # it found that URLSession lives in FoundationNetworking off-Apple, and that
   # FileHandle.bytes.lines — the call draining every agent process — does not exist outside
