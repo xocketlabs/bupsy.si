@@ -61,11 +61,9 @@ struct NavRail: View {
 
     private var header: some View {
         HStack(spacing: Theme.Space.snug) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(LinearGradient(
-                    colors: [palette.primary, palette.info],
-                    startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 20, height: 20)
+            // The mark, not a gradient square: the same bubble character as the app icon, and it
+            // blinks now and then, because the thing that looks after the bots is one of them.
+            BupsyMark(size: Theme.scaled(26), alive: true)
             Text("bupsy")
                 .font(.system(size: Theme.scaled(17), weight: .semibold))
                 .foregroundStyle(palette.foreground)
