@@ -113,14 +113,29 @@ public struct CodexAdapter: EngineAdapter {
     }
 
     public func invocation(for request: RunRequest) -> EngineInvocation {
-        var arguments = ["exec", "--json", "--skip-git-repo-check"]
+        var arguments = ["exec", "--json"]
 
         if let resume = request.resume {
             // `exec resume <thread_id>` continues a thread; the prompt follows.
             arguments += ["resume", resume.rawValue]
         }
 
-        arguments += ["--sandbox", Self.sandbox(for: request.autonomy)]
+        let sandbox = Self.sandbox(for: request.autonomy)
+        arguments += ["--sandbox", sandbox]
+
+        if sandbox == "read-only" {
+            // Codex refuses to start outside a git repository unless this is passed, which would
+            // otherwise make every bot pointed at an ordinary folder fail before it began.
+            // Confirmed against the real binary.
+            //
+            // Passed only for read-only runs. Codex wants a repo so its edits stay recoverable,
+            // and that concern is real the moment writes are possible — so a write-capable run
+            // keeps the check and the refusal is surfaced to the user as a decision, rather than
+            // overridden quietly on their behalf. Previously this was passed unconditionally,
+            // which silently removed the one safety net standing between a write-capable bot and
+            // an unrecoverable folder.
+            arguments.append("--skip-git-repo-check")
+        }
 
         if request.autonomy == .auto {
             // Only at the top of the ladder, and only because the user typed a confirmation.
@@ -158,12 +173,27 @@ public struct CodexAdapter: EngineAdapter {
         switch output {
         case .stderr(let line):
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Observed in M0: this is printed when stdin is left open, right before Codex hangs.
-            // If it ever appears, a host is not closing stdin and the run will never finish.
-            if trimmed.contains("Reading additional input from stdin") {
+
+            // "Reading additional input from stdin..." is NOT a problem and must not be reported
+            // as one.
+            //
+            // M0 recorded it as the signal that a host had left stdin open and the run was about
+            // to hang. Checked again against the real binary: codex prints it on every single
+            // run, including with stdin on /dev/null, where it reads EOF and continues normally.
+            // `codex exec --help` confirms the design — stdin is an additional input channel,
+            // appended as a <stdin> block when piped.
+            //
+            // So the line cannot distinguish a hang from a healthy run, and treating it as a
+            // protocol error failed every codex run before it produced a single event. A hang is
+            // only detectable by a timeout, which belongs to the host, not here.
+
+            // This one genuinely stops the run, and dropping it left the user with no events and
+            // no reason — the worst way for anything to fail.
+            if trimmed.contains("Not inside a trusted directory") {
                 return [.failed(EngineFailure(
-                    kind: .protocolError,
-                    message: "codex is waiting on stdin — the host must close it before the run"
+                    kind: .untrustedDirectory,
+                    message: "codex will not run in this folder because it is not a git "
+                        + "repository. Point the bot at a repository, or set it to read-only."
                 ))]
             }
             return []

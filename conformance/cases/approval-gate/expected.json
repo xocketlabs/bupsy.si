@@ -1,0 +1,37 @@
+[
+  {
+    "hookTimeoutSeconds": 900,
+    "scriptTimeoutSeconds": 870,
+    "scriptDecidesFirst": true,
+    "why": "THE SAFETY ARGUMENT, and the reason this case exists. A PreToolUse hook that reaches its own timeout does NOT block — the tool call proceeds through the normal permission flow. So a gate that merely waited would fail OPEN precisely when nobody was watching. The script must therefore answer before the harness gives up, which is what the 30s gap buys. An implementation that raises the script timeout to meet the hook timeout, or drops the gap as redundant, converts a fail-closed gate into a fail-open one with no visible change in behaviour until the night it matters"
+  },
+  {
+    "refusesTimeoutAtOrAboveHookTimeout": true,
+    "why": "refused at install rather than clamped. A gate that quietly becomes fail-open is worse than one that will not install, and a caller passing this has misunderstood the mechanism"
+  },
+  {
+    "timeoutDecision": "deny",
+    "why": "generated with a zero-second wait and actually EXECUTED, rather than matched as text. What matters is the decision the script prints when nobody answers, and only running it proves that — the two cores generate cosmetically different JSON and could just as easily generate cosmetically different shell"
+  },
+  {
+    "scriptPath": "/tmp/bupsy-gate/gate.sh",
+    "settings": {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "*",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "/tmp/bupsy-gate/gate.sh",
+                "timeout": 900,
+                "statusMessage": "waiting for your approval in bupsy"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "why": "compared as PARSED STRUCTURE, never as bytes. Swift's JSONSerialization writes `\"key\" : value` and escapes forward slashes; Go's encoder does neither. Both are valid JSON that Claude Code reads identically, so pinning the text would make one core fight its standard library for no gain. The matcher is `*` on purpose: narrowing happens in the autonomy policy, so one place decides what needs a human and the audit log sees every call either way"
+  }
+]

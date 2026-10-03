@@ -136,14 +136,46 @@ cron refusing `*/n` where every general-purpose library accepts it.
 `conformance/` holds one set of cases every implementation must pass. Verified by deliberately
 introducing both of those drifts and confirming the suite fails with the reasoning attached.
 
+### The headless core has no dependencies (#30)
+
+`Tools/bupsy-run` is Go with an empty `go.mod` and no `go.sum`, and that is a decision rather than
+an accident. The core's whole job is to spawn other people's binaries and parse their output, and
+the standard library covers all of it. A dependency is a thing that can be compromised between us
+and a user's machine — in a program that runs with the user's own credentials sitting in files
+beside it, that trade is not worth making for a cron parser.
+
+The practical cost is a hand-written cron parser and line scanner. Both already existed in Swift,
+and the conformance cases make the second copy cheap to trust.
+
+### A second implementation earns its keep before it ships (#31)
+
+Writing the Go core against `conformance/` found **two live bugs in the shipping Swift core** in
+about an hour, neither visible to 146 passing Swift tests:
+
+1. Every Codex run emitted a fatal `protocolError`, because a routine stderr notice was read as a
+   hang. There was a unit test for it, and it passed throughout — it asserted the mapping rather
+   than the premise behind the mapping.
+2. Codex refuses to start outside a git repository, and the explanation was dropped, so a bot
+   pointed at an ordinary folder failed with zero events and no reason.
+
+Neither was found by the Go core disagreeing with Swift. Both were found because writing the
+mapping a second time meant checking it against the real binary again. That is the argument for
+doing this before 1.0 rather than after, and it is recorded here so it is not re-litigated as
+"the Go core was a detour".
+
+See docs/01-spikes.md spike 6. The gap that hid finding 1 and 2 — argv and stderr, both of which
+fail *before* any event exists — is now two case kinds, `command` and `stderr`.
+
 ## Still open
 
 | Question | Blocks | Owner |
 |---|---|---|
+| **Developer ID certificate** ($99/yr) | notarized releases **and** the tier 2b wake helper | founder |
+| **A boat.dev API key** | the cloud host is written but untested against the real service | founder |
 | Lawyer review of the Additional Use Grant | not blocking; worth an hour before the first public build | founder |
-| **Developer ID certificate** | notarized releases **and** the tier 2b wake helper | founder |
-| Lawyer review of the Additional Use Grant | same | founder |
 | Change Date: 4 years or 3? | nothing yet | founder |
-| **Spike 2: does a stopped VM wake for its own cron?** | the always-on architecture | Core/VM |
-| Each engine's real blocking approval mechanism (spike 4) | the autonomy ladder above `ask` | Core |
 | Freestyle region list | whether EU-only is permanent | VM |
+
+Answered since this table was first written: spike 2 (a stopped machine does **not** wake for its
+own cron — hence the three always-on tiers) and spike 4 (Claude's `PreToolUse` hook does block, in
+both directions, against the real binary). Both are written up in docs/01-spikes.md.

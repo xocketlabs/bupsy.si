@@ -1,0 +1,22 @@
+[
+  {
+    "line": "Reading additional input from stdin...",
+    "events": [],
+    "why": "codex prints this on EVERY run, including with stdin on /dev/null where it reads EOF and continues normally. M0 recorded it as the signal of an imminent hang; rechecked against the real binary, it is not. Treating it as a protocol error failed every codex run before it produced a single event, and `codex exec --help` confirms stdin is simply an additional input channel. A hang is only detectable by a timeout, which belongs to the host"
+  },
+  {
+    "line": "Not inside a trusted directory and --skip-git-repo-check was not specified.",
+    "events": [{ "type": "failed", "failureKind": "untrustedDirectory" }],
+    "why": "this one genuinely stops the run. It was being dropped, which left the user with no events and no reason — the worst way for anything to fail"
+  },
+  {
+    "line": "    ",
+    "events": [],
+    "why": "blank lines are not events"
+  },
+  {
+    "line": "some future diagnostic nobody has seen yet",
+    "events": [],
+    "why": "stderr is diagnostics. Unlike stdout, an unrecognised line here is NOT promoted to unknown — engines print progress chatter to stderr, and an event per line would bury the transcript"
+  }
+]

@@ -72,15 +72,42 @@ struct CodexAdapterTests {
         #expect(unknown.first?.contains("some_future_event") == true)
     }
 
-    /// Observed in M0: given a prompt argument and an open stdin, Codex prints this and waits
-    /// forever. If it ever reaches a user, a host has stopped closing stdin — so it is reported
-    /// as a protocol failure rather than ignored as noise.
-    @Test("treats the stdin-wait warning as a protocol failure")
-    func detectsStdinHang() {
-        let events = adapter.normalise(.stderr("Reading additional input from stdin..."))
+    /// M0 read this line as the signal that Codex was about to hang on an open stdin, and this
+    /// test used to assert it became a protocol failure. Rechecked against the real binary, that
+    /// was wrong: Codex prints it on *every* run, including with stdin on `/dev/null`, where it
+    /// reads EOF and carries on normally. `codex exec --help` confirms the design — stdin is
+    /// simply an additional input channel.
+    ///
+    /// So the old behaviour failed every Codex run before it produced a single event. The test
+    /// passed throughout, because it asserted the mapping rather than the premise behind it. Kept
+    /// as a regression guard with its meaning inverted: a hang is only detectable by a timeout,
+    /// which belongs to the host.
+    @Test("the stdin notice is routine and produces nothing")
+    func stdinNoticeIsNotAFailure() {
+        #expect(adapter.normalise(.stderr("Reading additional input from stdin...")).isEmpty)
+    }
+
+    /// The line that *does* stop a run. It was being dropped, which left the user with no events
+    /// and no reason — the worst way for anything to fail.
+    @Test("reports a refusal to run outside a git repository")
+    func reportsUntrustedDirectory() {
+        let events = adapter.normalise(.stderr(
+            "Not inside a trusted directory and --skip-git-repo-check was not specified."))
         let failure = events.compactMap { if case .failed(let f) = $0 { f } else { nil } }.first
-        #expect(failure?.kind == .protocolError)
-        #expect(failure?.message.contains("close") == true)
+        #expect(failure?.kind == .untrustedDirectory)
+        #expect(failure?.message.contains("git repository") == true)
+    }
+
+    /// The override is passed for read-only runs, where Codex's recoverability concern cannot
+    /// apply, and withheld once writes are possible — where it can.
+    @Test("the git-repo override follows the sandbox, not convenience")
+    func gitRepoOverrideIsConditional() {
+        let readOnly = adapter.invocation(for: RunRequest(prompt: "hi", autonomy: .ask)).arguments
+        #expect(readOnly.contains("--skip-git-repo-check"))
+
+        let writable = adapter
+            .invocation(for: RunRequest(prompt: "hi", autonomy: .trusted)).arguments
+        #expect(!writable.contains("--skip-git-repo-check"))
     }
 }
 

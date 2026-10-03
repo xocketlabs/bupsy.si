@@ -1,0 +1,32 @@
+[
+  {
+    "request": { "prompt": "list the files", "autonomy": "ask" },
+    "argv": ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "list the files"],
+    "why": "codex refuses to start outside a git repository unless --skip-git-repo-check is passed, and 'ask' is the default autonomy — without this flag the common case fails before producing a single event. Confirmed against the real binary"
+  },
+  {
+    "request": { "prompt": "fix the test", "autonomy": "trusted" },
+    "argv": ["exec", "--json", "--sandbox", "workspace-write", "fix the test"],
+    "why": "the flag is DELIBERATELY ABSENT once writes are possible. Codex wants a repo so its edits stay recoverable, and that concern is real here. Passing it unconditionally — which this core did until it was checked — silently removed the only safety net between a write-capable bot and an unrecoverable folder"
+  },
+  {
+    "request": { "prompt": "ship it", "autonomy": "auto" },
+    "argv": ["exec", "--json", "--sandbox", "danger-full-access", "--dangerously-bypass-approvals-and-sandbox", "ship it"],
+    "why": "the top of the ladder, reached only after the user typed a confirmation"
+  },
+  {
+    "request": { "prompt": "carry on", "autonomy": "ask", "resume": "01a0fc87-6711", "model": "gpt-5.1-codex-max", "workingDir": "/tmp/work" },
+    "argv": ["exec", "--json", "resume", "01a0fc87-6711", "--sandbox", "read-only", "--skip-git-repo-check", "-m", "gpt-5.1-codex-max", "-C", "/tmp/work", "carry on"],
+    "why": "order is load-bearing: the subcommand and its thread id come before flags, and the prompt is positional and last. '-m' and '-C' are the short forms codex accepts"
+  },
+  {
+    "request": { "prompt": "hi", "autonomy": "ask", "mcpConfigs": ["/tmp/mcp.json"] },
+    "argv": ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "hi"],
+    "why": "MCP config paths are NOT forwarded to codex. Servers are registered out of band with `codex mcp`, once per host, so an implementation that helpfully passes them per run invents a flag codex does not have"
+  },
+  {
+    "request": { "prompt": "hi", "autonomy": "something-new" },
+    "argv": ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "hi"],
+    "why": "an unrecognised trust level falls to the most restrictive sandbox. It must never be read as more trust than was granted"
+  }
+]

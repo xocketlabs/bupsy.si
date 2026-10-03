@@ -31,6 +31,52 @@ jobs:
       - name: Conformance
         run: swift test --package-path Packages/BupsyKit --filter Conformance
 
+  # The headless core. Runs on Linux because that is the point of it existing — the Swift core's
+  # SQLite layer does not link there, and cloud machines do.
+  #
+  # The conformance step is listed separately from the unit tests for the same reason it is on the
+  # Swift job: "the Go core stopped agreeing with the shared definition" is a different kind of
+  # failure from a test going red, and the log should say which happened without anyone opening it.
+  core:
+    name: Headless core (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          # No cache path, because there is nothing to cache: this module has no dependencies and
+          # no go.sum. That is deliberate — the core drives other people's binaries and parses
+          # their output, and the standard library covers all of it. Adding a dependency here
+          # means adding something that can be compromised between us and a user's machine.
+          cache: false
+
+      - name: Formatting
+        working-directory: Tools/bupsy-run
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would change: $unformatted"
+            exit 1
+          fi
+          echo "clean"
+
+      - name: Vet
+        working-directory: Tools/bupsy-run
+        run: go vet ./...
+
+      - name: Build
+        working-directory: Tools/bupsy-run
+        run: go build ./...
+
+      - name: Test
+        working-directory: Tools/bupsy-run
+        run: go test ./...
+
+      - name: Conformance
+        working-directory: Tools/bupsy-run
+        run: go test ./internal/conformance/ -v
+
   # Proves our own code carries no hidden Apple dependency. It has already earned its keep twice:
   # it found that URLSession lives in FoundationNetworking off-Apple, and that
   # FileHandle.bytes.lines — the call draining every agent process — does not exist outside
@@ -67,7 +113,7 @@ jobs:
       - name: No code reads a credential path
         run: |
           if grep -rnE '\.claude/\.credentials|\.codex/auth\.json|CLAUDE_CODE_OAUTH_TOKEN|setup-token' \
-               --include='*.swift' Packages/ Apps/ 2>/dev/null; then
+               --include='*.swift' --include='*.go' Packages/ Apps/ Tools/ 2>/dev/null; then
             echo "::error::Source references a vendor credential path. See docs/00-compliance-and-auth.md"
             exit 1
           fi
@@ -76,7 +122,7 @@ jobs:
       - name: No vendor marks in product naming
         run: |
           if grep -rniE '\b(claude|anthropic|openai|codex|grok|xai)(kit|app|bot)\b' \
-               --include='*.swift' Packages/ Apps/ 2>/dev/null; then
+               --include='*.swift' --include='*.go' Packages/ Apps/ Tools/ 2>/dev/null; then
             echo "::error::Vendor mark used in a product or type name. See compliance doc §5."
             exit 1
           fi

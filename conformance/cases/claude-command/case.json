@@ -1,0 +1,6 @@
+{
+  "kind": "command",
+  "options": {
+    "engine": "claude"
+  }
+}

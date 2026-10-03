@@ -1,0 +1,22 @@
+[
+  {
+    "request": { "prompt": "list the files", "autonomy": "ask" },
+    "argv": ["-p", "list the files", "--output-format", "stream-json", "--verbose"],
+    "why": "--verbose is required for stream-json to emit anything in print mode"
+  },
+  {
+    "request": { "prompt": "carry on", "autonomy": "ask", "resume": "sess-abc123", "model": "sonnet" },
+    "argv": ["-p", "carry on", "--output-format", "stream-json", "--verbose", "--resume", "sess-abc123", "--model", "sonnet"],
+    "why": "models are family aliases, not pinned identifiers, so the list keeps working as new versions ship"
+  },
+  {
+    "request": { "prompt": "hi", "autonomy": "ask", "gateSettings": "/tmp/gate.json", "mcpConfigs": ["/tmp/mcp.json"] },
+    "argv": ["-p", "hi", "--output-format", "stream-json", "--verbose", "--mcp-config", "/tmp/mcp.json", "--settings", "/tmp/gate.json"],
+    "why": "--settings carries the approval hook, and command-line settings outrank project ones — project .claude/settings.json hooks do not run in -p sessions at all"
+  },
+  {
+    "request": { "prompt": "ship it", "autonomy": "auto" },
+    "argv": ["-p", "ship it", "--output-format", "stream-json", "--verbose"],
+    "why": "no --permission-mode at ANY autonomy level. Widening permissions is not the same as gating them, and the gate is the hook. An implementation that maps trust onto --permission-mode has swapped an enforced gate for an unenforced one"
+  }
+]
