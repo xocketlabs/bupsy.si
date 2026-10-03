@@ -1,0 +1,27 @@
+[
+  {
+    "type": "started",
+    "conversationID": "01a0fc87-6711-7501-9d7c-45b0a5cc5307"
+  },
+  {
+    "type": "thinking",
+    "text": "The user wants a file listing."
+  },
+  {
+    "type": "toolCall",
+    "name": "shell",
+    "arguments": "{\"command\":\"ls -la\"}"
+  },
+  {
+    "type": "text",
+    "text": "Three entries: PLAN.md, Packages, docs."
+  },
+  {
+    "type": "done",
+    "inputTokens": 1430,
+    "outputTokens": 62
+  },
+  {
+    "type": "unknown"
+  }
+]

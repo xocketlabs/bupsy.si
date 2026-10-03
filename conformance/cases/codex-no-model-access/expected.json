@@ -1,0 +1,15 @@
+[
+  {
+    "type": "started",
+    "conversationID": "01a0fc87-6711-7501-9d7c-45b0a5cc5307"
+  },
+  {
+    "type": "failed"
+  },
+  {
+    "type": "failed"
+  },
+  {
+    "type": "failed"
+  }
+]
