@@ -40,6 +40,7 @@ struct BotMenu: View {
         Button("Mark as unread") { model.markUnread(bot) }
         Divider()
         Button("Rename bot…", action: onRename)
+        Button("Shuffle face") { model.shuffleFace(bot) }
         Menu("Engine") {
             ForEach([EngineID.claude, .codex], id: \.self) { engine in
                 Button {
@@ -130,10 +131,14 @@ struct NewBotSheet: View {
         }
     }
 
-    /// Shows the colour the bot will get as you type its name, since the hue is derived from it.
+    /// The face the bot will actually get, as you type its name.
+    ///
+    /// Run through the same "nobody else has this shape" step as creation. Previewing the raw
+    /// name-derived hue would show one character and then create a different one.
     private var previewHue: Double {
         var hash = 5381
         for byte in name.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
-        return name.isEmpty ? 0.55 : Double(abs(hash) % 360) / 360
+        let raw = name.isEmpty ? 0.55 : Double(abs(hash) % 360) / 360
+        return model.distinctHue(near: raw)
     }
 }

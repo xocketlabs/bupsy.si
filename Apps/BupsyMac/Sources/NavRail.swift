@@ -267,12 +267,18 @@ struct NavRail: View {
             matchedOnMessage: previewOf == bot.id,
             action: { destination = .bot(bot.id) }
         )
+        // The shortcut goes on the row *before* the context menu, never after.
+        //
+        // Applied after, it propagated into every button inside the menu: right-clicking the
+        // third bot listed ⌘3 against every item, Delete bot included, and with the menu open ⌘3
+        // could fire any of them. A shortcut meant to *go to* a bot must not be able to delete
+        // one.
+        .keyboardShortcut(shortcut(for: bot), modifiers: .command)
         .contextMenu {
             BotMenu(bot: bot,
                     onNewFolder: { filingBot = bot },
                     onRename: { renamingBot = bot })
         }
-        .keyboardShortcut(shortcut(for: bot), modifiers: .command)
     }
 
     private var empty: some View {
@@ -636,9 +642,14 @@ struct RenameBotSheet: View {
     var body: some View {
         SheetFrame(title: "Edit bot") {
             HStack(spacing: Theme.Space.step) {
-                // The face does not change with the name: the colour is set once at creation, so
-                // a rename stays a rename rather than looking like a different bot.
-                BotFace(hue: bot.avatarHue, mood: .idle, size: 52)
+                // The face does not change with the name: it is set once at creation, so a rename
+                // stays a rename rather than looking like a different bot. Click it for a new one.
+                Button { model.shuffleFace(bot) } label: {
+                    BotFace(hue: model.bots.first { $0.id == bot.id }?.avatarHue ?? bot.avatarHue,
+                            mood: .idle, size: 52)
+                }
+                .buttonStyle(.plain)
+                .help("Shuffle face")
                 VStack(alignment: .leading, spacing: 4) {
                     TextField("", text: $name, prompt: Text(bot.name))
                         .textFieldStyle(BupsyFieldStyle())

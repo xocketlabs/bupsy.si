@@ -535,7 +535,7 @@ final class AppModel {
     }
 
     private static func starterBots() -> [Bot] {
-        [
+        var bots = [
             Bot(name: "Scout", engine: .claude,
                 personaPrompt: "You research things and report back plainly. Be concise."),
             Bot(name: "Builder", engine: .claude,
@@ -543,6 +543,17 @@ final class AppModel {
             Bot(name: "Inbox", engine: .codex,
                 personaPrompt: "You triage and summarise. Lead with what needs a decision."),
         ]
+        // The first thing anyone sees. Two of these came out as identical ghosts.
+        var used: Set<Int> = []
+        for index in bots.indices {
+            var seed = BotFace.seed(forHue: bots[index].avatarHue)
+            while used.contains(BotFace.shapeIndex(forHue: Double(seed) / 360)) {
+                seed = (seed + 1) % 360
+            }
+            bots[index].avatarHue = Double(seed) / 360
+            used.insert(BotFace.shapeIndex(forHue: bots[index].avatarHue))
+        }
+        return bots
     }
 
     var selectedBot: Bot? { bots.first { $0.id == selectedBotID } }
@@ -832,6 +843,7 @@ final class AppModel {
             name: name, engine: engine,
             personaPrompt: job.isEmpty ? nil : job)
         bot.folder = folder
+        bot.avatarHue = distinctHue(near: bot.avatarHue)
         bots.append(bot)
         try? store?.save(bot.record(sortIndex: bots.count - 1))
         selectedBotID = bot.id
@@ -852,6 +864,7 @@ final class AppModel {
         copy.workdir = bot.workdir
         copy.toolAllowlist = bot.toolAllowlist
         copy.folder = bot.folder
+        copy.avatarHue = distinctHue(near: copy.avatarHue)
 
         bots.append(copy)
         try? store?.save(copy.record(sortIndex: bots.count - 1))
@@ -1016,6 +1029,49 @@ final class AppModel {
         return base
             .appendingPathComponent("si.bupsy", isDirectory: true)
             .appendingPathComponent("workspaces", isDirectory: true)
+    }
+
+    // MARK: - Faces
+
+    /// A hue near `hue` whose shape no other bot is wearing.
+    ///
+    /// Shapes come from a hash, so with a handful of bots two of them landing on the same one is
+    /// ordinary bad luck — the three starter bots came out as a clover and two ghosts. A bot's
+    /// face must never change on its own, so this only runs when a bot is made or when someone
+    /// asks for a new face, and uses the hue column that already exists. The first fourteen bots
+    /// are guaranteed distinct; past that, repeats are unavoidable and fine.
+    func distinctHue(near hue: Double, excluding bot: BotID? = nil) -> Double {
+        let taken = Set(bots.filter { $0.id != bot }.map { BotFace.shapeIndex(forHue: $0.avatarHue) })
+        let start = BotFace.seed(forHue: hue)
+        for step in 0..<360 {
+            let candidate = Double((start + step) % 360) / 360
+            if !taken.contains(BotFace.shapeIndex(forHue: candidate)) { return candidate }
+        }
+        return hue
+    }
+
+    /// Gives a bot a different face, one nobody else has if that is still possible.
+    ///
+    /// The only way a face changes. It is how a person fixes two bots that look alike, and it is
+    /// fun, which for a feature whose job is making a list feel like a crowd is not nothing.
+    func shuffleFace(_ bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        let current = BotFace.shapeIndex(forHue: bot.avatarHue)
+        let taken = Set(bots.filter { $0.id != bot.id }.map { BotFace.shapeIndex(forHue: $0.avatarHue) })
+        let start = BotFace.seed(forHue: bot.avatarHue)
+        // Prefer a shape that is both new to this bot and unused by any other; settle for merely
+        // new to this bot once every shape is taken.
+        var fallback: Double?
+        for step in 1..<360 {
+            let candidate = Double((start + step * 7) % 360) / 360
+            let shape = BotFace.shapeIndex(forHue: candidate)
+            guard shape != current else { continue }
+            if !taken.contains(shape) { fallback = candidate; break }
+            if fallback == nil { fallback = candidate }
+        }
+        guard let hue = fallback else { return }
+        bots[index].avatarHue = hue
+        try? store?.save(bots[index].record(sortIndex: index))
     }
 
     // MARK: - Naming and pinning
