@@ -106,6 +106,12 @@ struct RootView: View {
         // remembered at each call site, which is how the blue got in.
         .tint(palette.primary)
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
+        // One at a time, oldest first. A queue of permission dialogs stacked on top of each
+        // other is how people end up approving the one underneath without seeing it.
+        .sheet(item: Binding(
+            get: { model.pendingIntroductions.first },
+            set: { _ in }
+        )) { IntroductionSheet(introduction: $0) }
     }
 
     @ViewBuilder

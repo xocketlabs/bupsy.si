@@ -107,12 +107,23 @@ struct TranscriptEntry: Identifiable, Sendable {
     /// Whether this belongs on the bot's side of the thread. Drives bubble alignment and the
     /// avatar gutter, so it lives with the entry rather than being re-derived in a view.
     var isFromBot: Bool {
-        if case .userMessage = kind { return false }
-        return true
+        switch kind {
+        // A message from another bot sits on the input side of the thread: it is something this
+        // bot was told, not something it said.
+        case .userMessage, .messageFrom: false
+        default: true
+        }
     }
 
     enum Kind: Sendable {
         case userMessage(String)
+        /// Another bot speaking into this thread.
+        ///
+        /// Its own case rather than a decorated `userMessage`: the person reading needs to know
+        /// at a glance that an instruction came from a machine rather than from them, and that
+        /// distinction must survive into the stored transcript and the audit log, not just the
+        /// view layer.
+        case messageFrom(botID: String, botName: String, text: String)
         case assistantText(String)
         case thinking(String)
         case tool(name: String, arguments: String, result: String?, failed: Bool)
@@ -268,6 +279,21 @@ final class Thread {
     /// shows who said what, which `AgentEvent` alone does not carry — it only ever describes the
     /// engine's side of the conversation.
     func applyStored(type: String, payload: String) {
+        // Stored as "<fromBotID>\u{1}<fromName>\u{1}<text>" inside a text payload, so replaying a
+        // transcript keeps the attribution. A unit separator rather than JSON because the event
+        // log is append-only and already carries its own encoding; nesting a second one inside it
+        // is a shape nobody would expect to find there.
+        if type == "messageFrom" {
+            let decoded = EventCodec.decode(type: "text", payload: payload)
+            if case .text(let joined) = decoded {
+                let parts = joined.components(separatedBy: "\u{1}")
+                if parts.count == 3 {
+                    entries.append(TranscriptEntry(kind: .messageFrom(
+                        botID: parts[0], botName: parts[1], text: parts[2])))
+                }
+            }
+            return
+        }
         if type == "userMessage" {
             let text = EventCodec.decode(type: "text", payload: payload)
             if case .text(let message) = text {

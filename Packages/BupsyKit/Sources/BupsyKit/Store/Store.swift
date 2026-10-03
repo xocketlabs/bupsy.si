@@ -182,6 +182,27 @@ public struct Store: Sendable {
             }
         }
 
+        // Who may talk to whom, decided once per ordered pair.
+        //
+        // One bot messaging another routes around the approval gate: the receiving bot acts on
+        // instructions a human never read. So first contact asks, and the answer is remembered
+        // per (from, to) — not per bot. "Scout may message Builder" says nothing about whether
+        // Builder may message Scout, and treating it as symmetric would grant a direction nobody
+        // approved.
+        //
+        // A refusal is stored too. Re-asking every time something is denied trains people to
+        // click through the dialog, which is how a gate stops being one.
+        migrator.registerMigration("v6-bot-links") { db in
+            try db.create(table: "bot_links") { t in
+                t.primaryKey {
+                    t.column("fromBotID", .text).references("bots", onDelete: .cascade)
+                    t.column("toBotID", .text).references("bots", onDelete: .cascade)
+                }
+                t.column("allowed", .boolean).notNull()
+                t.column("decidedAt", .datetime).notNull()
+            }
+        }
+
         return migrator
     }
 
@@ -200,6 +221,17 @@ public struct Store: Sendable {
 
     public func deleteBot(id: String) throws {
         _ = try database.write { db in try BotRecord.deleteOne(db, key: id) }
+    }
+
+    // MARK: - Bot-to-bot links
+
+    public func botLinks() throws -> [BotLinkRecord] {
+        try database.read { db in try BotLinkRecord.fetchAll(db) }
+    }
+
+    public func save(_ link: BotLinkRecord) throws {
+        var link = link
+        try database.write { db in try link.save(db) }
     }
 
     public func machines() throws -> [MachineRecord] {

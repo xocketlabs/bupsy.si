@@ -515,6 +515,7 @@ final class AppModel {
             } else {
                 bots = records.map(Bot.init(record:))
             }
+            links = BotLinks((try? store.botLinks()) ?? [])
         } catch {
             storageProblem = error.localizedDescription
             bots = Self.starterBots()
@@ -692,13 +693,14 @@ final class AppModel {
 
     /// Writes one event to the append-only log. Storage failures never interrupt a run — a bot
     /// that cannot write its transcript should still finish its work and say so.
-    private func persist(_ event: AgentEvent, run: String, seq: Int, asUserMessage: Bool = false) {
+    private func persist(_ event: AgentEvent, run: String, seq: Int,
+                         asUserMessage: Bool = false, asMessageFrom: Bool = false) {
         guard let store else { return }
         let (type, payload) = EventCodec.encode(event)
         do {
             try store.append([EventRecord(
                 runID: run, seq: seq,
-                type: asUserMessage ? "userMessage" : type,
+                type: asMessageFrom ? "messageFrom" : (asUserMessage ? "userMessage" : type),
                 payload: payload)])
         } catch {
             storageProblem = error.localizedDescription
@@ -828,6 +830,83 @@ final class AppModel {
         bots.append(copy)
         try? store?.save(copy.record(sortIndex: bots.count - 1))
         selectedBotID = copy.id
+    }
+
+    // MARK: - Bots talking to each other
+
+    /// A message one bot wants to send another, waiting on a person.
+    struct PendingIntroduction: Identifiable, Equatable {
+        let id = UUID()
+        let from: Bot
+        let to: Bot
+        let text: String
+    }
+
+    /// First contact between two bots, waiting to be allowed or refused.
+    ///
+    /// Held in memory rather than written anywhere: an unanswered introduction is a live
+    /// question, and a question that survives a restart with nobody around to have asked it is
+    /// worse than one that is simply asked again.
+    var pendingIntroductions: [PendingIntroduction] = []
+
+    /// Delivers a message from one bot to another, asking the first time.
+    ///
+    /// One bot messaging another routes around the approval gate: the receiving bot acts on
+    /// instructions no human read. So the first message between an ordered pair stops and asks,
+    /// and the answer is remembered for that direction only — "Scout may message Builder" says
+    /// nothing about whether Builder may message Scout.
+    ///
+    /// A refusal is remembered too. Re-asking every time trains people to click through the
+    /// dialog, which is how a gate stops being one.
+    func deliver(from sender: Bot, to recipient: Bot, text: String) {
+        // Not a permission question: a bot writing into its own thread feeds its own output back
+        // as input, and no human answer makes that safe.
+        guard !BotLinks.isSelfMessage(
+            from: sender.id.rawValue, to: recipient.id.rawValue) else { return }
+
+        switch links.decision(from: sender.id.rawValue, to: recipient.id.rawValue) {
+        case .some(true):
+            append(message: text, from: sender, to: recipient)
+        case .some(false):
+            // Dropped rather than retried. A refused link must not become a loop, and the sender
+            // learning it was refused is not information it needs — the person already decided.
+            storageProblem = nil
+        case .none:
+            pendingIntroductions.append(
+                PendingIntroduction(from: sender, to: recipient, text: text))
+        }
+    }
+
+    func decideIntroduction(_ introduction: PendingIntroduction, allow: Bool) {
+        pendingIntroductions.removeAll { $0.id == introduction.id }
+        links.decide(from: introduction.from.id.rawValue,
+                     to: introduction.to.id.rawValue, allowed: allow)
+        if let link = links.decisions.last { try? store?.save(link) }
+
+        if allow {
+            append(message: introduction.text, from: introduction.from, to: introduction.to)
+        }
+    }
+
+    /// Every decision made so far. The rules themselves live in `BotLinks`, in the package,
+    /// because a permission decision is the part of this product that must be testable.
+    private(set) var links = BotLinks()
+
+    private func append(message: String, from sender: Bot, to recipient: Bot) {
+        let thread = thread(for: recipient.id)
+        thread.entries.append(TranscriptEntry(kind: .messageFrom(
+            botID: sender.id.rawValue, botName: sender.name, text: message)))
+
+        // Stored so a reloaded transcript keeps the attribution rather than showing an
+        // unattributed instruction that looks like the user's own.
+        let joined = [sender.id.rawValue, sender.name, message].joined(separator: "\u{1}")
+        persist(.text(joined), run: ensureConversation(for: recipient, thread: thread),
+                seq: thread.entries.count, asMessageFrom: true)
+
+        // The recipient has something new to look at, and nobody has looked at it.
+        if let index = bots.firstIndex(where: { $0.id == recipient.id }) {
+            bots[index].lastReadAt = bots[index].lastReadAt.map { min($0, Date().addingTimeInterval(-1)) }
+        }
     }
 
     // MARK: - Naming and pinning
@@ -998,6 +1077,7 @@ final class AppModel {
         for entry in thread.entries {
             switch entry.kind {
             case .userMessage(let text): lines.append("You: \(text)")
+            case .messageFrom(_, let name, let text): lines.append("\(name): \(text)")
             case .assistantText(let text): lines.append("\(bot.name): \(text)")
             case .tool(let name, let arguments, _, _): lines.append("  [\(name)] \(arguments)")
             case .approval(let approval):

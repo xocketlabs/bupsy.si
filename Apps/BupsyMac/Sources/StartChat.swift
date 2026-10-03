@@ -181,3 +181,61 @@ private struct PaletteRow: View {
         .buttonStyle(.plain)
     }
 }
+
+/// First contact between two bots, asked once.
+///
+/// Shown as a sheet rather than folded into the attention inbox because it is a *permission*
+/// decision, not a task: answering it sets a standing rule, and that deserves to be read rather
+/// than cleared along with everything else in a list.
+struct IntroductionSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    let introduction: AppModel.PendingIntroduction
+
+    var body: some View {
+        SheetFrame(
+            title: "Let \(introduction.from.name) message \(introduction.to.name)?",
+            subtitle: "A bot is trying to send another bot an instruction. "
+                + "\(introduction.to.name) would act on it without you reading it first.",
+            width: 460
+        ) {
+            HStack(spacing: Theme.Space.step) {
+                BotFace(hue: introduction.from.avatarHue, mood: .idle, size: 40)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.mutedForeground)
+                BotFace(hue: introduction.to.avatarHue, mood: .idle, size: 40)
+                Spacer(minLength: 0)
+            }
+
+            // The actual message, in full. Deciding whether to allow a channel without seeing
+            // what is going down it is not a decision, it is a guess.
+            Field(label: "What it wants to send") {
+                ScrollView {
+                    Text(introduction.text)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Theme.Space.step)
+                }
+                .frame(maxHeight: 160)
+                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.control)
+                        .strokeBorder(palette.border))
+            }
+
+            Text("Your answer is remembered for this direction only, and does not let "
+                 + "\(introduction.to.name) message \(introduction.from.name) back.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .fixedSize(horizontal: false, vertical: true)
+        } actions: {
+            Button("Don't allow") { model.decideIntroduction(introduction, allow: false) }
+                .buttonStyle(QuietButton())
+            Button("Allow") { model.decideIntroduction(introduction, allow: true) }
+                .buttonStyle(PrimaryButton())
+        }
+    }
+}

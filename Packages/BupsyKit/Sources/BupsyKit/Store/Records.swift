@@ -212,3 +212,24 @@ public struct RunSummary: Sendable, Identifiable, Equatable {
         self.inputTokens = inputTokens; self.outputTokens = outputTokens
     }
 }
+
+
+/// One bot's standing permission to message another, in one direction.
+///
+/// Deliberately not symmetric. "Scout may message Builder" says nothing about whether Builder may
+/// message Scout, and collapsing the two would grant a direction nobody was asked about.
+public struct BotLinkRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable {
+    public static let databaseTableName = "bot_links"
+
+    public var fromBotID: String
+    public var toBotID: String
+    /// false is a real answer, kept so a refusal is not re-asked on every attempt. A dialog that
+    /// keeps coming back is a dialog people learn to dismiss without reading.
+    public var allowed: Bool
+    public var decidedAt: Date
+
+    public init(fromBotID: String, toBotID: String, allowed: Bool, decidedAt: Date = Date()) {
+        self.fromBotID = fromBotID; self.toBotID = toBotID
+        self.allowed = allowed; self.decidedAt = decidedAt
+    }
+}

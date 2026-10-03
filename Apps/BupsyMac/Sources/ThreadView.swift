@@ -37,6 +37,36 @@ struct Bubble: View {
                     .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .trailing)
             }
 
+        case .messageFrom(_, let botName, let text):
+            // Attributed above the bubble rather than inside it, so the attribution cannot be
+            // mistaken for part of what was said. Left-aligned like anything this bot was told.
+            VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.system(size: 9))
+                    Text("Message from \(botName)")
+                        .font(Theme.Typography.caption)
+                }
+                .foregroundStyle(palette.mutedForeground)
+                .padding(.leading, Theme.Size.bubbleAvatar + Theme.Space.tight)
+
+                HStack {
+                    Color.clear.frame(width: Theme.Size.bubbleAvatar, height: 1)
+                    Text(text)
+                        .font(Theme.Typography.body)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, Theme.Space.step)
+                        .padding(.vertical, Theme.Space.snug)
+                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Radius.bubble)
+                                .strokeBorder(palette.border))
+                        .foregroundStyle(palette.foreground)
+                        .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .leading)
+                    Spacer(minLength: 72)
+                }
+            }
+
         case .assistantText(let text):
             botAligned {
                 // Cards sit above the background, which is where this palette's depth comes
