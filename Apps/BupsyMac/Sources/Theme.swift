@@ -1,3 +1,4 @@
+import BupsyKit
 import SwiftUI
 
 /// The measurements the whole app is built on, ported from the Agndex dashboard's rhythm.
@@ -445,5 +446,98 @@ struct PrimaryButton: ButtonStyle {
                     ? palette.primary.opacity(configuration.isPressed ? 0.78 : 1)
                     : palette.secondary,
                 in: .rect(cornerRadius: Theme.Radius.control))
+    }
+}
+
+/// A row that states a number rather than offering a choice.
+struct FactRow: View {
+    @Environment(\.palette) private var palette
+    let label: String
+    let value: String
+    var showsDivider = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if showsDivider {
+                Rectangle().fill(palette.border).frame(height: 1)
+                    .padding(.leading, Theme.Space.step)
+            }
+            HStack {
+                Text(label)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                Spacer(minLength: Theme.Space.snug)
+                Text(value)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.mutedForeground)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, Theme.Space.step)
+            .frame(height: 36)
+        }
+    }
+}
+
+/// How much of one subscription window is gone, as reported by the engine.
+///
+/// A bar rather than a number alone: "73%" needs reading, a bar that is nearly full does not. The
+/// reset time matters as much as the figure — being near a limit is only alarming if it does not
+/// reset in ten minutes.
+struct LimitBar: View {
+    @Environment(\.palette) private var palette
+    let name: String
+    let window: RateLimit.Window
+    var showsDivider = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if showsDivider {
+                Rectangle().fill(palette.border).frame(height: 1)
+                    .padding(.leading, Theme.Space.step)
+            }
+            VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                HStack {
+                    Text(name)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
+                    Spacer(minLength: Theme.Space.snug)
+                    Text("\(Int((window.utilization * 100).rounded()))%")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(tone)
+                        .monospacedDigit()
+                }
+
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(palette.secondary)
+                        Capsule()
+                            .fill(tone)
+                            // Clamped: an engine reporting over 1.0 during an overage must not
+                            // draw a bar wider than its track.
+                            .frame(width: geometry.size.width
+                                   * min(max(window.utilization, 0), 1))
+                    }
+                }
+                .frame(height: 4)
+
+                if let resets = window.resetsAt {
+                    Text("Resets \(resets.formatted(.relative(presentation: .named)))")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                }
+            }
+            .padding(.horizontal, Theme.Space.step)
+            .padding(.vertical, Theme.Space.step)
+        }
+    }
+
+    /// Only coloured once it is worth noticing. Everything red all the time teaches people to
+    /// ignore red.
+    private var tone: Color {
+        switch window.utilization {
+        case 0.9...: palette.destructive
+        case 0.7...: .orange
+        default: palette.mutedForeground
+        }
     }
 }

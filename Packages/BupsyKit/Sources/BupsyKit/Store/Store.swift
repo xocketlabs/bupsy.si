@@ -276,7 +276,9 @@ public struct Store: Sendable {
                     host: run.host,
                     prompt: prompt.flatMap(Self.text(in:)),
                     reply: reply.flatMap(Self.text(in:)),
-                    toolCalls: tools)
+                    toolCalls: tools,
+                    inputTokens: run.inputTokens,
+                    outputTokens: run.outputTokens)
             }
         }
     }

@@ -74,8 +74,18 @@ public enum ApprovalDecision: Sendable, Equatable, Codable {
 }
 
 public struct Usage: Sendable, Equatable, Codable {
+    /// Everything the turn sent, including the cached part.
+    ///
+    /// **Not** the engine's `input_tokens` field, which counts only the uncached remainder. A
+    /// real measured turn reported `input_tokens: 2` alongside `cache_creation: 14089` and
+    /// `cache_read: 23065` — so the honest figure for "what this turn sent" is 37,156, and
+    /// reporting the raw field understates it by four orders of magnitude. A usage panel saying
+    /// "2" looks like fabricated data because it effectively is.
     public var inputTokens: Int?
     public var outputTokens: Int?
+    /// The cached share of `inputTokens`, which is why cost stays low on a long thread. Kept
+    /// separate so the total can be honest without the cost looking wrong.
+    public var cachedInputTokens: Int?
     /// Notional equivalent-API cost, when the engine reports it.
     ///
     /// **Never present this as "what you paid."** Spike 3 measured $0.36 of `total_cost_usd`
@@ -85,8 +95,10 @@ public struct Usage: Sendable, Equatable, Codable {
     public var costUSD: Double?
     public var durationMS: Int?
     public init(inputTokens: Int? = nil, outputTokens: Int? = nil,
+                cachedInputTokens: Int? = nil,
                 costUSD: Double? = nil, durationMS: Int? = nil) {
         self.inputTokens = inputTokens; self.outputTokens = outputTokens
+        self.cachedInputTokens = cachedInputTokens
         self.costUSD = costUSD; self.durationMS = durationMS
     }
 }

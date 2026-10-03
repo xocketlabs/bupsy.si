@@ -74,9 +74,30 @@ struct ClaudeNormaliserTests {
         }.first)
 
         #expect(outcome.conversationID == ConversationID("sess-abc123"))
-        #expect(outcome.usage?.inputTokens == 1200)
+        // 1200 + 35908 cache creation. This test used to assert 1200, the engine's raw
+        // `input_tokens`, which counts only the UNCACHED remainder of a turn. Measured against
+        // the real binary: input_tokens 2, cache_creation 14089, cache_read 23065 — so the turn
+        // sent 37,156 and the raw field reports 2. Anything built on it displays a number four
+        // orders of magnitude too small, which reads as fabricated because it effectively is.
+        #expect(outcome.usage?.inputTokens == 37108)
+        #expect(outcome.usage?.cachedInputTokens == 35908)
         #expect(outcome.usage?.outputTokens == 48)
         #expect(outcome.usage?.durationMS == 4210)
+    }
+
+    /// The cache fields are optional, and a turn that reports neither must still report what it
+    /// did send rather than nothing.
+    @Test("usage survives a result line with no cache fields")
+    func usageWithoutCacheFields() throws {
+        let line = #"{"type":"result","subtype":"success","usage":{"input_tokens":40,"#
+            + #""output_tokens":9},"session_id":"s"}"#
+        let json = try #require(JSONLine(line))
+        let usage = ClaudeAdapter.usage(from: json)
+
+        #expect(usage.inputTokens == 40)
+        #expect(usage.outputTokens == 9)
+        // nil, not 0: "nothing was cached" and "the engine did not say" are different facts.
+        #expect(usage.cachedInputTokens == nil)
     }
 
     /// Spike 3 found `claude` volunteering the user's own subscription utilisation. It drives

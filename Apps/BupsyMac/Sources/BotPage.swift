@@ -95,6 +95,7 @@ struct BotPage: View {
             VStack(alignment: .leading, spacing: Theme.Space.section) {
                 header
                 settings
+                usage
                 goals
                 routineSection
                 history
@@ -107,6 +108,66 @@ struct BotPage: View {
         // over the conversation beside it.
         .clipped()
         .background(palette.sidebar)
+    }
+
+    /// What this bot has actually used, and nothing it has not.
+    ///
+    /// Every number here is reported by the engine: the windows come from Claude's
+    /// `rate_limit_event`, the tokens from each run's own result line. Deliberately missing is any
+    /// "context window" percentage — the engine reports what a turn *sent*, never how large the
+    /// window is, so a percentage would mean hardcoding a limit per model and watching it rot into
+    /// a confident wrong number. "Largest turn" says the same thing without pretending.
+    ///
+    /// The section is absent, not empty, until something is known. A usage panel full of zeroes
+    /// reads as broken, and worse, as real.
+    @ViewBuilder
+    private var usage: some View {
+        let runs = model.recentRuns(for: bot)
+        let windows = thread.latestLimits?.windows ?? [:]
+        let counted = runs.compactMap(\.inputTokens)
+
+        if !windows.isEmpty || !counted.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                if !windows.isEmpty {
+                    SettingsGroup(title: "Your \(bot.engine.displayName) limits") {
+                        ForEach(windows.sorted(by: { $0.key < $1.key }), id: \.key) { name, window in
+                            LimitBar(name: Self.windowLabel(name), window: window,
+                                     showsDivider: name != windows.keys.sorted().first)
+                        }
+                    }
+                }
+
+                if !counted.isEmpty {
+                    SettingsGroup(title: "Tokens") {
+                        FactRow(label: "Runs", value: "\(runs.count)", showsDivider: false)
+                        FactRow(label: "Sent", value: Self.compact(counted.reduce(0, +)))
+                        FactRow(label: "Received",
+                                value: Self.compact(runs.compactMap(\.outputTokens).reduce(0, +)))
+                        // Says why a long thread is cheaper than its token count suggests, and
+                        // why "sent" is so much larger than anything that was typed.
+                        FactRow(label: "Largest turn", value: Self.compact(counted.max() ?? 0))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Engine window names are snake_case and internal. These are not.
+    static func windowLabel(_ name: String) -> String {
+        switch name {
+        case "five_hour": "Five hours"
+        case "seven_day": "This week"
+        case "seven_day_opus": "This week, Opus"
+        default: name.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    static func compact(_ value: Int) -> String {
+        switch value {
+        case 1_000_000...: String(format: "%.1fM", Double(value) / 1_000_000)
+        case 1_000...: String(format: "%.0fk", Double(value) / 1_000)
+        default: "\(value)"
+        }
     }
 
     /// What this bot is set to, as rows rather than chips.

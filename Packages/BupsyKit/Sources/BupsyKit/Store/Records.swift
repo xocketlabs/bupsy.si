@@ -187,6 +187,10 @@ public struct RunSummary: Sendable, Identifiable, Equatable {
     public let prompt: String?
     public let reply: String?
     public let toolCalls: Int
+    /// As the engine reported them. nil when a run failed before it said anything, which is a
+    /// different fact from zero and is shown differently.
+    public let inputTokens: Int?
+    public let outputTokens: Int?
 
     public var duration: TimeInterval? {
         endedAt.map { $0.timeIntervalSince(startedAt) }
@@ -195,9 +199,11 @@ public struct RunSummary: Sendable, Identifiable, Equatable {
     public var succeeded: Bool { status == "finished" }
 
     public init(id: String, startedAt: Date, endedAt: Date?, status: String, host: String,
-                prompt: String?, reply: String?, toolCalls: Int) {
+                prompt: String?, reply: String?, toolCalls: Int,
+                inputTokens: Int? = nil, outputTokens: Int? = nil) {
         self.id = id; self.startedAt = startedAt; self.endedAt = endedAt
         self.status = status; self.host = host
         self.prompt = prompt; self.reply = reply; self.toolCalls = toolCalls
+        self.inputTokens = inputTokens; self.outputTokens = outputTokens
     }
 }
