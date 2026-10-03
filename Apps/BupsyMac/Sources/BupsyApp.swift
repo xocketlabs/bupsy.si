@@ -22,6 +22,10 @@ struct BupsyApp: App {
                 }
         }
         .defaultSize(width: 1000, height: 680)
+        // Left as the standard window on purpose. `.hiddenTitleBar` is the look this design was
+        // drawn for and what Grok Bot uses, but it has to be done with the close, minimise and
+        // zoom buttons verifiably still reachable — shipping a window someone cannot close is
+        // not a trade worth making for a strip of chrome. Worth a deliberate pass, not a guess.
         .windowToolbarStyle(.unified)
         .commands { UpdaterCommands(updater: updater) }
 

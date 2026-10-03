@@ -407,7 +407,10 @@ struct BotPage: View {
                         .padding(.bottom, Theme.Space.gutter)
                         .padding(.horizontal, Theme.Space.section)
                         .frame(maxWidth: Theme.Size.contentMaxWidth)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // Centred, not leading: the composer is centred in the pane, and a
+                        // transcript hugging the left edge while the box you type into sits in
+                        // the middle reads as two unrelated panels.
+                        .frame(maxWidth: .infinity, alignment: .center)
                         // Short threads sit on the composer rather than floating at the top of an
                         // empty pane. Every messaging app does this, and the first reply in a new
                         // conversation is exactly when the difference is most obvious.

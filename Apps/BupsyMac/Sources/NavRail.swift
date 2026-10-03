@@ -45,7 +45,9 @@ struct NavRail: View {
             footer
         }
         .padding(.horizontal, Theme.Space.step)
-        .padding(.top, 22)
+        // Clears the title bar. At 22 the wordmark was clipped by it — the app's own name
+        // covered by a second, worse copy of the app's own name.
+        .padding(.top, 30)
         .padding(.bottom, Theme.Space.step)
         .frame(width: 292)
         .background(palette.sidebar)
