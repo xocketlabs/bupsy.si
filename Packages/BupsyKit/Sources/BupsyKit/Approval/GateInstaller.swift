@@ -19,6 +19,13 @@ public enum GateInstaller {
     public static func install(gateDirectory: URL, timeoutSeconds: Int = scriptTimeoutSeconds)
         throws -> URL
     {
+        // Refused rather than clamped. A gate that quietly becomes fail-open is worse than one
+        // that will not install, and a caller passing this has misunderstood the mechanism.
+        guard timeoutSeconds < hookTimeoutSeconds else {
+            throw GateError.timeoutWouldFailOpen(
+                script: timeoutSeconds, hook: hookTimeoutSeconds)
+        }
+
         let script = gateDirectory.appendingPathComponent("gate.sh")
         let settings = gateDirectory.appendingPathComponent("settings.json")
 
@@ -90,5 +97,19 @@ public enum GateInstaller {
         printf '%s\\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"bupsy: nobody approved this in time, so it was denied"}}'
         exit 0
         """
+    }
+}
+
+public enum GateError: Error, Equatable, LocalizedError {
+    /// The script would wait as long as, or longer than, the harness — which converts a
+    /// fail-closed gate into a fail-open one. See `GateInstaller.scriptTimeoutSeconds`.
+    case timeoutWouldFailOpen(script: Int, hook: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .timeoutWouldFailOpen(let script, let hook):
+            "A gate waiting \(script)s cannot sit inside a \(hook)s hook timeout: the tool call "
+                + "would proceed unapproved. Keep the script's wait below the hook's."
+        }
     }
 }

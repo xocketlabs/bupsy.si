@@ -56,6 +56,11 @@ would be easy to get wrong a second time:
   wrong flag fails *before* a single event exists, so no stream case can see it. The two
   implementations had already drifted here (`--model` against `-m`, MCP paths forwarded to an
   engine with no such flag) within an hour of the second one being written.
+- **`approval-gate`** — the gate's fail-closed behaviour. A `PreToolUse` hook that reaches its own
+  timeout does **not** block, so the script must answer before the harness gives up; an
+  implementation that closes that 30s gap converts a fail-closed gate into a fail-open one with no
+  visible change until the night it matters. Asserted as constants *and* by generating the script
+  with a zero-second wait and actually running it.
 - **`codex-stderr`** — what diagnostic lines mean, and mostly what they do **not**. Three of its
   four lines must produce nothing. Added after the shipping core was found to be reporting
   `Reading additional input from stdin...` as a fatal protocol error on every single Codex run —
@@ -73,6 +78,7 @@ meets an unknown kind must **fail**, not skip: a case nobody runs is worse than 
 | `command` | requests in `expected.json` | a run request → the exact argv |
 | `objective` | replies in `expected.json` | an agent's reply → an outcome |
 | `cron` | expressions in `expected.json` | what schedules are accepted and refused |
+| `gate` | assertions in `expected.json` | the approval gate's timing and its unanswered decision |
 
 A case compares only the fields it names, so an implementation may carry extra detail — a raw line
 kept for the audit log, a cost figure one engine reports and the other does not — without every

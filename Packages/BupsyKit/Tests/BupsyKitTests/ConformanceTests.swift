@@ -268,6 +268,103 @@ struct ConformanceTests {
         }
     }
 
+
+    // MARK: - The approval gate
+
+    /// Pins the gate's fail-closed behaviour.
+    ///
+    /// The timing *is* the safety argument, so it is asserted as numbers **and** by running the
+    /// generated script — a core could agree on both constants and still emit shell that defaults
+    /// to allow.
+    @Test("the approval gate fails closed in every implementation")
+    func gate() throws {
+        for (name, directory) in try Self.cases(ofKind: "gate") {
+            for (index, want) in try Self.expected(directory).enumerated() {
+                let where_ = "\(name)[\(index)]"
+                let why = (want["why"] as? String).map { "\n  why: \($0)" } ?? ""
+
+                if let expected = want["hookTimeoutSeconds"] as? Int {
+                    #expect(GateInstaller.hookTimeoutSeconds == expected, "\(where_) hook timeout\(why)")
+                }
+                if let expected = want["scriptTimeoutSeconds"] as? Int {
+                    #expect(GateInstaller.scriptTimeoutSeconds == expected, "\(where_) script timeout\(why)")
+                }
+                if want["scriptDecidesFirst"] as? Bool == true,
+                   GateInstaller.scriptTimeoutSeconds >= GateInstaller.hookTimeoutSeconds {
+                    Issue.record("""
+                        \(where_): the gate fails OPEN — script \
+                        \(GateInstaller.scriptTimeoutSeconds)s is not below hook \
+                        \(GateInstaller.hookTimeoutSeconds)s\(why)
+                        """)
+                }
+
+                if want["refusesTimeoutAtOrAboveHookTimeout"] as? Bool == true {
+                    let directory = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString)
+                    try FileManager.default.createDirectory(
+                        at: directory, withIntermediateDirectories: true)
+                    #expect(throws: GateError.self, "\(where_) install guard\(why)") {
+                        _ = try GateInstaller.install(
+                            gateDirectory: directory,
+                            timeoutSeconds: GateInstaller.hookTimeoutSeconds)
+                    }
+                }
+
+                if let expected = want["timeoutDecision"] as? String {
+                    try checkUnansweredGate(decides: expected, case: where_, why: why)
+                }
+
+                if let expected = want["settings"] as? [String: Any] {
+                    let path = want["scriptPath"] as? String ?? ""
+                    let raw = GateInstaller.settingsJSON(scriptPath: path)
+                    let parsed = try JSONSerialization.jsonObject(
+                        with: Data(raw.utf8)) as? [String: Any] ?? [:]
+                    // Structure, not bytes. JSONSerialization writes `"key" : value` and escapes
+                    // forward slashes where Go's encoder does neither; both are valid JSON the
+                    // engine reads identically, so pinning the text would make one core fight its
+                    // own standard library for nothing.
+                    #expect(NSDictionary(dictionary: parsed) == NSDictionary(dictionary: expected),
+                            "\(where_) settings structure\(why)\n  got: \(raw)")
+                }
+            }
+        }
+    }
+
+    /// Generates the script with a zero-second wait and actually runs it. Matching the text would
+    /// pass on a script that never executes.
+    private func checkUnansweredGate(decides expected: String, case where_: String, why: String) throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let script = directory.appendingPathComponent("gate.sh")
+        try Data(GateInstaller.shellScript(gateDirectory: directory, timeoutSeconds: 0).utf8)
+            .write(to: script)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [script.path]
+        let input = Pipe(), output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        try process.run()
+        input.fileHandleForWriting.write(Data(#"{"tool_name":"Bash"}"#.utf8))
+        try input.fileHandleForWriting.close()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let specific = parsed["hookSpecificOutput"] as? [String: Any],
+              let decision = specific["permissionDecision"] as? String
+        else {
+            Issue.record("""
+                \(where_): the gate printed something the engine cannot read: \
+                \(String(decoding: data, as: UTF8.self))\(why)
+                """)
+            return
+        }
+        #expect(decision == expected, "\(where_) unanswered gate decision\(why)")
+    }
+
     /// Every kind on disk has a runner here.
     ///
     /// This suite iterates by kind, so a case of a kind nobody implemented would be skipped in
@@ -275,7 +372,7 @@ struct ConformanceTests {
     /// Adding a kind must break every implementation until each one handles it, which is the point.
     @Test("no case is silently skipped")
     func everyKindHasARunner() throws {
-        let known: Set<String> = ["stream", "stderr", "command", "objective", "cron"]
+        let known: Set<String> = ["stream", "stderr", "command", "objective", "cron", "gate"]
         let directories = try FileManager.default.contentsOfDirectory(
             at: Self.casesDirectory, includingPropertiesForKeys: nil)
 
@@ -305,5 +402,6 @@ struct ConformanceTests {
         #expect(try Self.cases(ofKind: "cron").count >= 1)
         #expect(try Self.cases(ofKind: "command").count >= 2)
         #expect(try Self.cases(ofKind: "stderr").count >= 1)
+        #expect(try Self.cases(ofKind: "gate").count >= 1)
     }
 }

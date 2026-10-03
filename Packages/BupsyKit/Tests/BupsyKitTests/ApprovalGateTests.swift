@@ -92,7 +92,7 @@ struct ApprovalGateTests {
     @Test("the hook script relays a decision back to the engine")
     func scriptRelaysDecision() async throws {
         let gate = try ApprovalGate.temporary()
-        let settings = try await GateInstaller.install(gateDirectory: gate.directory)
+        let settings = try GateInstaller.install(gateDirectory: gate.directory)
         #expect(FileManager.default.fileExists(atPath: settings.path))
 
         let output = try await runScript(
@@ -111,7 +111,7 @@ struct ApprovalGateTests {
     @Test("fails closed when nobody answers")
     func failsClosed() async throws {
         let gate = try ApprovalGate.temporary()
-        _ = try await GateInstaller.install(gateDirectory: gate.directory, timeoutSeconds: 2)
+        _ = try GateInstaller.install(gateDirectory: gate.directory, timeoutSeconds: 2)
 
         let output = try await runScript(
             gate: gate,
@@ -167,7 +167,7 @@ struct ApprovalGateTests {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = [await gate.directory.appendingPathComponent("gate.sh").path]
+        process.arguments = [gate.directory.appendingPathComponent("gate.sh").path]
         let stdin = Pipe(), stdout = Pipe()
         process.standardInput = stdin
         process.standardOutput = stdout

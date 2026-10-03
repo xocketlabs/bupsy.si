@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/cron"
 	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/engine"
+	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/gate"
 	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/objective"
 )
 
@@ -87,6 +89,8 @@ func TestConformance(t *testing.T) {
 				checkCommand(t, s.Options.Engine, expected)
 			case "stderr":
 				checkStderr(t, s.Options.Engine, expected)
+			case "gate":
+				checkGate(t, expected)
 			case "cron":
 				checkCron(t, expected)
 			default:
@@ -98,6 +102,10 @@ func TestConformance(t *testing.T) {
 	// A suite that silently runs nothing is worse than one that fails: it reports green forever.
 	if ran == 0 {
 		t.Fatal("no cases ran")
+	}
+	// Each kind must be represented, so dropping a case directory cannot quietly reduce coverage.
+	if ran < 9 {
+		t.Errorf("only %d cases ran; the suite had 9 — a case directory went missing", ran)
 	}
 }
 
@@ -215,6 +223,93 @@ func list(m map[string]any, key string) []string {
 		}
 	}
 	return out
+}
+
+// checkGate pins the approval gate's fail-closed behaviour.
+//
+// The timing is the safety argument, so it is asserted as numbers AND by running the generated
+// script: a core could agree on both constants and still generate shell that defaults to allow.
+func checkGate(t *testing.T, expected []map[string]any) {
+	t.Helper()
+
+	for i, want := range expected {
+		label := fmt.Sprintf("gate %d", i)
+
+		if n, ok := number(want["hookTimeoutSeconds"]); ok && int(n) != gate.HookTimeoutSeconds {
+			t.Errorf("%s: hook timeout = %d, want %d%s",
+				label, gate.HookTimeoutSeconds, int(n), because(want))
+		}
+		if n, ok := number(want["scriptTimeoutSeconds"]); ok && int(n) != gate.ScriptTimeoutSeconds {
+			t.Errorf("%s: script timeout = %d, want %d%s",
+				label, gate.ScriptTimeoutSeconds, int(n), because(want))
+		}
+		if first, ok := want["scriptDecidesFirst"].(bool); ok && first {
+			if gate.ScriptTimeoutSeconds >= gate.HookTimeoutSeconds {
+				t.Errorf("%s: the gate fails OPEN — script %ds is not below hook %ds%s",
+					label, gate.ScriptTimeoutSeconds, gate.HookTimeoutSeconds, because(want))
+			}
+		}
+
+		if refuses, ok := want["refusesTimeoutAtOrAboveHookTimeout"].(bool); ok && refuses {
+			if _, err := gate.Install(t.TempDir(), gate.HookTimeoutSeconds); err == nil {
+				t.Errorf("%s: installing with a timeout at the hook timeout was accepted%s",
+					label, because(want))
+			}
+		}
+
+		if decision, ok := want["timeoutDecision"].(string); ok {
+			checkTimeoutDecision(t, label, decision, want)
+		}
+
+		if wantSettings, ok := want["settings"].(map[string]any); ok {
+			scriptPath, _ := want["scriptPath"].(string)
+			raw, err := gate.SettingsJSON(scriptPath)
+			if err != nil {
+				t.Fatalf("%s: settings: %v", label, err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal([]byte(raw), &got); err != nil {
+				t.Fatalf("%s: generated settings are not valid JSON: %v", label, err)
+			}
+			// Structure, not bytes: the two cores format JSON differently and both are read the
+			// same way by the engine.
+			if !reflect.DeepEqual(got, wantSettings) {
+				t.Errorf("%s: settings structure differs\n  got  %s\n  want %s%s",
+					label, render(got), render(wantSettings), because(want))
+			}
+		}
+	}
+}
+
+// checkTimeoutDecision runs the generated script with a zero-second wait and reads the decision it
+// prints. Executing it is the point — matching the text would pass on a script that never runs.
+func checkTimeoutDecision(t *testing.T, label, wantDecision string, want map[string]any) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gate.sh")
+	if err := os.WriteFile(path, []byte(gate.ShellScript(dir, 0)), 0o755); err != nil {
+		t.Fatalf("%s: write script: %v", label, err)
+	}
+
+	cmd := exec.Command("/bin/sh", path)
+	cmd.Stdin = strings.NewReader(`{"tool_name":"Bash"}`)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%s: running the gate script failed: %v", label, err)
+	}
+
+	var decoded struct {
+		HookSpecificOutput struct {
+			PermissionDecision string `json:"permissionDecision"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatalf("%s: gate printed something the engine cannot read: %q", label, out)
+	}
+	if decoded.HookSpecificOutput.PermissionDecision != wantDecision {
+		t.Errorf("%s: unanswered gate decided %q, want %q%s",
+			label, decoded.HookSpecificOutput.PermissionDecision, wantDecision, because(want))
+	}
 }
 
 func checkObjective(t *testing.T, expected []map[string]any) {

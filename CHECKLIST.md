@@ -79,6 +79,7 @@ downloadable app is an Apple Developer certificate.
 - [x] Installing a schedule inside a cloud machine
 - [x] A second copy of the engine-handling code, in Go, that runs on Linux and Windows
 - [x] One shared set of tests both copies have to pass, so they can't quietly disagree
+- [x] The approval gate in both copies, with its "deny if nobody answers" proven by running it
 
 ---
 
