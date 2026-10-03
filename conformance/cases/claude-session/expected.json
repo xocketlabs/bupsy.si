@@ -31,12 +31,15 @@
   },
   {
     "type": "usage",
-    "inputTokens": 1200,
-    "outputTokens": 48
+    "inputTokens": 37108,
+    "outputTokens": 48,
+    "cachedInputTokens": 35908,
+    "why": "inputTokens is 1200 + 35908, NOT the raw input_tokens field. The engine's `input_tokens` counts only the UNCACHED remainder of a turn; on a thread of any length the cache fields carry almost all of it. Measured against the real binary: input_tokens 2, cache_creation 14089, cache_read 23065 \u2014 a usage panel built on the raw field would have displayed 2 instead of 37156, which reads as fabricated data because it effectively is"
   },
   {
     "type": "done",
-    "conversationID": "sess-abc123"
+    "conversationID": "sess-abc123",
+    "inputTokens": 37108
   },
   {
     "type": "unknown"

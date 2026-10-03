@@ -1,17 +1,30 @@
 import BupsyKit
 import SwiftUI
 
-/// The nav rail: brand, grouped destinations, and who you are signed in as.
+/// The nav rail: a conversation list first, and the machinery behind it second.
 ///
-/// Grouped with labels rather than listed flat. A flat list of bots and settings makes a bot and
-/// a settings screen look like the same kind of thing; the labels say which are the people you
-/// talk to and which is the machinery behind them.
+/// Rebuilt from a list of names into a list of *conversations*. A name alone makes every bot look
+/// identical and gives no reason to click one rather than another; the line underneath — what it
+/// last said — is what turns the sidebar into something you read rather than something you
+/// navigate. The same reason every messaging app does it.
+///
+/// Bots are filed into folders the user names. Those come second: ungrouped bots sit at the top,
+/// because filing should be optional and a brand-new bot must not land somewhere surprising.
 struct NavRail: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
 
     @Binding var destination: Destination
+    /// Owned by the app rather than the rail: the palette opens over the conversation, which the
+    /// rail does not contain.
+    var onStartChat: () -> Void = {}
     @State private var isAddingBot = false
+    @State private var isSearching = false
+    @State private var query = ""
+    @State private var renamingFolder: FolderName?
+    @State private var filingBot: Bot?
+    @State private var renamingBot: Bot?
+    @FocusState private var searchFocused: Bool
 
     enum Destination: Hashable {
         case bot(BotID)
@@ -21,64 +34,265 @@ struct NavRail: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.section) {
-            brand
+        VStack(alignment: .leading, spacing: Theme.Space.step) {
+            header
+            if isSearching { searchField }
             attention
 
-            group("Bots") {
-                ForEach(model.bots) { bot in
-                    NavItem(
-                        selected: destination == .bot(bot.id),
-                        action: { destination = .bot(bot.id) }
-                    ) {
-                        BotFace(hue: bot.avatarHue, mood: mood(for: bot), size: 22)
-                        Text(bot.name)
-                        Spacer(minLength: Theme.Space.snug)
-                        trailing(for: bot)
-                    }
-                    .contextMenu { BotMenu(bot: bot) }
-                    .keyboardShortcut(shortcut(for: bot), modifiers: .command)
-                }
+            conversations
 
-                NavItem(selected: false, action: { isAddingBot = true }) {
-                    Image(systemName: "plus").font(.system(size: 12)).frame(width: 22)
-                    Text("New bot")
-                    Spacer(minLength: 0)
-                }
-                .keyboardShortcut("n", modifiers: .command)
-            }
-
-            group("Setup") {
-                NavItem(
-                    selected: destination == .machines,
-                    action: { destination = .machines }
-                ) {
-                    Image(systemName: "server.rack").font(.system(size: 12)).frame(width: 22)
-                    Text("Machines")
-                    Spacer(minLength: 0)
-                    count(model.machines.count)
-                }
-                NavItem(
-                    selected: destination == .connectors,
-                    action: { destination = .connectors }
-                ) {
-                    Image(systemName: "puzzlepiece.extension").font(.system(size: 12)).frame(width: 22)
-                    Text("Apps")
-                    Spacer(minLength: 0)
-                    count(model.connectors.count)
-                }
-            }
-
-            Spacer(minLength: 0)
+            setup
             footer
         }
-        .padding(.horizontal, Theme.Space.gutter)
+        .padding(.horizontal, Theme.Space.step)
         .padding(.top, 22)
-        .padding(.bottom, Theme.Space.gutter)
-        .frame(width: 276)
+        .padding(.bottom, Theme.Space.step)
+        .frame(width: 292)
         .background(palette.sidebar)
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
+        .sheet(item: $renamingFolder) { RenameFolderSheet(folder: $0.id) }
+        .sheet(item: $filingBot) { NewFolderSheet(bot: $0) }
+        .sheet(item: $renamingBot) { RenameBotSheet(bot: $0) }
     }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(spacing: Theme.Space.snug) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(LinearGradient(
+                    colors: [palette.primary, palette.info],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 20, height: 20)
+            Text("bupsy")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(palette.foreground)
+
+            Spacer(minLength: Theme.Space.snug)
+
+            circleButton("magnifyingglass", help: "Search bots") {
+                isSearching.toggle()
+                if isSearching { searchFocused = true } else { query = "" }
+            }
+            .keyboardShortcut("f", modifiers: .command)
+
+            circleButton("plus", help: "Start a chat") { onStartChat() }
+                .keyboardShortcut("n", modifiers: .command)
+        }
+        .padding(.horizontal, Theme.Space.tight)
+    }
+
+    private func circleButton(
+        _ symbol: String, help: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(palette.sidebarMutedForeground)
+                .frame(width: 26, height: 26)
+                .background(palette.sidebarAccent, in: .circle)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: Theme.Space.tight) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 10))
+                .foregroundStyle(palette.sidebarMuted)
+            TextField("", text: $query, prompt: Text("Search bots"))
+                .textFieldStyle(.plain)
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.foreground)
+                .focused($searchFocused)
+                .onSubmit { selectFirstMatch() }
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(palette.sidebarMuted)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, Theme.Space.snug)
+        .frame(height: 30)
+        .background(palette.sidebarAccent, in: .rect(cornerRadius: Theme.Radius.control))
+        // Escape closes the field rather than only clearing it, so the shortcut that opened it
+        // also puts things back exactly as they were.
+        .onExitCommand {
+            isSearching = false
+            query = ""
+        }
+    }
+
+    /// Enter in the search field opens the one you were looking for, rather than making you
+    /// reach for the mouse to finish a keyboard gesture.
+    private func selectFirstMatch() {
+        if let first = ranked.first {
+            destination = .bot(first.bot.id)
+            isSearching = false
+            query = ""
+        }
+    }
+
+    // MARK: - The conversation list
+
+    private var conversations: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Space.step) {
+                if searching {
+                    results
+                } else {
+                    if !model.pinnedBots.isEmpty {
+                        VStack(alignment: .leading, spacing: 1) {
+                            sectionHeader("Pinned")
+                            ForEach(model.pinnedBots) { row(for: $0) }
+                        }
+                    }
+
+                    let loose = model.ungroupedBots
+                    if !loose.isEmpty {
+                        VStack(alignment: .leading, spacing: 1) {
+                            // Only worth a heading once there are sections to tell it apart from.
+                            if !model.folders.isEmpty { sectionHeader("Unassigned") }
+                            ForEach(loose) { row(for: $0) }
+                        }
+                    }
+
+                    ForEach(model.folders, id: \.self) { folder in
+                        let members = model.bots(in: folder)
+                        if !members.isEmpty {
+                            VStack(alignment: .leading, spacing: 1) {
+                                sectionHeader(folder)
+                                    .contextMenu {
+                                        Button("Rename folder…") {
+                                            renamingFolder = FolderName(folder)
+                                        }
+                                        // Named for what it does. "Delete folder" would read as
+                                        // deleting the bots inside it, which it never does.
+                                        Button("Ungroup these bots") {
+                                            model.dissolveFolder(folder)
+                                        }
+                                    }
+                                ForEach(members) { row(for: $0) }
+                            }
+                        }
+                    }
+
+                    if model.bots.isEmpty { empty }
+                }
+            }
+            .padding(.bottom, Theme.Space.snug)
+        }
+        .scrollIndicators(.automatic)
+        .frame(maxHeight: .infinity)
+    }
+
+    private var searching: Bool {
+        !query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Search results are a flat ranked list, not the same folders with gaps in them.
+    ///
+    /// Searching is a different task from browsing: you already know what you want and you want it
+    /// at the top. Keeping the folder structure during a search buries the best match under
+    /// headings and makes the first result's position depend on which folder it happens to be in.
+    @ViewBuilder
+    private var results: some View {
+        let hits = ranked
+        if hits.isEmpty {
+            noMatches
+        } else {
+            VStack(alignment: .leading, spacing: 1) {
+                sectionHeader(hits.count == 1 ? "1 result" : "\(hits.count) results")
+                ForEach(hits) { hit in
+                    row(for: hit.bot, matchedOn: hit.matchedPreview ? hit.bot.id : nil)
+                }
+            }
+        }
+    }
+
+    /// Name matches first, then matches on what the bot said.
+    ///
+    /// A name match is almost always what you meant; a preview match is a recall aid. Sorting by
+    /// where the match landed — and, within that, how early in the string — puts the obvious
+    /// answer first instead of leaving it to the order bots happen to be stored in.
+    private var ranked: [SearchHit] {
+        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !needle.isEmpty else { return [] }
+
+        return model.bots.compactMap { bot -> SearchHit? in
+            let name = bot.name.lowercased()
+            if let position = name.range(of: needle)?.lowerBound {
+                return SearchHit(bot: bot, rank: 0,
+                                 offset: name.distance(from: name.startIndex, to: position),
+                                 matchedPreview: false)
+            }
+            let preview = (model.thread(for: bot.id).preview ?? "").lowercased()
+            if let position = preview.range(of: needle)?.lowerBound {
+                return SearchHit(bot: bot, rank: 1,
+                                 offset: preview.distance(from: preview.startIndex, to: position),
+                                 matchedPreview: true)
+            }
+            return nil
+        }
+        .sorted { ($0.rank, $0.offset) < ($1.rank, $1.offset) }
+    }
+
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(Theme.Typography.badge)
+            .foregroundStyle(palette.sidebarMuted)
+            .tracking(0.7)
+            .padding(.horizontal, Theme.Space.snug)
+            .padding(.bottom, Theme.Space.tight)
+    }
+
+    private func row(for bot: Bot, matchedOn previewOf: BotID? = nil) -> some View {
+        BotRow(
+            bot: bot,
+            preview: model.thread(for: bot.id).preview,
+            mood: mood(for: bot),
+            selected: destination == .bot(bot.id),
+            unread: model.isUnread(bot),
+            // Says *why* a bot is in the results when the name does not contain what you typed.
+            // Without it a preview match looks like a mistake.
+            matchedOnMessage: previewOf == bot.id,
+            action: { destination = .bot(bot.id) }
+        )
+        .contextMenu {
+            BotMenu(bot: bot,
+                    onNewFolder: { filingBot = bot },
+                    onRename: { renamingBot = bot })
+        }
+        .keyboardShortcut(shortcut(for: bot), modifiers: .command)
+    }
+
+    private var empty: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.tight) {
+            Text("No bots yet")
+                .font(Theme.Typography.label)
+                .foregroundStyle(palette.sidebarMutedForeground)
+            Text("⌘N to make your first one.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.sidebarMuted)
+        }
+        .padding(.horizontal, Theme.Space.snug)
+        .padding(.top, Theme.Space.snug)
+    }
+
+    private var noMatches: some View {
+        Text("Nothing matches “\(query)”")
+            .font(Theme.Typography.caption)
+            .foregroundStyle(palette.sidebarMuted)
+            .padding(.horizontal, Theme.Space.snug)
+            .padding(.top, Theme.Space.snug)
+    }
+
+    // MARK: - Below the list
 
     /// Appears only when something is waiting.
     ///
@@ -110,49 +324,51 @@ struct NavRail: View {
         }
     }
 
-    private var brand: some View {
-        HStack(spacing: Theme.Space.snug) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(LinearGradient(
-                    colors: [palette.primary, palette.info],
-                    startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 20, height: 20)
-            Text("bupsy")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(palette.foreground)
-            Spacer(minLength: Theme.Space.snug)
-            Text(model.bots.count == 1 ? "1 bot" : "\(model.bots.count) bots")
-                .font(Theme.Typography.badge)
-                .foregroundStyle(palette.mutedForeground)
-                .padding(.horizontal, Theme.Space.snug)
-                .padding(.vertical, 5)
-                .background(palette.background, in: .rect(cornerRadius: 6))
+    /// Pinned below the scrolling list, so the machinery stays reachable however many bots there
+    /// are — and stays visually separate from the people you talk to.
+    private var setup: some View {
+        HStack(spacing: Theme.Space.tight) {
+            setupItem("server.rack", label: "Machines", count: model.machines.count,
+                      selected: destination == .machines) { destination = .machines }
+            setupItem("puzzlepiece.extension", label: "Apps", count: model.connectors.count,
+                      selected: destination == .connectors) { destination = .connectors }
         }
     }
 
-    @ViewBuilder
-    private func group<Content: View>(
-        _ label: String, @ViewBuilder content: () -> Content
+    private func setupItem(
+        _ symbol: String, label: String, count: Int, selected: Bool,
+        action: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
-                .font(Theme.Typography.badge)
-                .foregroundStyle(palette.sidebarMuted)
-                .tracking(0.7)
-                .padding(.horizontal, Theme.Space.snug)
-                .padding(.bottom, Theme.Space.snug)
-            content()
+        Button(action: action) {
+            HStack(spacing: Theme.Space.tight) {
+                Image(systemName: symbol).font(.system(size: 11))
+                Text(label).font(Theme.Typography.label)
+                Spacer(minLength: 0)
+                if count > 0 {
+                    Text("\(count)")
+                        .font(Theme.Typography.badge)
+                        .foregroundStyle(palette.sidebarMuted)
+                }
+            }
+            .foregroundStyle(selected ? palette.foreground : palette.sidebarMutedForeground)
+            .padding(.horizontal, Theme.Space.snug)
+            .frame(height: 32)
+            .frame(maxWidth: .infinity)
+            .background(selected ? palette.sidebarAccent : .clear,
+                        in: .rect(cornerRadius: Theme.Radius.control))
+            .contentShape(.rect)
         }
+        .buttonStyle(.plain)
     }
 
     private var footer: some View {
         HStack(spacing: Theme.Space.snug) {
             RoundedRectangle(cornerRadius: Theme.Radius.control)
                 .fill(palette.sidebarAccent)
-                .frame(width: 28, height: 28)
+                .frame(width: 26, height: 26)
                 .overlay {
                     Image(systemName: "person.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundStyle(palette.mutedForeground)
                 }
             VStack(alignment: .leading, spacing: 0) {
@@ -165,7 +381,7 @@ struct NavRail: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, Theme.Space.snug)
+        .padding(.horizontal, Theme.Space.tight)
     }
 
     private var engineSummary: String {
@@ -188,51 +404,268 @@ struct NavRail: View {
         if model.isRunning(bot.id) { return .working }
         return .idle
     }
-
-    @ViewBuilder
-    private func trailing(for bot: Bot) -> some View {
-        if model.isWaitingForApproval(bot.id) {
-            Text("needs you")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(palette.primary)
-        } else if model.isRunning(bot.id) {
-            Circle().fill(Color.green).frame(width: 6, height: 6)
-        }
-    }
-
-    private func count(_ value: Int) -> some View {
-        Text(value == 0 ? "" : "\(value)")
-            .font(Theme.Typography.caption)
-            .foregroundStyle(palette.sidebarMuted)
-    }
 }
 
-struct NavItem<Content: View>: View {
+/// One conversation in the list: face, name, and the last thing said.
+///
+/// Two lines rather than one. The preview is the entire reason this is a list worth looking at —
+/// without it every row is just a name, and you have to open a bot to find out whether it did
+/// anything. The status is shown on the face itself rather than as a word on the right, so a
+/// glance down the list reads as a column of faces, not a column of labels.
+struct BotRow: View {
     @Environment(\.palette) private var palette
+
+    let bot: Bot
+    let preview: String?
+    let mood: BotMood
     let selected: Bool
+    var unread = false
+    var matchedOnMessage = false
     let action: () -> Void
-    @ViewBuilder var content: Content
+
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: Theme.Space.snug) {
-                content
+                BotFace(hue: bot.avatarHue, mood: mood, size: 34)
+                    .overlay(alignment: .bottomTrailing) { statusDot }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: Theme.Space.tight) {
+                        Text(bot.name)
+                            .font(Theme.Typography.body)
+                            .fontWeight(unread ? .semibold : .medium)
+                            .foregroundStyle(palette.foreground)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        if bot.pinned {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 8))
+                                .foregroundStyle(palette.sidebarMuted)
+                        }
+                        if mood == .waitingForYou {
+                            Circle()
+                                .fill(palette.primary)
+                                .frame(width: 6, height: 6)
+                        } else if unread {
+                            // Blue rather than the accent: "there is something new" is a
+                            // different claim from "this is waiting on a decision from you", and
+                            // the two must not look alike.
+                            Circle()
+                                .fill(palette.info)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    HStack(spacing: 4) {
+                        if matchedOnMessage {
+                            Image(systemName: "text.quote")
+                                .font(.system(size: 8))
+                                .foregroundStyle(palette.sidebarMuted)
+                        }
+                        Text(subtitle)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(unread && mood == .idle
+                                             ? palette.sidebarMutedForeground : subtitleColour)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
             }
-            .font(Theme.Typography.body)
-            .foregroundStyle(selected ? palette.foreground : palette.sidebarMutedForeground)
             .padding(.horizontal, Theme.Space.snug)
-            .padding(.vertical, 9)
+            .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(background, in: .rect(cornerRadius: Theme.Radius.control))
+            .background(background, in: .rect(cornerRadius: Theme.Radius.base))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .help(preview ?? bot.name)
+    }
+
+    /// What the row says when there is nothing to quote yet. Never blank: an empty second line
+    /// makes the row look broken rather than new.
+    private var subtitle: String {
+        switch mood {
+        case .waitingForYou: "Needs you"
+        case .working: preview ?? "Working…"
+        case .failed: preview ?? "Last run failed"
+        case .idle: preview ?? "No messages yet"
+        }
+    }
+
+    /// Only drawn when there is something to say. A permanent grey dot on every row is furniture.
+    @ViewBuilder
+    private var statusDot: some View {
+        if mood != .idle {
+            Circle()
+                .fill(dotColour)
+                .frame(width: 9, height: 9)
+                .overlay(Circle().stroke(palette.sidebar, lineWidth: 2))
+                .offset(x: 1, y: 1)
+        }
+    }
+
+    private var subtitleColour: Color {
+        switch mood {
+        case .waitingForYou: palette.primary
+        case .failed: palette.destructive
+        default: palette.sidebarMuted
+        }
+    }
+
+    private var dotColour: Color {
+        switch mood {
+        case .waitingForYou: palette.primary
+        case .failed: palette.destructive
+        default: .green
+        }
     }
 
     private var background: Color {
         if selected { return palette.sidebarAccent }
         return hovering ? palette.sidebarAccent.opacity(0.55) : .clear
+    }
+}
+
+/// Renames a folder across every bot filed under it.
+///
+/// The folder *is* the string on each bot, so renaming is a bulk edit rather than a record
+/// update. Done here rather than inline in the context menu because a text field inside a menu
+/// cannot take focus on macOS.
+struct RenameFolderSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let folder: String
+    @State private var name = ""
+
+    var body: some View {
+        SheetFrame(title: "Rename folder", width: 380) {
+            Field(label: "Name",
+                  hint: "\(model.bots(in: folder).count) bots move with it.") {
+                TextField("", text: $name, prompt: Text(folder))
+                    .textFieldStyle(BupsyFieldStyle())
+                    .onSubmit(commit)
+            }
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Rename", action: commit)
+                .buttonStyle(PrimaryButton())
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .onAppear { name = folder }
+    }
+
+    private func commit() {
+        model.renameFolder(folder, to: name)
+        dismiss()
+    }
+}
+
+/// `sheet(item:)` needs an Identifiable. A wrapper rather than a retroactive conformance on
+/// String: that conformance would apply everywhere in the app and can quietly change which
+/// SwiftUI overload gets picked somewhere unrelated.
+/// One search result, with enough about *how* it matched to rank it and to explain itself.
+struct SearchHit: Identifiable {
+    let bot: Bot
+    /// 0 for a name match, 1 for a match on what the bot said.
+    let rank: Int
+    /// Where in the string the match started. Earlier reads as more relevant.
+    let offset: Int
+    let matchedPreview: Bool
+
+    var id: BotID { bot.id }
+}
+
+struct FolderName: Identifiable, Hashable {
+    let id: String
+    init(_ name: String) { id = name }
+}
+
+/// Files one bot into a folder that does not exist yet.
+///
+/// Creating the folder and putting something in it are the same action on purpose: a folder here
+/// exists exactly as long as a bot is in it, so there is no way to make an empty one and then
+/// wonder where it went.
+struct NewFolderSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let bot: Bot
+    @State private var name = ""
+
+    var body: some View {
+        SheetFrame(title: "New folder", width: 380) {
+            Field(label: "Name", hint: "\(bot.name) moves into it.") {
+                TextField("", text: $name, prompt: Text("Outreach"))
+                    .textFieldStyle(BupsyFieldStyle())
+                    .onSubmit(commit)
+            }
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Create", action: commit)
+                .buttonStyle(PrimaryButton())
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+    }
+
+    private func commit() {
+        model.setFolder(bot, name)
+        dismiss()
+    }
+}
+
+/// Renames a bot, and edits what it is for.
+///
+/// Both in one place because they are the same thought — "this bot is actually for something
+/// else" — and splitting them across two menu items means doing half the edit and forgetting the
+/// rest.
+struct RenameBotSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let bot: Bot
+    @State private var name = ""
+    @State private var job = ""
+
+    var body: some View {
+        SheetFrame(title: "Edit bot") {
+            HStack(spacing: Theme.Space.step) {
+                // The face does not change with the name: the colour is set once at creation, so
+                // a rename stays a rename rather than looking like a different bot.
+                BotFace(hue: bot.avatarHue, mood: .idle, size: 52)
+                TextField("", text: $name, prompt: Text(bot.name))
+                    .textFieldStyle(BupsyFieldStyle())
+                    .onSubmit(commit)
+            }
+
+            Field(label: "What's its job?",
+                  hint: "Takes effect on the next thing you say — it does not rewrite the thread.") {
+                TextField("", text: $job,
+                          prompt: Text("Research things and report back plainly."),
+                          axis: .vertical)
+                    .textFieldStyle(BupsyFieldStyle())
+                    .lineLimit(3...5)
+            }
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Save", action: commit)
+                .buttonStyle(PrimaryButton())
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .onAppear {
+            name = bot.name
+            job = bot.personaPrompt ?? ""
+        }
+    }
+
+    private func commit() {
+        model.rename(bot, to: name)
+        model.setJob(bot, job)
+        dismiss()
     }
 }

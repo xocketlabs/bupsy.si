@@ -186,13 +186,7 @@ func (c Claude) Normalise(raw string) []Event {
 		return events
 
 	case "result":
-		usage := l.dict("usage")
-		event := Event{
-			Kind:         KindUsage,
-			InputTokens:  intField(usage, "input_tokens"),
-			OutputTokens: intField(usage, "output_tokens"),
-			CostUSD:      floatField(l.body, "total_cost_usd"),
-		}
+		event := usageEvent(l)
 		isError, hasIsError := l.boolean("is_error")
 		if l.str("subtype") != "success" || (hasIsError && isError) {
 			message := l.str("result")
@@ -205,16 +199,52 @@ func (c Claude) Normalise(raw string) []Event {
 			return []Event{event, {Kind: KindFailed, Message: message}}
 		}
 		return []Event{event, {
-			Kind:           KindDone,
-			Text:           l.str("result"),
-			ConversationID: l.str("session_id"),
-			InputTokens:    event.InputTokens,
-			OutputTokens:   event.OutputTokens,
+			Kind:              KindDone,
+			Text:              l.str("result"),
+			ConversationID:    l.str("session_id"),
+			InputTokens:       event.InputTokens,
+			OutputTokens:      event.OutputTokens,
+			CachedInputTokens: event.CachedInputTokens,
 		}}
 
 	default:
 		return []Event{{Kind: KindUnknown, Raw: l.raw}}
 	}
+}
+
+// usageEvent reads the usage block, summing everything that was actually sent.
+//
+// `input_tokens` alone counts only the uncached remainder of a turn. On a thread of any length
+// the cache fields carry almost all of it, so a total built from `input_tokens` understates the
+// real figure by orders of magnitude.
+func usageEvent(l line) Event {
+	usage := l.dict("usage")
+
+	var cached int
+	var sawCache bool
+	for _, key := range []string{"cache_creation_input_tokens", "cache_read_input_tokens"} {
+		if value := intField(usage, key); value != nil {
+			cached += *value
+			sawCache = true
+		}
+	}
+
+	event := Event{Kind: KindUsage, CostUSD: floatField(l.body, "total_cost_usd")}
+	event.OutputTokens = intField(usage, "output_tokens")
+
+	// nil when the engine said nothing at all, which is a different fact from a turn that sent
+	// zero and must not be rendered as "0".
+	switch raw := intField(usage, "input_tokens"); {
+	case raw != nil:
+		total := *raw + cached
+		event.InputTokens = &total
+	case sawCache:
+		event.InputTokens = &cached
+	}
+	if sawCache {
+		event.CachedInputTokens = &cached
+	}
+	return event
 }
 
 // flatten renders a tool result, which arrives as a string or as content blocks depending on the

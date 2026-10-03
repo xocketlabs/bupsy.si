@@ -22,6 +22,8 @@ final class AppModel {
     var needsOnboarding = !UserDefaults.standard.bool(forKey: "si.bupsy.onboarded")
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?
+    /// Whether the database opened at all, which changes what a storage problem means.
+    var hasStore: Bool { store != nil }
     /// Set when a schedule could not be installed, so the UI can say a routine will not fire.
     var routineProblem: String?
 
@@ -163,7 +165,7 @@ final class AppModel {
         // Recorded locally before the call, so a machine created remotely is never invisible
         // here — an orphan on someone's bill that bupsy does not know about is the worst
         // possible outcome of a failed create.
-        var record = MachineRecord(
+        let record = MachineRecord(
             name: name, state: "creating", size: size.rawValue,
             ttlSeconds: alwaysOn ? nil : 3600)
         machines.append(record)
@@ -345,7 +347,12 @@ final class AppModel {
                 // Never swallowed: a routine that silently never fires is this feature's worst
                 // failure, so the reason reaches the user rather than a debug log.
                 FileHandle.standardError.write(Data("bupsy: launch agent — \(error)\n".utf8))
-                await MainActor.run { self?.routineProblem = error.localizedDescription }
+                // The message is read out here and only the String crosses to the main actor.
+                // Capturing `self` inside the hop sends a task-isolated reference into a
+                // main-actor closure, which Swift 6 rejects — and which this app never compiled
+                // in CI to find out until the app build job was added.
+                let message = error.localizedDescription
+                await MainActor.run { [weak self] in self?.routineProblem = message }
             }
         }
     }
@@ -515,6 +522,7 @@ final class AppModel {
             } else {
                 bots = records.map(Bot.init(record:))
             }
+            links = BotLinks((try? store.botLinks()) ?? [])
         } catch {
             storageProblem = error.localizedDescription
             bots = Self.starterBots()
@@ -635,7 +643,15 @@ final class AppModel {
             resume: thread.conversationID,
             model: bot.model,
             autonomy: bot.autonomy,
-            mcpConfigPaths: (try? MCPConfig.write(connectors)).flatMap { $0 }.map { [$0] } ?? [],
+            mcpConfigPaths: (try? MCPConfig.write(
+                connectors,
+                including: Self.bupsyMCPBinary.map {
+                    MCPConfig.bupsyServer(
+                        binary: $0,
+                        outbox: OutboxWatcher.directory.path,
+                        botID: bot.id.rawValue)
+                }
+            )).flatMap { $0 }.map { [$0] } ?? [],
             gateSettingsPath: gateSettings
         )
 
@@ -692,13 +708,14 @@ final class AppModel {
 
     /// Writes one event to the append-only log. Storage failures never interrupt a run — a bot
     /// that cannot write its transcript should still finish its work and say so.
-    private func persist(_ event: AgentEvent, run: String, seq: Int, asUserMessage: Bool = false) {
+    private func persist(_ event: AgentEvent, run: String, seq: Int,
+                         asUserMessage: Bool = false, asMessageFrom: Bool = false) {
         guard let store else { return }
         let (type, payload) = EventCodec.encode(event)
         do {
             try store.append([EventRecord(
                 runID: run, seq: seq,
-                type: asUserMessage ? "userMessage" : type,
+                type: asMessageFrom ? "messageFrom" : (asUserMessage ? "userMessage" : type),
                 payload: payload)])
         } catch {
             storageProblem = error.localizedDescription
@@ -799,10 +816,11 @@ final class AppModel {
         for id in running.keys { stop(id) }
     }
 
-    func addBot(name: String, engine: EngineID, job: String = "") {
-        let bot = Bot(
+    func addBot(name: String, engine: EngineID, job: String = "", folder: String? = nil) {
+        var bot = Bot(
             name: name, engine: engine,
             personaPrompt: job.isEmpty ? nil : job)
+        bot.folder = folder
         bots.append(bot)
         try? store?.save(bot.record(sortIndex: bots.count - 1))
         selectedBotID = bot.id
@@ -822,10 +840,278 @@ final class AppModel {
         copy.keepAwake = bot.keepAwake
         copy.workdir = bot.workdir
         copy.toolAllowlist = bot.toolAllowlist
+        copy.folder = bot.folder
 
         bots.append(copy)
         try? store?.save(copy.record(sortIndex: bots.count - 1))
         selectedBotID = copy.id
+    }
+
+    // MARK: - Bots talking to each other
+
+    private var outbox: OutboxWatcher?
+
+    /// The helper that lets a bot message another bot, shipped inside the app bundle.
+    ///
+    /// nil in a build where it is missing, and then the tool simply is not offered — a bot that
+    /// cannot find the binary should have no `message_bot` tool at all, rather than one that
+    /// fails every time it is called.
+    static var bupsyMCPBinary: String? {
+        Bundle.main.url(forAuxiliaryExecutable: "bupsy-mcp")?.path
+            ?? Bundle.main.url(forResource: "bupsy-mcp", withExtension: nil)?.path
+    }
+
+    /// Starts listening for messages bots want to send each other.
+    func startOutbox() {
+        guard outbox == nil else { return }
+        let watcher = OutboxWatcher { [weak self] from, toName, text in
+            self?.receive(from: from, toName: toName, text: text)
+        }
+        watcher.start()
+        outbox = watcher
+    }
+
+    /// Resolves a dropped message against the roster and hands it to the gate.
+    ///
+    /// The recipient arrives as a *name*, because that is what the model knows. Resolved case
+    /// insensitively and only against an exact match: a bot called "Email" must never receive
+    /// something addressed to "Email Agent 3" because a fuzzy match looked close enough.
+    private func receive(from senderID: String, toName: String, text: String) {
+        guard let sender = bots.first(where: { $0.id.rawValue == senderID }) else { return }
+        guard let recipient = bots.first(where: {
+            $0.name.compare(toName, options: .caseInsensitive) == .orderedSame
+        }) else {
+            // No such bot. Reported into the sender's own thread so the failure is visible to
+            // whoever reads it, rather than vanishing into a deleted file.
+            thread(for: sender.id).entries.append(TranscriptEntry(kind: .failure(
+                EngineFailure(kind: .unknown, message: "No bot named “\(toName)” to message."))))
+            return
+        }
+        deliver(from: sender, to: recipient, text: text)
+    }
+
+    /// A message one bot wants to send another, waiting on a person.
+    struct PendingIntroduction: Identifiable, Equatable {
+        let id = UUID()
+        let from: Bot
+        let to: Bot
+        let text: String
+    }
+
+    /// First contact between two bots, waiting to be allowed or refused.
+    ///
+    /// Held in memory rather than written anywhere: an unanswered introduction is a live
+    /// question, and a question that survives a restart with nobody around to have asked it is
+    /// worse than one that is simply asked again.
+    var pendingIntroductions: [PendingIntroduction] = []
+
+    /// Delivers a message from one bot to another, asking the first time.
+    ///
+    /// One bot messaging another routes around the approval gate: the receiving bot acts on
+    /// instructions no human read. So the first message between an ordered pair stops and asks,
+    /// and the answer is remembered for that direction only — "Scout may message Builder" says
+    /// nothing about whether Builder may message Scout.
+    ///
+    /// A refusal is remembered too. Re-asking every time trains people to click through the
+    /// dialog, which is how a gate stops being one.
+    func deliver(from sender: Bot, to recipient: Bot, text: String) {
+        // Not a permission question: a bot writing into its own thread feeds its own output back
+        // as input, and no human answer makes that safe.
+        guard !BotLinks.isSelfMessage(
+            from: sender.id.rawValue, to: recipient.id.rawValue) else { return }
+
+        switch links.decision(from: sender.id.rawValue, to: recipient.id.rawValue) {
+        case .some(true):
+            append(message: text, from: sender, to: recipient)
+        case .some(false):
+            // Dropped rather than retried. A refused link must not become a loop, and the sender
+            // learning it was refused is not information it needs — the person already decided.
+            storageProblem = nil
+        case .none:
+            pendingIntroductions.append(
+                PendingIntroduction(from: sender, to: recipient, text: text))
+        }
+    }
+
+    func decideIntroduction(_ introduction: PendingIntroduction, allow: Bool) {
+        pendingIntroductions.removeAll { $0.id == introduction.id }
+        links.decide(from: introduction.from.id.rawValue,
+                     to: introduction.to.id.rawValue, allowed: allow)
+        if let link = links.decisions.last { try? store?.save(link) }
+
+        if allow {
+            append(message: introduction.text, from: introduction.from, to: introduction.to)
+        }
+    }
+
+    /// Every decision made so far. The rules themselves live in `BotLinks`, in the package,
+    /// because a permission decision is the part of this product that must be testable.
+    private(set) var links = BotLinks()
+
+    private func append(message: String, from sender: Bot, to recipient: Bot) {
+        let thread = thread(for: recipient.id)
+        thread.entries.append(TranscriptEntry(kind: .messageFrom(
+            botID: sender.id.rawValue, botName: sender.name, text: message)))
+
+        // Recorded as a run of its own, with the sending bot as the host.
+        //
+        // Events belong to runs — the first version of this passed a *conversation* id and every
+        // delivery failed a foreign key, silently, until the storage banner surfaced it. Beyond
+        // being required, a run is also the honest shape: a message arriving from another bot is
+        // something that happened to this bot at a point in time, and the audit log should hold
+        // it the same way it holds everything else.
+        let run = RunRecord(
+            botID: recipient.id.rawValue,
+            conversationID: ensureConversation(for: recipient, thread: thread),
+            host: "link:\(sender.id.rawValue)",
+            status: "finished",
+            endedAt: Date())
+        try? store?.save(run)
+
+        let joined = [sender.id.rawValue, sender.name, message].joined(separator: "\u{1}")
+        persist(.text(joined), run: run.id, seq: 0, asMessageFrom: true)
+
+        // The recipient has something new to look at, and nobody has looked at it.
+        if let index = bots.firstIndex(where: { $0.id == recipient.id }) {
+            bots[index].lastReadAt = bots[index].lastReadAt.map { min($0, Date().addingTimeInterval(-1)) }
+        }
+    }
+
+    // MARK: - Naming and pinning
+
+    /// Renames a bot. The colour does not follow, on purpose.
+    ///
+    /// A bot's hue is derived from its name the first time it is created, so a rename would
+    /// otherwise change its face — and the face is how you find it in the list. Keeping the
+    /// colour means a rename is a rename rather than a new bot wearing the old one's history.
+    func rename(_ bot: Bot, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != bot.name,
+              let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].name = trimmed
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Edits what a bot is for. Takes effect on the next thing you say to it, not retroactively.
+    func setJob(_ bot: Bot, _ job: String) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        let trimmed = job.trimmingCharacters(in: .whitespaces)
+        bots[index].personaPrompt = trimmed.isEmpty ? nil : trimmed
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Takes a bot out of the sidebar without destroying anything.
+    ///
+    /// Separate from delete on purpose: a bot you are finished with for now still owns its
+    /// history, its routines and its conversation id, and "get this out of my way" must never be
+    /// a destructive act dressed up as tidying. Hidden bots are still reachable by search.
+    func toggleHidden(_ bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].hidden.toggle()
+        if bots[index].hidden, selectedBotID == bot.id {
+            selectedBotID = bots.first { !$0.hidden }?.id
+        }
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Whether a bot has said something since you last looked at it.
+    func isUnread(_ bot: Bot) -> Bool {
+        let thread = thread(for: bot.id)
+        // Only the bot's own messages count. Your own last message making the row bold would
+        // mark everything unread the moment you sent anything.
+        guard let latest = thread.entries.last(where: { $0.isFromBot })?.at else { return false }
+        guard let seen = bot.lastReadAt else { return true }
+        return latest > seen
+    }
+
+    /// Called when a thread is opened. Idempotent and cheap.
+    func markRead(_ bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].lastReadAt = Date()
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Puts a bot back in the unread state so it is still obvious tomorrow.
+    ///
+    /// Backdated to just before its last message rather than cleared to nil: nil means "never
+    /// opened", and a bot you have read and deliberately flagged is a different thing from one
+    /// you have never seen.
+    func markUnread(_ bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        let latest = thread(for: bot.id).entries.last(where: { $0.isFromBot })?.at
+        bots[index].lastReadAt = latest.map { $0.addingTimeInterval(-1) } ?? .distantPast
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    func togglePin(_ bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].pinned.toggle()
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Pinned bots, in the order they appear. Shown above everything else.
+    var pinnedBots: [Bot] { bots.filter { $0.pinned && !$0.hidden } }
+
+    // MARK: - Folders
+
+    /// The folders in use, in the order their first bot appears.
+    ///
+    /// Derived rather than stored. A folder exists exactly as long as something is in it, so
+    /// there is no way to end up with an empty folder nobody can see or delete — the failure mode
+    /// of every "create a folder, then put things in it" design.
+    var folders: [String] {
+        var seen: [String] = []
+        for bot in bots where !bot.pinned && !bot.hidden {
+            if let folder = bot.folder, !folder.isEmpty, !seen.contains(folder) {
+                seen.append(folder)
+            }
+        }
+        return seen
+    }
+
+    /// Bots with no folder. Shown first, above the named folders, because filing is optional.
+    var ungroupedBots: [Bot] {
+        bots.filter { ($0.folder ?? "").isEmpty && !$0.pinned && !$0.hidden }
+    }
+
+    /// Excludes pinned bots, which are already listed at the top. Showing a bot in both places
+    /// is the bug that makes a pinned list feel broken rather than useful.
+    func bots(in folder: String) -> [Bot] {
+        bots.filter { $0.folder == folder && !$0.pinned && !$0.hidden }
+    }
+
+    func setFolder(_ bot: Bot, _ folder: String?) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        let trimmed = folder?.trimmingCharacters(in: .whitespaces)
+        bots[index].folder = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        persistOrder()
+    }
+
+    /// Renames a folder everywhere at once, since the folder *is* the string on each bot.
+    func renameFolder(_ old: String, to new: String) {
+        let trimmed = new.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != old else { return }
+        for index in bots.indices where bots[index].folder == old {
+            bots[index].folder = trimmed
+        }
+        persistOrder()
+    }
+
+    /// Empties a folder rather than deleting its bots. Deleting a container should never delete
+    /// the things inside it — that is how people lose work they did not mean to.
+    func dissolveFolder(_ folder: String) {
+        for index in bots.indices where bots[index].folder == folder {
+            bots[index].folder = nil
+        }
+        persistOrder()
+    }
+
+    /// Writes every bot back with its current position, which is what both folder membership and
+    /// ordering depend on.
+    private func persistOrder() {
+        for (index, bot) in bots.enumerated() {
+            try? store?.save(bot.record(sortIndex: index))
+        }
     }
 
     private func nextName(basedOn name: String) -> String {
@@ -841,6 +1127,17 @@ final class AppModel {
     }
 
     /// The whole conversation as plain text, for pasting into a ticket or an email.
+    /// The engine's own resume handle, for picking a thread up in the CLI directly.
+    ///
+    /// bupsy should never make that harder — the whole premise is that it drives the user's own
+    /// tools rather than replacing them, and a thread you cannot get back out of the app is a
+    /// thread the app has taken hostage.
+    func copyConversationID(of bot: Bot) {
+        guard let id = thread(for: bot.id).conversationID?.rawValue else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(id, forType: .string)
+    }
+
     func copyTranscript(of bot: Bot) {
         let thread = thread(for: bot.id)
         var lines = ["\(bot.name) — \(bot.engine.displayName)", ""]
@@ -848,6 +1145,7 @@ final class AppModel {
         for entry in thread.entries {
             switch entry.kind {
             case .userMessage(let text): lines.append("You: \(text)")
+            case .messageFrom(_, let name, let text): lines.append("\(name): \(text)")
             case .assistantText(let text): lines.append("\(bot.name): \(text)")
             case .tool(let name, let arguments, _, _): lines.append("  [\(name)] \(arguments)")
             case .approval(let approval):

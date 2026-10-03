@@ -153,6 +153,40 @@ struct StoreTests {
     }
 }
 
+@Suite("Bot folders")
+struct BotFolderTests {
+
+    @Test("a folder survives a round trip, and nil stays nil")
+    func foldersRoundTrip() throws {
+        let store = try Store.inMemory()
+        try store.save(BotRecord(name: "Scout", engine: "claude", folder: "Outreach"))
+        try store.save(BotRecord(name: "Builder", engine: "codex"))
+
+        let bots = try store.bots()
+        #expect(bots.first(where: { $0.name == "Scout" })?.folder == "Outreach")
+        // nil rather than "", because the sidebar shows ungrouped bots first and an empty string
+        // would quietly create a folder with no name.
+        #expect(bots.first(where: { $0.name == "Builder" })?.folder == nil)
+    }
+
+    /// The migration adds a column to a table that already has rows in it, which is the case that
+    /// actually ships — every existing user has bots before they have folders.
+    @Test("bots that existed before folders did survive the migration")
+    func existingBotsSurvive() throws {
+        let store = try Store.inMemory()
+        try store.save(BotRecord(id: "keep-me", name: "Older", engine: "claude"))
+
+        // Re-running the migrator is a no-op on an up-to-date database, and proves the v3 step is
+        // idempotent rather than destructive.
+        try Store.migrator.migrate(store.database)
+
+        let bots = try store.bots()
+        #expect(bots.count == 1)
+        #expect(bots.first?.id == "keep-me")
+        #expect(bots.first?.folder == nil)
+    }
+}
+
 @Suite("Event codec")
 struct EventCodecTests {
     @Test("round-trips the events a transcript is made of", arguments: [

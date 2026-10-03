@@ -19,10 +19,47 @@ public struct Store: Sendable {
     }
 
     public init(url: URL) throws {
+        // Foreign keys are OFF while migrating, then turned on afterwards.
+        //
+        // This is GRDB's own recommendation, and it is load-bearing here rather than tidiness. A
+        // database that already contains an orphaned row — a conversation pointing at a bot
+        // deleted back when the cascade was not enforced — fails the deferred check that runs
+        // after a schema change. The whole migration then aborts, `Store` throws, and the app
+        // falls back to starter bots: every existing bot silently disappears from the UI while
+        // sitting untouched on disk. Measured on a real database, which had exactly one such row.
+        //
+        // So: migrate without the check, clear the orphans a migration cannot reach, and only
+        // then enforce. Enforcement from that point on is what stops new ones appearing.
         var configuration = Configuration()
-        configuration.foreignKeysEnabled = true
-        database = try DatabaseQueue(path: url.path, configuration: configuration)
-        try Self.migrator.migrate(database)
+        configuration.foreignKeysEnabled = false
+        let queue = try DatabaseQueue(path: url.path, configuration: configuration)
+
+        try Self.migrator.migrate(queue)
+        try Self.removeOrphans(in: queue)
+        try queue.writeWithoutTransaction { db in
+            try db.execute(sql: "PRAGMA foreign_keys = ON")
+        }
+
+        database = queue
+    }
+
+    /// Deletes rows whose bot no longer exists.
+    ///
+    /// Not a migration, because it has to run on every open: a migration records itself as done
+    /// and would never run again, and this is cleaning up after a historical bug whose damage can
+    /// already be present in any state. Cheap — these are indexed columns and the result is
+    /// almost always zero.
+    static func removeOrphans(in queue: DatabaseQueue) throws {
+        try queue.write { db in
+            for table in ["conversations", "runs", "routines", "objectives"] {
+                guard try db.tableExists(table) else { continue }
+                try db.execute(sql: """
+                    DELETE FROM "\(table)"
+                    WHERE botID IS NOT NULL
+                      AND botID NOT IN (SELECT id FROM bots)
+                    """)
+            }
+        }
     }
 
     /// In-memory store for tests.
@@ -150,6 +187,59 @@ public struct Store: Sendable {
                 columns: ["botID", "engine"])
         }
 
+        // Bots are filed into folders the user names, because a flat list stops being a list and
+        // starts being a search problem somewhere around a dozen bots. Nullable: a bot with no
+        // folder is the normal case and is shown first, not hidden under "Uncategorised".
+        migrator.registerMigration("v3-bot-folders") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "folder", .text)
+            }
+        }
+
+        // Pinning is per bot rather than a separate list, so a pinned bot cannot end up in the
+        // pinned list and nowhere else — the usual way these two get out of step.
+        migrator.registerMigration("v4-pinned-bots") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "pinned", .boolean).notNull().defaults(to: false)
+            }
+        }
+
+        // Hiding and unread, both per bot.
+        //
+        // `hidden` is separate from deleting: a bot you are done with for now still owns its
+        // history, its routines and its conversation id, and "get it out of my sidebar" must not
+        // be a destructive act dressed up as tidying.
+        //
+        // `lastReadAt` is nullable and means "never opened", which is how a brand-new bot reads as
+        // unread without anything having to write a row at creation time.
+        migrator.registerMigration("v5-hidden-and-unread") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "hidden", .boolean).notNull().defaults(to: false)
+                t.add(column: "lastReadAt", .datetime)
+            }
+        }
+
+        // Who may talk to whom, decided once per ordered pair.
+        //
+        // One bot messaging another routes around the approval gate: the receiving bot acts on
+        // instructions a human never read. So first contact asks, and the answer is remembered
+        // per (from, to) — not per bot. "Scout may message Builder" says nothing about whether
+        // Builder may message Scout, and treating it as symmetric would grant a direction nobody
+        // approved.
+        //
+        // A refusal is stored too. Re-asking every time something is denied trains people to
+        // click through the dialog, which is how a gate stops being one.
+        migrator.registerMigration("v6-bot-links") { db in
+            try db.create(table: "bot_links") { t in
+                t.primaryKey {
+                    t.column("fromBotID", .text).references("bots", onDelete: .cascade)
+                    t.column("toBotID", .text).references("bots", onDelete: .cascade)
+                }
+                t.column("allowed", .boolean).notNull()
+                t.column("decidedAt", .datetime).notNull()
+            }
+        }
+
         return migrator
     }
 
@@ -168,6 +258,18 @@ public struct Store: Sendable {
 
     public func deleteBot(id: String) throws {
         _ = try database.write { db in try BotRecord.deleteOne(db, key: id) }
+    }
+
+    // MARK: - Bot-to-bot links
+
+    public func botLinks() throws -> [BotLinkRecord] {
+        try database.read { db in try BotLinkRecord.fetchAll(db) }
+    }
+
+    public func save(_ link: BotLinkRecord) throws {
+        // `PersistableRecord`, not `MutablePersistableRecord`: the primary key is the pair of bot
+        // ids rather than something the database assigns, so saving never writes back.
+        try database.write { db in try link.save(db) }
     }
 
     public func machines() throws -> [MachineRecord] {
@@ -259,7 +361,9 @@ public struct Store: Sendable {
                     host: run.host,
                     prompt: prompt.flatMap(Self.text(in:)),
                     reply: reply.flatMap(Self.text(in:)),
-                    toolCalls: tools)
+                    toolCalls: tools,
+                    inputTokens: run.inputTokens,
+                    outputTokens: run.outputTokens)
             }
         }
     }

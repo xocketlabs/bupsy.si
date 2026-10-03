@@ -14,38 +14,319 @@ struct BotPage: View {
     @State private var draft = ""
     @State private var showsRoutines = false
     @State private var showsObjectives = false
+    @State private var showsDetails = false
+    @State private var tab = DetailTab.details
 
     private var thread: Thread { model.thread(for: bot.id) }
     private var routines: [Routine] { model.routines.filter { $0.botID == bot.id.rawValue } }
     private var objectives: [Objective] { model.objectives.filter { $0.botID == bot.id.rawValue } }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Topbar(trail: ["Bots", bot.name]) { EmptyView() }
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.section) {
-                    header
-                    chips
-                    Rule()
-                    conversation
-                    Rule()
-                    goals
-                    routineSection
-                    history
-                }
-                .padding(.horizontal, 32)
-                .padding(.top, 28)
-                .padding(.bottom, Theme.Space.section)
-                .frame(maxWidth: Theme.Size.contentMaxWidth)
-                .frame(maxWidth: .infinity)
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                conversation
+                Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
+                         onSend: send, onStop: { model.stop(bot.id) })
             }
+            // The pill floats over the transcript rather than sitting in a bar above it, so the
+            // conversation reaches the top of the window instead of starting below a strip of
+            // chrome that never changes.
+            .overlay(alignment: .top) { titlePill }
 
-            Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
-                     onSend: send, onStop: { model.stop(bot.id) })
+            if showsDetails {
+                Rectangle().fill(palette.border).frame(width: 1)
+                details
+            }
         }
         .sheet(isPresented: $showsRoutines) { RoutinesSheet(bot: bot) }
         .sheet(isPresented: $showsObjectives) { ObjectivesSheet(bot: bot) }
+    }
+
+    // MARK: - Title
+
+    /// Names the bot, and opens everything else about it.
+    ///
+    /// Replaces a breadcrumb and a page header that together cost about 160pt at the top of every
+    /// conversation to say something the sidebar already showed in bold. What a bot *said* is the
+    /// reason to be on this screen; what it is configured to do is a question you ask occasionally,
+    /// so it lives one click away rather than above the thing you came for.
+    private var titlePill: some View {
+        Button { withAnimation(.easeOut(duration: 0.16)) { showsDetails.toggle() } } label: {
+            HStack(spacing: Theme.Space.tight) {
+                BotFace(hue: bot.avatarHue, mood: mood, size: 20)
+                Text(bot.name)
+                    .font(Theme.Typography.body)
+                    .fontWeight(.medium)
+                    .foregroundStyle(palette.foreground)
+                if let badge = limitBadge {
+                    Text(badge)
+                        .font(Theme.Typography.badge)
+                        .foregroundStyle(palette.mutedForeground)
+                }
+                Image(systemName: showsDetails ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground)
+            }
+            .padding(.leading, Theme.Space.snug)
+            .padding(.trailing, Theme.Space.step)
+            .padding(.vertical, 7)
+            .background(palette.card, in: .capsule)
+            .overlay(Capsule().stroke(palette.border, lineWidth: 1))
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .help("Settings, goals and routines for \(bot.name)")
+        .padding(.top, Theme.Space.step)
+    }
+
+    private var mood: BotMood {
+        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
+        return thread.isRunning ? .working : .idle
+    }
+
+    // MARK: - Everything that is not the conversation
+
+    /// The bot's setup, beside the conversation rather than above it.
+    ///
+    /// A panel rather than a sheet: changing a bot's trust level or reading why a routine failed
+    /// is something you do *while* looking at what it said, and a sheet would cover exactly the
+    /// evidence you are deciding from.
+    private var details: some View {
+        VStack(spacing: 0) {
+            detailsHead
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.section) {
+                    switch tab {
+                    case .details:
+                        settings
+                        goals
+                        routineSection
+                    case .activity:
+                        usage
+                        history
+                    case .computer:
+                        computer
+                    }
+                }
+                .padding(.horizontal, Theme.Space.gutter)
+                .padding(.vertical, Theme.Space.section)
+            }
+        }
+        .frame(width: 340)
+        // Clipped, because a card wider than the panel should truncate rather than draw over the
+        // conversation beside it.
+        .clipped()
+        .background(palette.sidebar)
+    }
+
+    /// Who the bot is, then what you want to know about it.
+    ///
+    /// The identity sits above the tabs rather than inside one of them: it is the answer to
+    /// "which bot am I looking at", which stays true whichever tab is open.
+    private var detailsHead: some View {
+        VStack(spacing: Theme.Space.snug) {
+            BotFace(hue: bot.avatarHue, mood: mood, size: 64)
+            Text(bot.name)
+                .font(Theme.Typography.heading)
+                .foregroundStyle(palette.foreground)
+            if let job = bot.personaPrompt, !job.isEmpty {
+                Text(job)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+            }
+
+            Picker("", selection: $tab) {
+                ForEach(DetailTab.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.top, Theme.Space.tight)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, Theme.Space.gutter)
+        .padding(.top, Theme.Space.section)
+        .padding(.bottom, Theme.Space.gutter)
+    }
+
+    /// Where this bot's work actually happens.
+    ///
+    /// Grok Bot shows a live screen here. bupsy cannot yet — a cloud machine has no screen to
+    /// stream and the local host has no window of its own — so this says what is true rather than
+    /// drawing an empty frame labelled as one.
+    private var computer: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+            SettingsGroup(title: "Runs on") {
+                SettingRow(label: "Machine", value: machineName,
+                           icon: bot.machineID == nil ? "laptopcomputer" : "server.rack",
+                           showsDivider: false) {
+                    Button("This Mac") { model.assign(bot, to: nil) }
+                    if !model.machines.isEmpty {
+                        Divider()
+                        ForEach(model.machines) { machine in
+                            Button(machine.name) { model.assign(bot, to: machine.id) }
+                        }
+                    }
+                }
+                FactRow(label: "Survives sleep",
+                        value: bot.scheduleTier == .alwaysOn ? "Yes" : "No")
+                SettingRow(label: "Folder", value: folderLabel, icon: "folder") {
+                    Button("Choose folder…") { model.chooseWorkdir(for: bot) }
+                    if bot.workdir != nil {
+                        Button("No folder") { model.setWorkdir(bot, nil) }
+                    }
+                }
+            }
+
+            Text(bot.machineID == nil
+                 ? "Running on this Mac, under your own sign-in. Routines only fire while the Mac "
+                   + "is awake."
+                 : "Running on a cloud machine on your own boat.dev account.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// What this bot has actually used, and nothing it has not.
+    ///
+    /// Every number here is reported by the engine: the windows come from Claude's
+    /// `rate_limit_event`, the tokens from each run's own result line. Deliberately missing is any
+    /// "context window" percentage — the engine reports what a turn *sent*, never how large the
+    /// window is, so a percentage would mean hardcoding a limit per model and watching it rot into
+    /// a confident wrong number. "Largest turn" says the same thing without pretending.
+    ///
+    /// The section is absent, not empty, until something is known. A usage panel full of zeroes
+    /// reads as broken, and worse, as real.
+    @ViewBuilder
+    private var usage: some View {
+        let runs = model.recentRuns(for: bot)
+        let windows = thread.latestLimits?.windows ?? [:]
+        let counted = runs.compactMap(\.inputTokens)
+
+        if !windows.isEmpty || !counted.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                if !windows.isEmpty {
+                    SettingsGroup(title: "Your \(bot.engine.displayName) limits") {
+                        ForEach(windows.sorted(by: { $0.key < $1.key }), id: \.key) { name, window in
+                            LimitBar(name: Self.windowLabel(name), window: window,
+                                     showsDivider: name != windows.keys.sorted().first)
+                        }
+                    }
+                }
+
+                if !counted.isEmpty {
+                    SettingsGroup(title: "Tokens") {
+                        FactRow(label: "Runs", value: "\(runs.count)", showsDivider: false)
+                        FactRow(label: "Sent", value: Self.compact(counted.reduce(0, +)))
+                        FactRow(label: "Received",
+                                value: Self.compact(runs.compactMap(\.outputTokens).reduce(0, +)))
+                        // Says why a long thread is cheaper than its token count suggests, and
+                        // why "sent" is so much larger than anything that was typed.
+                        FactRow(label: "Largest turn", value: Self.compact(counted.max() ?? 0))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Engine window names are snake_case and internal. These are not.
+    static func windowLabel(_ name: String) -> String {
+        switch name {
+        case "five_hour": "Five hours"
+        case "seven_day": "This week"
+        case "seven_day_opus": "This week, Opus"
+        default: name.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    static func compact(_ value: Int) -> String {
+        switch value {
+        case 1_000_000...: String(format: "%.1fM", Double(value) / 1_000_000)
+        case 1_000...: String(format: "%.0fk", Double(value) / 1_000)
+        default: "\(value)"
+        }
+    }
+
+    /// What this bot is set to, as rows rather than chips.
+    ///
+    /// Chips read fine across a wide page and fall apart in a column: they cannot wrap, their
+    /// labels truncate first, and there is nowhere to say what the setting is called. A row keeps
+    /// the name on the left at full width and truncates only the value.
+    private var settings: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+            SettingsGroup(title: "Runs with") {
+                SettingRow(label: "Engine", value: bot.engine.displayName,
+                           icon: "cpu", showsDivider: false) {
+                    ForEach([EngineID.claude, .codex], id: \.self) { engine in
+                        Button {
+                            model.setEngine(bot, engine)
+                        } label: {
+                            Label(engine.displayName,
+                                  systemImage: bot.engine == engine ? "checkmark" : "")
+                        }
+                    }
+                }
+                SettingRow(label: "Model", value: modelLabel ?? "Default",
+                           icon: "slider.horizontal.3") {
+                    ForEach(model.models(for: bot)) { option in
+                        Button {
+                            model.setModel(bot, option.id)
+                        } label: {
+                            Label(option.label,
+                                  systemImage: bot.model == option.id ? "checkmark" : "")
+                        }
+                    }
+                }
+                SettingRow(label: "Runs on", value: machineName,
+                           icon: bot.machineID == nil ? "laptopcomputer" : "server.rack") {
+                    Button("This Mac") { model.assign(bot, to: nil) }
+                    if !model.machines.isEmpty {
+                        Divider()
+                        ForEach(model.machines) { machine in
+                            Button(machine.name) { model.assign(bot, to: machine.id) }
+                        }
+                    }
+                }
+            }
+
+            SettingsGroup(title: "Can touch") {
+                SettingRow(label: "Folder", value: folderLabel,
+                           icon: "folder", showsDivider: false) {
+                    Button("Choose folder…") { model.chooseWorkdir(for: bot) }
+                    if bot.workdir != nil {
+                        Button("No folder") { model.setWorkdir(bot, nil) }
+                    }
+                }
+                SettingRow(label: "Trust", value: trustLabel,
+                           icon: "hand.raised", tone: trustTone) {
+                    ForEach(Autonomy.allCases, id: \.self) { level in
+                        Button {
+                            model.setAutonomy(bot, level)
+                        } label: {
+                            Label(label(for: level),
+                                  systemImage: bot.autonomy == level ? "checkmark" : "")
+                        }
+                    }
+                }
+                SettingRow(label: "Folder in sidebar", value: bot.folder ?? "None",
+                           icon: "tray.2") {
+                    ForEach(model.folders, id: \.self) { folder in
+                        Button {
+                            model.setFolder(bot, folder)
+                        } label: {
+                            Label(folder, systemImage: bot.folder == folder ? "checkmark" : "")
+                        }
+                    }
+                    if bot.folder != nil {
+                        Divider()
+                        Button("Remove from folder") { model.setFolder(bot, nil) }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Head
@@ -58,63 +339,6 @@ struct BotPage: View {
             if let job = bot.personaPrompt {
                 Text(job).font(Theme.Typography.body).foregroundStyle(palette.mutedForeground)
             }
-        }
-    }
-
-    /// The facts that change what a bot can do, at a glance and in one row.
-    private var chips: some View {
-        HStack(spacing: Theme.Space.snug) {
-            MenuChip(icon: "cpu", text: bot.engine.displayName, emphasised: true) {
-                ForEach([EngineID.claude, .codex], id: \.self) { engine in
-                    Button {
-                        model.setEngine(bot, engine)
-                    } label: {
-                        Label(engine.displayName,
-                              systemImage: bot.engine == engine ? "checkmark" : "")
-                    }
-                }
-            }
-
-            MenuChip(icon: "slider.horizontal.3", text: modelLabel ?? "Default model") {
-                ForEach(model.models(for: bot)) { option in
-                    Button {
-                        model.setModel(bot, option.id)
-                    } label: {
-                        Label(option.label, systemImage: bot.model == option.id ? "checkmark" : "")
-                    }
-                }
-            }
-
-            MenuChip(icon: bot.machineID == nil ? "laptopcomputer" : "server.rack",
-                     text: machineName) {
-                Button("This Mac") { model.assign(bot, to: nil) }
-                if !model.machines.isEmpty {
-                    Divider()
-                    ForEach(model.machines) { machine in
-                        Button(machine.name) { model.assign(bot, to: machine.id) }
-                    }
-                }
-            }
-
-            MenuChip(icon: "folder", text: folderLabel,
-                     tone: bot.workdir == nil ? nil : nil) {
-                Button("Choose folder…") { model.chooseWorkdir(for: bot) }
-                if bot.workdir != nil {
-                    Button("No folder") { model.setWorkdir(bot, nil) }
-                }
-            }
-
-            MenuChip(icon: "hand.raised", text: trustLabel, tone: trustTone) {
-                ForEach(Autonomy.allCases, id: \.self) { level in
-                    Button {
-                        model.setAutonomy(bot, level)
-                    } label: {
-                        Label(label(for: level), systemImage: bot.autonomy == level ? "checkmark" : "")
-                    }
-                }
-            }
-
-            Spacer(minLength: 0)
         }
     }
 
@@ -162,23 +386,11 @@ struct BotPage: View {
     // MARK: - Conversation
 
     private var conversation: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-            SectionHeader(
-                icon: "bubble.left.and.text.bubble.right",
-                title: "Conversation",
-                badge: limitBadge,
-                subtitle: "Running \(bot.engine.displayName) under your own sign-in"
-            ) { EmptyView() }
-
+        Group {
             if thread.entries.isEmpty {
                 EmptyConversation(bot: bot)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                // The transcript scrolls inside its own box rather than growing the page.
-                //
-                // Sharing one scroll with the sections below seemed simpler and is wrong in use:
-                // after a few exchanges, standing goals and routines sit under an unbounded
-                // conversation and effectively cease to exist. A bounded transcript keeps the
-                // whole page reachable no matter how long a thread runs.
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: Theme.Space.step) {
@@ -189,11 +401,13 @@ struct BotPage: View {
                             }
                             if thread.isRunning { TypingIndicator(bot: bot) }
                         }
-                        .padding(.vertical, Theme.Space.tight)
+                        // Top padding clears the floating title pill, which overlays this.
+                        .padding(.top, 56)
+                        .padding(.bottom, Theme.Space.gutter)
+                        .padding(.horizontal, Theme.Space.section)
+                        .frame(maxWidth: Theme.Size.contentMaxWidth)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    // Tall enough to read, short enough that what is below it stays in view.
-                    .frame(minHeight: 180, maxHeight: 460)
                     .onChange(of: thread.entries.count) {
                         guard let last = thread.entries.last else { return }
                         withAnimation(.easeOut(duration: 0.18)) {
@@ -203,6 +417,7 @@ struct BotPage: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var limitBadge: String? {
@@ -516,5 +731,24 @@ struct EmptyConversation: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Space.section)
+    }
+}
+
+
+/// The three questions worth asking about a bot, in the order people ask them.
+///
+/// Named for what each holds rather than copied wholesale from Grok Bot, which has a "Library"
+/// tab for a concept bupsy does not have. An empty tab is the same mistake as a dead menu item.
+enum DetailTab: CaseIterable {
+    case details
+    case activity
+    case computer
+
+    var label: String {
+        switch self {
+        case .details: "Details"
+        case .activity: "Activity"
+        case .computer: "Computer"
+        }
     }
 }

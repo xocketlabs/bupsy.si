@@ -207,12 +207,7 @@ public struct ClaudeAdapter: EngineAdapter {
             }
 
         case "result":
-            let usage = Usage(
-                inputTokens: (json.dictionary("usage")?["input_tokens"] as? NSNumber)?.intValue,
-                outputTokens: (json.dictionary("usage")?["output_tokens"] as? NSNumber)?.intValue,
-                costUSD: json.double("total_cost_usd"),
-                durationMS: json.int("duration_ms")
-            )
+            let usage = Self.usage(from: json)
             let conversation = json.string("session_id").map { ConversationID($0) }
             if json.string("subtype") != "success" || json.bool("is_error") == true {
                 return [
@@ -235,6 +230,30 @@ public struct ClaudeAdapter: EngineAdapter {
         default:
             return [.unknown(raw: json.raw)]
         }
+    }
+
+    /// Reads the usage block, summing everything that was actually sent.
+    ///
+    /// `input_tokens` alone counts only the uncached remainder of a turn. On a thread of any
+    /// length the cache fields carry almost all of it, so a total built from `input_tokens`
+    /// understates the real figure by orders of magnitude — measured at 2 against a true 37,156.
+    static func usage(from json: JSONLine) -> Usage {
+        let fields = json.dictionary("usage") ?? [:]
+        func count(_ key: String) -> Int? { (fields[key] as? NSNumber)?.intValue }
+
+        let cached = [count("cache_creation_input_tokens"), count("cache_read_input_tokens")]
+            .compactMap { $0 }
+        // nil when the engine said nothing, which is a different fact from a turn that sent zero.
+        let sent: Int? = count("input_tokens").map { $0 + cached.reduce(0, +) }
+            ?? (cached.isEmpty ? nil : cached.reduce(0, +))
+
+        return Usage(
+            inputTokens: sent,
+            outputTokens: count("output_tokens"),
+            cachedInputTokens: cached.isEmpty ? nil : cached.reduce(0, +),
+            costUSD: json.double("total_cost_usd"),
+            durationMS: json.int("duration_ms")
+        )
     }
 
     /// Tool results arrive as a string or as content blocks depending on the tool.

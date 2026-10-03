@@ -48,9 +48,16 @@ type Event struct {
 	// from "nobody said" in the canonical stream.
 	IsError *bool `json:"isError,omitempty"`
 
-	InputTokens  *int     `json:"inputTokens,omitempty"`
-	OutputTokens *int     `json:"outputTokens,omitempty"`
-	CostUSD      *float64 `json:"costUSD,omitempty"`
+	// InputTokens is everything the turn sent, including the cached part — NOT the engine's
+	// raw `input_tokens`, which counts only the uncached remainder. A measured turn reported
+	// input_tokens 2 alongside cache_creation 14089 and cache_read 23065, so the honest figure
+	// is 37156 and the raw field understates it by four orders of magnitude.
+	InputTokens  *int `json:"inputTokens,omitempty"`
+	OutputTokens *int `json:"outputTokens,omitempty"`
+	// CachedInputTokens is the cached share of InputTokens, which is why cost stays low on a
+	// long thread. Separate so the total can be honest without the cost looking wrong.
+	CachedInputTokens *int     `json:"cachedInputTokens,omitempty"`
+	CostUSD           *float64 `json:"costUSD,omitempty"`
 
 	// Status and Windows carry the engine's report of the user's own subscription headroom.
 	// Undocumented upstream, so every field is optional and a missing one degrades the reading

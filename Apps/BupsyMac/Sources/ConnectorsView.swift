@@ -32,16 +32,21 @@ struct ConnectorsSheet: View {
                     }
                 }
 
+                if !unaddedSuggestions.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Space.step) {
                     Text((model.connectors.isEmpty ? "Common ones" : "Add another").uppercased())
                         .font(Theme.Typography.badge)
                         .foregroundStyle(palette.sidebarMuted)
                         .tracking(0.7)
                     VStack(spacing: Theme.Space.snug) {
-                        ForEach(MCPSuggestions.all) { suggestion in
+                        // Filtered rather than disabled in place. A server you have added is
+                        // already listed above, and leaving a greyed-out "Added" copy below it
+                        // showed every connector twice — which reads as a bug, because it is one.
+                        ForEach(unaddedSuggestions) { suggestion in
                             SuggestionRow(suggestion: suggestion)
                         }
                     }
+                }
                 }
 
                 Spacer(minLength: 0)
@@ -52,6 +57,13 @@ struct ConnectorsSheet: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .sheet(isPresented: $isAdding) { AddServerSheet() }
+    }
+
+    /// The catalogue minus what is already set up.
+    private var unaddedSuggestions: [MCPSuggestions.Suggestion] {
+        MCPSuggestions.all.filter { suggestion in
+            !model.connectors.contains { $0.name == suggestion.server.name }
+        }
     }
 }
 
@@ -127,10 +139,6 @@ struct SuggestionRow: View {
     @Environment(\.palette) private var palette
     let suggestion: MCPSuggestions.Suggestion
 
-    private var alreadyAdded: Bool {
-        model.connectors.contains { $0.name == suggestion.server.name }
-    }
-
     var body: some View {
         CardRow {
             IconTile(systemName: "shippingbox")
@@ -144,9 +152,8 @@ struct SuggestionRow: View {
                     .foregroundStyle(palette.mutedForeground)
             }
         } trailing: {
-            Button(alreadyAdded ? "Added" : "Add") { model.addConnector(suggestion.server) }
+            Button("Add") { model.addConnector(suggestion.server) }
                 .buttonStyle(QuietButton(compact: true))
-                .disabled(alreadyAdded)
         }
     }
 }
@@ -162,44 +169,48 @@ struct AddServerSheet: View {
     @State private var envNames = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Add an MCP server").font(.headline)
-
-            TextField("Name", text: $name, prompt: Text("linear"))
-                .textFieldStyle(.roundedBorder)
-            TextField("Command", text: $command)
-                .textFieldStyle(.roundedBorder)
-            TextField("Arguments", text: $args, prompt: Text("-y @acme/linear-mcp-server"))
-                .textFieldStyle(.roundedBorder)
-            TextField("Environment variables it needs", text: $envNames,
-                      prompt: Text("LINEAR_API_KEY"))
-                .textFieldStyle(.roundedBorder)
-
-            Text("Names only — bupsy never stores the values. Set them in your shell and they "
-                 + "reach the server without passing through us.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Add") {
-                    model.addConnector(MCPServer(
-                        name: name.trimmingCharacters(in: .whitespaces),
-                        command: command.trimmingCharacters(in: .whitespaces),
-                        args: args.split(separator: " ").map(String.init),
-                        requiredEnvNames: envNames
-                            .split(whereSeparator: { $0 == " " || $0 == "," })
-                            .map(String.init)))
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
-                          || command.trimmingCharacters(in: .whitespaces).isEmpty)
+        SheetFrame(
+            title: "Add an MCP server",
+            subtitle: "Runs on your machine, under your own sign-ins.",
+            width: 460
+        ) {
+            Field(label: "Name") {
+                TextField("", text: $name, prompt: Text("linear"))
+                    .textFieldStyle(BupsyFieldStyle())
             }
+            Field(label: "Command") {
+                TextField("", text: $command)
+                    .textFieldStyle(BupsyFieldStyle())
+            }
+            Field(label: "Arguments") {
+                TextField("", text: $args, prompt: Text("-y @acme/linear-mcp-server"))
+                    .textFieldStyle(BupsyFieldStyle())
+            }
+            Field(
+                label: "Environment variables it needs",
+                hint: "Names only — bupsy never stores the values. Set them in your shell and "
+                    + "they reach the server without passing through us."
+            ) {
+                TextField("", text: $envNames, prompt: Text("LINEAR_API_KEY"))
+                    .textFieldStyle(BupsyFieldStyle())
+            }
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Add") {
+                model.addConnector(MCPServer(
+                    name: name.trimmingCharacters(in: .whitespaces),
+                    command: command.trimmingCharacters(in: .whitespaces),
+                    args: args.split(separator: " ").map(String.init),
+                    requiredEnvNames: envNames
+                        .split(whereSeparator: { $0 == " " || $0 == "," })
+                        .map(String.init)))
+                dismiss()
+            }
+            .buttonStyle(PrimaryButton())
+            .keyboardShortcut(.defaultAction)
+            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
+                      || command.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(20)
-        .frame(width: 440)
     }
 }

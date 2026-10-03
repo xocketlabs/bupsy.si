@@ -136,56 +136,56 @@ struct NewObjectiveSheet: View {
     @State private var tier = Routine.Tier.launchAgent
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("New standing goal").font(.headline)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("What should stay true?").font(.caption).foregroundStyle(.secondary)
+        SheetFrame(
+            title: "New standing goal",
+            subtitle: "Not a job \(bot.name) does once — something it keeps true, and only acts "
+                + "on when it is not.",
+            width: 460
+        ) {
+            Field(label: "What should stay true?") {
                 TextField("", text: $goal, prompt: Text("My inbox has nothing older than a day"))
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(BupsyFieldStyle())
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("How will \(bot.name) know it's met?").font(.caption).foregroundStyle(.secondary)
+            // A vague goal with a sharp done-when still works. The reverse does not.
+            Field(label: "How will \(bot.name) know it's met?",
+                  hint: "Be specific here — it's what the bot measures against.") {
                 TextField("", text: $doneWhen,
                           prompt: Text("No unread mail older than 24 hours remains"))
-                    .textFieldStyle(.roundedBorder)
-                // A vague goal with a sharp done-when still works. The reverse does not.
-                Text("Be specific here — it's what the bot measures against.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .textFieldStyle(BupsyFieldStyle())
             }
 
-            Picker("Check", selection: $preset) {
-                ForEach(Schedule.objectivePresets, id: \.cron) { Text($0.label).tag($0) }
+            Field(label: "Check") {
+                Picker("", selection: $preset) {
+                    ForEach(Schedule.objectivePresets, id: \.cron) { Text($0.label).tag($0) }
+                }
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Picker("Runs", selection: $tier) {
+            Field(label: "Runs", hint: tier.promise) {
+                Picker("", selection: $tier) {
                     ForEach(availableTiers, id: \.self) { Text($0.label).tag($0) }
                 }
-                Text(tier.promise)
-                    .font(.caption)
-                    .foregroundStyle(tier.survivesSleep ? Color.secondary : Color.orange)
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Create") {
-                    model.addObjective(
-                        to: bot,
-                        goal: goal.trimmingCharacters(in: .whitespaces),
-                        doneWhen: doneWhen.trimmingCharacters(in: .whitespaces),
-                        cron: preset.cron, tier: tier)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(goal.trimmingCharacters(in: .whitespaces).isEmpty
-                          || doneWhen.trimmingCharacters(in: .whitespaces).isEmpty)
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Create") {
+                model.addObjective(
+                    to: bot,
+                    goal: goal.trimmingCharacters(in: .whitespaces),
+                    doneWhen: doneWhen.trimmingCharacters(in: .whitespaces),
+                    cron: preset.cron, tier: tier)
+                dismiss()
             }
+            .buttonStyle(PrimaryButton())
+            .keyboardShortcut(.defaultAction)
+            .disabled(goal.trimmingCharacters(in: .whitespaces).isEmpty
+                      || doneWhen.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(20)
-        .frame(width: 440)
     }
 
     private var availableTiers: [Routine.Tier] {

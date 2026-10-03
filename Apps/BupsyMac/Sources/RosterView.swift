@@ -9,8 +9,37 @@ import SwiftUI
 struct BotMenu: View {
     @Environment(AppModel.self) private var model
     let bot: Bot
+    /// Opens the "new folder" sheet. A closure rather than a binding because a context menu is
+    /// torn down the instant it is clicked, so the sheet has to belong to the view behind it.
+    var onNewFolder: () -> Void
+    /// Same reason as `onNewFolder`: a context menu is gone the moment it is clicked, so the
+    /// sheet has to belong to the view behind it.
+    var onRename: () -> Void = {}
 
     var body: some View {
+        Button("Pin to top", systemImage: bot.pinned ? "pin.slash" : "pin") {
+            model.togglePin(bot)
+        }
+        Menu("Move to") {
+            ForEach(model.folders, id: \.self) { folder in
+                Button {
+                    model.setFolder(bot, folder)
+                } label: {
+                    Label(folder, systemImage: bot.folder == folder ? "checkmark" : "folder")
+                }
+            }
+            Button {
+                model.setFolder(bot, nil)
+            } label: {
+                Label("Unassigned",
+                      systemImage: (bot.folder ?? "").isEmpty ? "checkmark" : "tray")
+            }
+            Divider()
+            Button("Create section…", action: onNewFolder)
+        }
+        Button("Mark as unread") { model.markUnread(bot) }
+        Divider()
+        Button("Rename bot…", action: onRename)
         Menu("Engine") {
             ForEach([EngineID.claude, .codex], id: \.self) { engine in
                 Button {
@@ -32,7 +61,14 @@ struct BotMenu: View {
         Divider()
         Button("Duplicate") { model.duplicate(bot) }
         Button("Copy conversation") { model.copyTranscript(of: bot) }
+        // The engine's own resume handle. Useful when you want to pick a thread up in the CLI
+        // directly, which is a thing this app should never make harder.
+        Button("Copy conversation ID") { model.copyConversationID(of: bot) }
         Divider()
+        // Not destructive, and worded so it cannot be mistaken for one.
+        Button(bot.hidden ? "Show in sidebar" : "Hide from sidebar") {
+            model.toggleHidden(bot)
+        }
         Button("Delete bot", role: .destructive) { model.deleteBot(bot) }
     }
 }
@@ -45,51 +81,45 @@ struct NewBotSheet: View {
     @State private var job = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.step) {
-            Text("New bot").font(.headline)
-
+        SheetFrame(title: "New bot",
+                   subtitle: "It starts fully gated — it asks before doing anything beyond reading.") {
             HStack(spacing: Theme.Space.step) {
                 BotFace(hue: previewHue, mood: .idle, size: 52)
-                VStack(alignment: .leading, spacing: 8) {
-                    TextField("Name", text: $name, prompt: Text("Scout"))
-                        .textFieldStyle(.roundedBorder)
+                VStack(alignment: .leading, spacing: Theme.Space.snug) {
+                    TextField("", text: $name, prompt: Text("Scout"))
+                        .textFieldStyle(BupsyFieldStyle())
                     Picker("", selection: $engine) {
                         ForEach([EngineID.claude, .codex], id: \.self) {
                             Text($0.displayName).tag($0)
                         }
                     }
                     .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("What's its job?").font(.caption).foregroundStyle(.secondary)
+            Field(label: "What's its job?",
+                  hint: "Written to the bot as standing instructions, every time you talk to it.") {
                 TextField("", text: $job,
-                          prompt: Text("Research things and report back plainly."),
+                          prompt: Text("Research things and report back plainly. Be concise."),
                           axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(2...4)
+                    .textFieldStyle(BupsyFieldStyle())
+                    .lineLimit(3...5)
             }
-
-            Text("Starts fully gated — it asks before doing anything beyond reading.")
-                .font(.caption).foregroundStyle(.secondary)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Create") {
-                    model.addBot(
-                        name: name.trimmingCharacters(in: .whitespaces),
-                        engine: engine,
-                        job: job.trimmingCharacters(in: .whitespaces))
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button("Create") {
+                model.addBot(
+                    name: name.trimmingCharacters(in: .whitespaces),
+                    engine: engine,
+                    job: job.trimmingCharacters(in: .whitespaces))
+                dismiss()
             }
+            .buttonStyle(PrimaryButton())
+            .keyboardShortcut(.defaultAction)
+            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(Theme.Space.section)
-        .frame(width: 400)
     }
 
     /// Shows the colour the bot will get as you type its name, since the hue is derived from it.

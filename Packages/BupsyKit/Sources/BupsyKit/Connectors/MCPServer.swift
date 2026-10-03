@@ -99,7 +99,23 @@ public enum MCPConfig {
     /// secret never passes through a file we wrote. If a server's variable is missing from the
     /// environment the server will fail to start, which is the honest outcome — better than us
     /// quietly holding the token to avoid it.
-    public static func document(for servers: [MCPServer]) -> [String: Any] {
+    /// bupsy's own server, which lets this bot message other bots.
+    ///
+    /// Its env carries literal values rather than `${NAME}` references, and that is not a breach
+    /// of the credential rule: an outbox path and a bot id are addressing, not secrets. The rule
+    /// exists so a *model credential* never passes through a file we wrote, and neither of these
+    /// is one. Attribution in particular has to be a value — a server that could be told which
+    /// bot it speaks for by the surrounding environment could be made to lie about who sent a
+    /// message, and attribution is the only thing making an inter-bot message auditable.
+    public static func bupsyServer(binary: String, outbox: String, botID: String) -> [String: Any] {
+        [
+            "command": binary,
+            "env": ["BUPSY_OUTBOX": outbox, "BUPSY_BOT_ID": botID],
+        ]
+    }
+
+    public static func document(for servers: [MCPServer],
+                                including builtIn: [String: Any]? = nil) -> [String: Any] {
         var entries: [String: Any] = [:]
         for server in servers where server.enabled {
             var entry: [String: Any] = ["command": server.command, "args": server.args]
@@ -109,15 +125,19 @@ public enum MCPConfig {
             }
             entries[server.name] = entry
         }
+        // Last, so a user-configured server named "bupsy" cannot shadow the built-in one and
+        // quietly take over where messages between bots are sent.
+        if let builtIn { entries["bupsy"] = builtIn }
         return ["mcpServers": entries]
     }
 
     /// Writes the config to a temporary file and returns its path, or nil when there is nothing
     /// to configure — passing an empty config is noise on the command line.
     @discardableResult
-    public static func write(_ servers: [MCPServer], to directory: URL? = nil) throws -> String? {
+    public static func write(_ servers: [MCPServer], to directory: URL? = nil,
+                             including builtIn: [String: Any]? = nil) throws -> String? {
         let enabled = servers.filter(\.enabled)
-        guard !enabled.isEmpty else { return nil }
+        guard !enabled.isEmpty || builtIn != nil else { return nil }
 
         let folder = directory ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("bupsy-mcp", isDirectory: true)
@@ -125,7 +145,8 @@ public enum MCPConfig {
 
         let url = folder.appendingPathComponent("mcp.json")
         let data = try JSONSerialization.data(
-            withJSONObject: document(for: enabled), options: [.prettyPrinted, .sortedKeys])
+            withJSONObject: document(for: enabled, including: builtIn),
+            options: [.prettyPrinted, .sortedKeys])
         try data.write(to: url, options: .atomic)
         return url.path
     }

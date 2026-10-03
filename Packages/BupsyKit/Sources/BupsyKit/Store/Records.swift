@@ -49,15 +49,25 @@ public struct BotRecord: Codable, FetchableRecord, MutablePersistableRecord, Sen
     public var avatarHue: Double
     public var createdAt: Date
     public var sortIndex: Int
+    /// The folder the user filed this bot under, or nil for the ungrouped bots shown first.
+    public var folder: String?
+    /// Kept at the top of the sidebar, above the folders.
+    public var pinned: Bool
+    /// Out of the sidebar, but not deleted — it keeps its history, routines and conversation.
+    public var hidden: Bool
+    /// nil means never opened, which is what makes a new bot read as unread with no row written.
+    public var lastReadAt: Date?
 
     public init(id: String = UUID().uuidString, name: String, engine: String,
                 model: String? = nil, machineID: String? = nil, autonomy: String = "ask",
                 personaPrompt: String? = nil, workdir: String? = nil, avatarHue: Double = 0.5,
-                createdAt: Date = Date(), sortIndex: Int = 0) {
+                createdAt: Date = Date(), sortIndex: Int = 0, folder: String? = nil,
+                pinned: Bool = false, hidden: Bool = false, lastReadAt: Date? = nil) {
         self.id = id; self.name = name; self.engine = engine; self.model = model
         self.machineID = machineID; self.autonomy = autonomy; self.personaPrompt = personaPrompt
         self.workdir = workdir; self.avatarHue = avatarHue; self.createdAt = createdAt
-        self.sortIndex = sortIndex
+        self.sortIndex = sortIndex; self.folder = folder; self.pinned = pinned
+        self.hidden = hidden; self.lastReadAt = lastReadAt
     }
 }
 
@@ -182,6 +192,10 @@ public struct RunSummary: Sendable, Identifiable, Equatable {
     public let prompt: String?
     public let reply: String?
     public let toolCalls: Int
+    /// As the engine reported them. nil when a run failed before it said anything, which is a
+    /// different fact from zero and is shown differently.
+    public let inputTokens: Int?
+    public let outputTokens: Int?
 
     public var duration: TimeInterval? {
         endedAt.map { $0.timeIntervalSince(startedAt) }
@@ -190,9 +204,32 @@ public struct RunSummary: Sendable, Identifiable, Equatable {
     public var succeeded: Bool { status == "finished" }
 
     public init(id: String, startedAt: Date, endedAt: Date?, status: String, host: String,
-                prompt: String?, reply: String?, toolCalls: Int) {
+                prompt: String?, reply: String?, toolCalls: Int,
+                inputTokens: Int? = nil, outputTokens: Int? = nil) {
         self.id = id; self.startedAt = startedAt; self.endedAt = endedAt
         self.status = status; self.host = host
         self.prompt = prompt; self.reply = reply; self.toolCalls = toolCalls
+        self.inputTokens = inputTokens; self.outputTokens = outputTokens
+    }
+}
+
+
+/// One bot's standing permission to message another, in one direction.
+///
+/// Deliberately not symmetric. "Scout may message Builder" says nothing about whether Builder may
+/// message Scout, and collapsing the two would grant a direction nobody was asked about.
+public struct BotLinkRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable {
+    public static let databaseTableName = "bot_links"
+
+    public var fromBotID: String
+    public var toBotID: String
+    /// false is a real answer, kept so a refusal is not re-asked on every attempt. A dialog that
+    /// keeps coming back is a dialog people learn to dismiss without reading.
+    public var allowed: Bool
+    public var decidedAt: Date
+
+    public init(fromBotID: String, toBotID: String, allowed: Bool, decidedAt: Date = Date()) {
+        self.fromBotID = fromBotID; self.toBotID = toBotID
+        self.allowed = allowed; self.decidedAt = decidedAt
     }
 }
