@@ -25,7 +25,7 @@ struct ConformanceTests {
     static func cases(ofKind kind: String) throws -> [(name: String, directory: URL)] {
         let directories = try FileManager.default.contentsOfDirectory(
             at: casesDirectory, includingPropertiesForKeys: nil)
-        return try directories.compactMap { directory in
+        return directories.compactMap { directory in
             let meta = directory.appendingPathComponent("case.json")
             guard let data = try? Data(contentsOf: meta),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -176,11 +176,134 @@ struct ConformanceTests {
         }
     }
 
+
+    // MARK: - Command lines
+
+    /// Pins the argv an engine is actually invoked with.
+    ///
+    /// Worth its own kind because a wrong flag fails *before* a single event exists, so none of the
+    /// stream cases can see it. Two implementations drifted here within an hour of the second one
+    /// being written: one passed `--model` where the other passed `-m`, and one forwarded MCP
+    /// config paths to an engine that has no such flag.
+    @Test("engines are invoked with the same arguments")
+    func commands() throws {
+        for (name, directory) in try Self.cases(ofKind: "command") {
+            let meta = try JSONSerialization.jsonObject(
+                with: Data(contentsOf: directory.appendingPathComponent("case.json")))
+                as? [String: Any] ?? [:]
+            let engine = (meta["options"] as? [String: Any])?["engine"] as? String ?? "claude"
+            let adapter: any EngineAdapter = engine == "codex" ? CodexAdapter() : ClaudeAdapter()
+
+            for (index, want) in try Self.expected(directory).enumerated() {
+                let spec = want["request"] as? [String: Any] ?? [:]
+                let request = RunRequest(
+                    prompt: spec["prompt"] as? String ?? "",
+                    workingDirectory: (spec["workingDir"] as? String).map {
+                        URL(fileURLWithPath: $0)
+                    },
+                    resume: (spec["resume"] as? String).map { ConversationID($0) },
+                    model: spec["model"] as? String,
+                    // An unrecognised name deliberately falls to `.ask`: a case exercising a trust
+                    // level this implementation does not know must not be read as more trust.
+                    autonomy: Autonomy(rawValue: spec["autonomy"] as? String ?? "") ?? .ask,
+                    mcpConfigPaths: spec["mcpConfigs"] as? [String] ?? [],
+                    gateSettingsPath: spec["gateSettings"] as? String
+                )
+
+                let produced = adapter.invocation(for: request).arguments
+                let expected = want["argv"] as? [String] ?? []
+                if produced != expected {
+                    let why = (want["why"] as? String).map { "\n  why: \($0)" } ?? ""
+                    Issue.record("""
+                        \(name)[\(index)] arguments differ
+                          got:  \(produced)
+                          want: \(expected)\(why)
+                        """)
+                }
+            }
+        }
+    }
+
+    // MARK: - Diagnostics
+
+    /// What stderr lines mean — and, as much, what they do not.
+    ///
+    /// Most lines here must produce *nothing*. The expensive mistake on this channel is a routine
+    /// diagnostic read as a failure, which is exactly what happened: codex prints "Reading
+    /// additional input from stdin..." on every run, and treating it as a protocol error failed
+    /// every codex run before it produced a single event.
+    @Test("stderr lines are read the same way")
+    func diagnostics() throws {
+        for (name, directory) in try Self.cases(ofKind: "stderr") {
+            let meta = try JSONSerialization.jsonObject(
+                with: Data(contentsOf: directory.appendingPathComponent("case.json")))
+                as? [String: Any] ?? [:]
+            let engine = (meta["options"] as? [String: Any])?["engine"] as? String ?? "claude"
+            let adapter: any EngineAdapter = engine == "codex" ? CodexAdapter() : ClaudeAdapter()
+
+            for (index, want) in try Self.expected(directory).enumerated() {
+                let line = want["line"] as? String ?? ""
+                let produced = adapter.normalise(.stderr(line))
+                let expected = want["events"] as? [[String: Any]] ?? []
+                let why = (want["why"] as? String).map { "\n  why: \($0)" } ?? ""
+
+                guard produced.count == expected.count else {
+                    Issue.record("""
+                        \(name)[\(index)] \(line.prefix(44).debugDescription): \
+                        produced \(produced.count) events, case expects \(expected.count)\(why)
+                        """)
+                    continue
+                }
+                for (offset, event) in produced.enumerated() {
+                    check(event, against: expected[offset], case: name, index: index)
+                    // The failure kind is the whole point of a stderr case, and `check` does not
+                    // look at it, so assert it here.
+                    if let kind = expected[offset]["failureKind"] as? String,
+                       case .failed(let failure) = event {
+                        #expect(failure.kind.rawValue == kind,
+                                "\(name)[\(index)] failure kind\(why)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Every kind on disk has a runner here.
+    ///
+    /// This suite iterates by kind, so a case of a kind nobody implemented would be skipped in
+    /// silence — and a case nobody runs is worse than no case at all, because it reads as coverage.
+    /// Adding a kind must break every implementation until each one handles it, which is the point.
+    @Test("no case is silently skipped")
+    func everyKindHasARunner() throws {
+        let known: Set<String> = ["stream", "stderr", "command", "objective", "cron"]
+        let directories = try FileManager.default.contentsOfDirectory(
+            at: Self.casesDirectory, includingPropertiesForKeys: nil)
+
+        for directory in directories where directory.hasDirectoryPath {
+            let meta = directory.appendingPathComponent("case.json")
+            guard let data = try? Data(contentsOf: meta),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                Issue.record("\(directory.lastPathComponent): unreadable case.json")
+                continue
+            }
+            let kind = object["kind"] as? String ?? ""
+            if !known.contains(kind) {
+                Issue.record("""
+                    \(directory.lastPathComponent): kind '\(kind)' has no runner in the Swift \
+                    core. Add one — a case that no implementation runs reads as coverage it is not.
+                    """)
+            }
+        }
+    }
+
     /// A suite that silently finds nothing would pass forever.
     @Test("the cases are actually found and loaded")
     func casesExist() throws {
         #expect(try Self.cases(ofKind: "stream").count >= 3)
         #expect(try Self.cases(ofKind: "objective").count >= 1)
         #expect(try Self.cases(ofKind: "cron").count >= 1)
+        #expect(try Self.cases(ofKind: "command").count >= 2)
+        #expect(try Self.cases(ofKind: "stderr").count >= 1)
     }
 }

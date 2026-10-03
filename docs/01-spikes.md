@@ -385,3 +385,91 @@ Cheap, but it decides §7. libraries.dev says Beam and Orb support SwiftUI; veri
 - 4 → **answered: Claude `.auto` (blocking hook), Codex `.auto` (sandbox policy, no mid-run ask)**
 - 5 → whether M4 needs pre-warming; what we tell users compute costs
 - 6 → build-vs-reimplement for each libraries.dev effect
+
+---
+
+## Spike 6 — the Go core, and what a second implementation found immediately
+
+**Date:** 2026-10-03
+**Question:** can the canonical mappings be re-implemented from the conformance cases alone, and
+do the cases actually hold two languages together?
+
+**Answer:** yes, and they do — but the valuable finding was not the agreement. It was the
+disagreement.
+
+Writing a second implementation and pointing it at the same cases turned up **two live bugs in the
+shipping Swift core** within an hour. Neither was caught by 146 passing Swift tests, because both
+lived in the gap between what the code did and what the real binary does.
+
+### Finding 1 — every Codex run was reported as a protocol failure
+
+`CodexAdapter` treated this stderr line as a fatal protocol error:
+
+```
+Reading additional input from stdin...
+```
+
+M0 recorded it as the signal that a host had left stdin open and the run was about to hang. That
+reading was wrong. Checked against the real binary:
+
+```
+$ codex exec --json --sandbox read-only "say hi" < /dev/null 2>&1 | head -2
+Reading additional input from stdin...
+{"type":"thread.started","thread_id":"01a1005a-6ae4-7e03-b6f4-36ceedb351c6"}
+```
+
+Codex prints it on **every run**, including with stdin on `/dev/null`, where it reads EOF and
+carries on normally. `codex exec --help` confirms the design — stdin is simply an additional input
+channel, appended as a `<stdin>` block when piped.
+
+So the line cannot distinguish a hang from a healthy run, and the mapping emitted
+`.failed(protocolError)` before Codex produced a single event. A hang is only detectable by a
+timeout, which belongs to the host.
+
+There was a unit test for this. It passed the whole time, because it asserted the *mapping* and not
+the premise behind it. That is the general lesson: a test written from the same misunderstanding as
+the code confirms the misunderstanding.
+
+### Finding 2 — Codex refuses to start in a non-repository, and we dropped the reason
+
+```
+$ cd /tmp && codex exec --json --sandbox read-only "say hi" < /dev/null
+Reading additional input from stdin...
+Not inside a trusted directory and --skip-git-repo-check was not specified.
+$ echo $?
+1
+```
+
+`invocation(for:)` did not pass `--skip-git-repo-check` (only the auth probe did), and
+`normalise(.stderr:)` dropped the explanation. A bot pointed at an ordinary folder therefore failed
+with **zero events and no reason** — the worst way for anything to fail.
+
+The fix is not to pass the flag unconditionally, which is what the probe did and what the first
+Go draft copied. Codex wants a repository so its edits stay recoverable, and that concern is real
+the moment writes are possible. So:
+
+| sandbox | `--skip-git-repo-check` | reasoning |
+|---|---|---|
+| `read-only` | passed | no writes are possible, so there is nothing to recover |
+| `workspace-write` | withheld | the safety net is doing its job; the refusal is surfaced as a decision |
+| `danger-full-access` | withheld | as above, more so |
+
+Passing it unconditionally silently removed the only thing standing between a write-capable bot and
+an unrecoverable folder.
+
+### Finding 3 — the two implementations drifted within the hour
+
+Before any case covered it, the Go and Swift command lines had already diverged: `--model` against
+`-m`, a forwarded `-C` against a working directory set on the process, and MCP config paths passed
+to an engine that has no such flag. None of this was visible to the stream cases, because a wrong
+flag fails *before* a single event exists.
+
+That gap is now two new case kinds, `command` and `stderr`, which both implementations run. Eight
+cases total, and the suite was verified to bite in both languages by deliberately reintroducing
+drift (accepting `*/n`, matching `OBJECTIVE_MET` mid-sentence) and confirming a red build with the
+case's own reasoning attached.
+
+**What this changes:** nothing about the plan, and quite a lot about confidence in it. Decision #28
+argued a second implementation was worth building partly as a drift guard. It paid for itself
+before it ran a single real prompt — not by disagreeing with Swift, but by making someone check
+Swift against the binary again.

@@ -172,6 +172,9 @@ public struct EngineFailure: Sendable, Equatable, Codable, Error {
         case launchFailed
         case protocolError
         case nonZeroExit
+        /// The engine refused to run in the chosen folder. Codex does this outside a git
+        /// repository, so its edits stay recoverable.
+        case untrustedDirectory
         case cancelled
         case unknown
     }

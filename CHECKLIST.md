@@ -77,6 +77,8 @@ downloadable app is an Apple Developer certificate.
 ### Underneath, no buttons yet
 - [x] Cloud machines — create, start, stop, run things on them
 - [x] Installing a schedule inside a cloud machine
+- [x] A second copy of the engine-handling code, in Go, that runs on Linux and Windows
+- [x] One shared set of tests both copies have to pass, so they can't quietly disagree
 
 ---
 
@@ -145,6 +147,22 @@ downloadable app is an Apple Developer certificate.
 
 ---
 
+## Worth knowing
+
+Writing the engine-handling code a second time (in Go, so it runs on Linux and Windows) turned up
+**two real bugs in the Mac app** that 146 passing tests had missed:
+
+1. Every Codex run was being reported as a crash. A harmless message Codex prints on *every* run
+   was being read as a sign it had hung. There was even a test for it — which passed, because it
+   checked the wrong thing confidently.
+2. Codex refuses to run in a folder that isn't a git repository, and the app was throwing away the
+   explanation. So a bot pointed at an ordinary folder just failed, silently, with nothing to show
+   the user why.
+
+Both are fixed, and both are now pinned by the shared tests so they can't come back.
+
+---
+
 ## Waiting on you
 
 | What | Why it matters |
@@ -161,7 +179,8 @@ downloadable app is an Apple Developer certificate.
 
 - **Phone app** — not in version 1. Keeps the Mac app with zero network surface.
 - **Voice** — later. Neither competitor leads with it.
-- **Windows / Linux** — Mac first, then reassess.
+- **A Windows or Linux *app*** — Mac first. The engine-handling underneath it now runs
+  everywhere, which is the hard half, but there is no second app and won't be before 1.0.
 - **Waking your Mac for free** — impossible without root. Needs the opt-in helper, or a cloud machine.
 
 See [docs/03-decisions.md](docs/03-decisions.md) for why, and [PLAN.md](PLAN.md) for the long version.
