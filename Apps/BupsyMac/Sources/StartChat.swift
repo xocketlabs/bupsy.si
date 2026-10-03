@@ -16,6 +16,7 @@ struct StartChatPalette: View {
 
     let onPick: (BotID) -> Void
     let onCreate: () -> Void
+    var onCreateGroup: () -> Void = {}
     let onDismiss: () -> Void
 
     @State private var query = ""
@@ -93,6 +94,11 @@ struct StartChatPalette: View {
         if needle.isEmpty || "create new bot".contains(needle) {
             items.append(PaletteItem(kind: .create))
         }
+        // Second, as in Grok Bot's own palette. It was left out until group threads existed —
+        // a dead menu item is worse than an absent one.
+        if (needle.isEmpty || "create group chat".contains(needle)) && model.bots.count >= 2 {
+            items.append(PaletteItem(kind: .createGroup))
+        }
         // Most recently active first. "Start a chat with…" is nearly always "pick up where I
         // left off", and creation order put the bot made first at the top forever.
         let ordered = model.bots.sorted { model.lastActivity(for: $0) > model.lastActivity(for: $1) }
@@ -115,6 +121,7 @@ struct StartChatPalette: View {
     private func choose(_ item: PaletteItem) {
         switch item.kind {
         case .create: onCreate()
+        case .createGroup: onCreateGroup()
         case .bot(let bot): onPick(bot.id)
         }
     }
@@ -123,6 +130,7 @@ struct StartChatPalette: View {
 struct PaletteItem: Identifiable {
     enum Kind {
         case create
+        case createGroup
         case bot(Bot)
     }
     let kind: Kind
@@ -130,6 +138,7 @@ struct PaletteItem: Identifiable {
     var id: String {
         switch kind {
         case .create: "create"
+        case .createGroup: "create-group"
         case .bot(let bot): bot.id.rawValue
         }
     }
@@ -152,6 +161,16 @@ private struct PaletteRow: View {
                         .frame(width: 24, height: 24)
                         .background(palette.secondary, in: .rect(cornerRadius: 6))
                     Text("Create new bot")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
+
+                case .createGroup:
+                    Image(systemName: "person.2")
+                        .font(.system(size: Theme.scaled(11), weight: .medium))
+                        .foregroundStyle(palette.foreground)
+                        .frame(width: 24, height: 24)
+                        .background(palette.secondary, in: .rect(cornerRadius: 6))
+                    Text("Create group chat")
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
 

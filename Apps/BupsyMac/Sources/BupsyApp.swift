@@ -46,6 +46,7 @@ struct RootView: View {
     @State private var destination: NavRail.Destination?
     @State private var isStartingChat = false
     @State private var isAddingBot = false
+    @State private var isAddingGroup = false
 
     var body: some View {
         content
@@ -98,6 +99,10 @@ struct RootView: View {
                                 isStartingChat = false
                                 isAddingBot = true
                             },
+                            onCreateGroup: {
+                                isStartingChat = false
+                                isAddingGroup = true
+                            },
                             onDismiss: { isStartingChat = false }
                         )
                         .padding(.top, 60)
@@ -121,6 +126,9 @@ struct RootView: View {
         // remembered at each call site, which is how the blue got in.
         .tint(palette.primary)
         .sheet(isPresented: $isAddingBot) { NewBotSheet() }
+        .sheet(isPresented: $isAddingGroup) {
+            NewGroupSheet(onCreated: { group in destination = .group(group.id) })
+        }
     }
 
     /// Says so when the database could not be opened.
@@ -206,6 +214,13 @@ struct RootView: View {
             floating { Page(trail: ["Waiting on you"]) { AttentionInbox() } }
         case .usage:
             floating { Page(trail: ["Usage"]) { UsageSheet() } }
+        case .group(let id):
+            if let group = model.groups.first(where: { $0.id == id }) {
+                // Like a bot page, it draws its own card.
+                GroupPage(group: group)
+            } else {
+                floating { NothingSelected() }
+            }
         case .none:
             floating { NothingSelected() }
         }

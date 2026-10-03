@@ -109,3 +109,22 @@ struct GroupTests {
         #expect(try store.members(ofGroup: group.id) == ["b"])
     }
 }
+
+@Suite("Group sessions")
+struct GroupSessionTests {
+    /// A bot's session in a group must never be resumed as its session with you, or the other way
+    /// round — each would hand the bot a conversation it was not part of.
+    @Test("a bot's group session and its own session are looked up separately")
+    func sessionsAreSeparate() throws {
+        let store = try Store.inMemory()
+        try store.save(BotRecord(id: "s", name: "Scout", engine: "claude"))
+        try store.save(GroupRecord(id: "g", name: "Launch", leadBotID: "s"))
+        try store.save(ConversationRecord(id: "own", botID: "s", engine: "claude",
+                                          providerConversationID: "sess-own"))
+        try store.save(ConversationRecord(id: "grp", botID: "s", engine: "claude",
+                                          providerConversationID: "sess-group", groupID: "g"))
+
+        #expect(try store.conversation(forBot: "s", engine: "claude")?.id == "own")
+        #expect(try store.conversation(forBot: "s", engine: "claude", group: "g")?.id == "grp")
+    }
+}

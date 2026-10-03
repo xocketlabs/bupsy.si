@@ -89,13 +89,15 @@ public struct ConversationRecord: Codable, FetchableRecord, MutablePersistableRe
     public var lastEventAt: Date
     /// Resume handles are engine-specific, so a conversation belongs to a (bot, engine) pair.
     public var engine: String
+    /// Set for the bot's session inside a group; nil for its session with you alone.
+    public var groupID: String?
 
     public init(id: String = UUID().uuidString, botID: String, engine: String,
                 providerConversationID: String? = nil, title: String? = nil,
-                lastEventAt: Date = Date()) {
+                lastEventAt: Date = Date(), groupID: String? = nil) {
         self.id = id; self.botID = botID; self.engine = engine
         self.providerConversationID = providerConversationID
-        self.title = title; self.lastEventAt = lastEventAt
+        self.title = title; self.lastEventAt = lastEventAt; self.groupID = groupID
     }
 }
 

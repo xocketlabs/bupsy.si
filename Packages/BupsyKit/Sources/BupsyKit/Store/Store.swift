@@ -313,6 +313,12 @@ public struct Store: Sendable {
             try db.alter(table: "runs") { t in
                 t.add(column: "groupID", .text)
             }
+            // A bot's engine session in a group is separate from its session with you alone.
+            // Resuming the one-to-one session inside a group would hand the group a conversation
+            // it was never part of, and the other way round.
+            try db.alter(table: "conversations") { t in
+                t.add(column: "groupID", .text)
+            }
         }
 
         return migrator
@@ -366,10 +372,13 @@ public struct Store: Sendable {
 
     /// The bot's thread **for this engine**. Switching engines gives a bot a separate thread,
     /// and switching back returns to the one it had.
-    public func conversation(forBot botID: String, engine: String) throws -> ConversationRecord? {
+    /// The bot's session on an engine — its own, or the one it has inside a particular group.
+    public func conversation(forBot botID: String, engine: String,
+                             group groupID: String? = nil) throws -> ConversationRecord? {
         try database.read { db in
             try ConversationRecord
-                .filter(Column("botID") == botID && Column("engine") == engine)
+                .filter(Column("botID") == botID && Column("engine") == engine
+                        && Column("groupID") == groupID)
                 .order(Column("lastEventAt").desc)
                 .fetchOne(db)
         }

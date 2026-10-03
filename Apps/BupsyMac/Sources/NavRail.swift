@@ -24,6 +24,7 @@ struct NavRail: View {
     @State private var renamingFolder: FolderName?
     @State private var filingBot: Bot?
     @State private var renamingBot: Bot?
+    @State private var renamingGroup: ChatGroup?
     @FocusState private var searchFocused: Bool
 
     enum Destination: Hashable {
@@ -32,6 +33,7 @@ struct NavRail: View {
         case connectors
         case attention
         case usage
+        case group(String)
     }
 
     var body: some View {
@@ -56,6 +58,7 @@ struct NavRail: View {
         .sheet(item: $renamingFolder) { RenameFolderSheet(folder: $0.id) }
         .sheet(item: $filingBot) { NewFolderSheet(bot: $0) }
         .sheet(item: $renamingBot) { RenameBotSheet(bot: $0) }
+        .sheet(item: $renamingGroup) { RenameGroupSheet(group: $0) }
     }
 
     // MARK: - Header
@@ -153,6 +156,31 @@ struct NavRail: View {
                             ForEach(model.pinnedBots) { row(for: $0) }
                         }
                     }
+
+                    // Groups first after pinned: they are where several bots are already busy, so
+                    // the likeliest place you want to look.
+                    if !model.groups.isEmpty {
+                        VStack(alignment: .leading, spacing: 1) {
+                            sectionHeader("Groups")
+                            ForEach(model.groups) { group in
+                                GroupRow(group: group,
+                                         selected: destination == .group(group.id),
+                                         action: { destination = .group(group.id) })
+                                .contextMenu {
+                                    Button("Rename group…") { renamingGroup = group }
+                                    // The conversation only. Its bots are untouched.
+                                    Button("Delete group", role: .destructive) {
+                                        if destination == .group(group.id),
+                                           let first = model.bots.first {
+                                            destination = .bot(first.id)
+                                        }
+                                        model.deleteGroup(group)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
 
                     ForEach(model.folders, id: \.self) { folder in
                         let members = model.bots(in: folder)
