@@ -352,28 +352,21 @@ struct SettingRow<Menu: View>: View {
 /// "the button" is once.
 struct SheetFrame<Content: View, Actions: View>: View {
     @Environment(\.palette) private var palette
+    @Environment(\.dismiss) private var dismiss
     let title: String
+    /// An SF Symbol for the header tile — what kind of thing this dialog makes, at a glance.
+    var icon: String?
     var subtitle: String?
     var width: CGFloat = 420
+    /// False only where there is no neutral way out: a permission question must be answered, and
+    /// closing it without an answer would silently drop what it was asking about.
+    var closable = true
     @ViewBuilder var content: Content
     @ViewBuilder var actions: Actions
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(Theme.Typography.heading)
-                    .foregroundStyle(palette.foreground)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.mutedForeground)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(.horizontal, Theme.Space.section)
-            .padding(.top, Theme.Space.section)
-            .padding(.bottom, Theme.Space.gutter)
+            header
 
             VStack(alignment: .leading, spacing: Theme.Space.gutter) { content }
                 .padding(.horizontal, Theme.Space.section)
@@ -393,6 +386,53 @@ struct SheetFrame<Content: View, Actions: View>: View {
         .background(palette.popover)
         // The app's own accent, so focus rings and default buttons stop arriving in system blue.
         .tint(palette.primary)
+    }
+
+    /// Icon, title and a sentence of context, with a close button in the corner.
+    ///
+    /// The close button is the one every macOS user reaches for, and Esc triggers it: before this
+    /// the only way out of a dialog was finding its Cancel button. The text block takes the full
+    /// width, where it used to wrap its subtitle at about sixty percent of the sheet.
+    private var header: some View {
+        HStack(alignment: .top, spacing: Theme.Space.step) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: Theme.scaled(14), weight: .medium))
+                    .foregroundStyle(palette.primary)
+                    .frame(width: 36, height: 36)
+                    .background(palette.primary.opacity(0.14),
+                                in: .rect(cornerRadius: Theme.Radius.control))
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(Theme.Typography.heading)
+                    .foregroundStyle(palette.foreground)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if closable {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: Theme.scaled(10), weight: .semibold))
+                        .foregroundStyle(palette.mutedForeground)
+                        .frame(width: 26, height: 26)
+                        .background(palette.card, in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
+                .help("Close (Esc)")
+            }
+        }
+        .padding(.horizontal, Theme.Space.section)
+        .padding(.top, Theme.Space.section)
+        .padding(.bottom, Theme.Space.gutter + 2)
     }
 }
 

@@ -31,6 +31,7 @@ struct NavRail: View {
         case machines
         case connectors
         case attention
+        case usage
     }
 
     var body: some View {
@@ -61,11 +62,9 @@ struct NavRail: View {
 
     private var header: some View {
         HStack(spacing: Theme.Space.snug) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(LinearGradient(
-                    colors: [palette.primary, palette.info],
-                    startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 20, height: 20)
+            // The mark, not a gradient square: the same bubble character as the app icon, and it
+            // blinks now and then, because the thing that looks after the bots is one of them.
+            BupsyMark(size: Theme.scaled(26), alive: true)
             Text("bupsy")
                 .font(.system(size: Theme.scaled(17), weight: .semibold))
                 .foregroundStyle(palette.foreground)
@@ -342,6 +341,9 @@ struct NavRail: View {
                       selected: destination == .machines) { destination = .machines }
             setupItem("puzzlepiece.extension", label: "Apps", count: model.connectors.count,
                       selected: destination == .connectors) { destination = .connectors }
+            setupItem("chart.bar", label: "Usage", count: 0,
+                      selected: destination == .usage) { destination = .usage }
+            Spacer(minLength: 0)
         }
     }
 
@@ -352,8 +354,12 @@ struct NavRail: View {
         Button(action: action) {
             HStack(spacing: Theme.Space.tight) {
                 Image(systemName: symbol).font(.system(size: Theme.scaled(11)))
-                Text(label).font(Theme.Typography.label)
-                Spacer(minLength: 0)
+                // One line, always. Squeezed into equal thirds, "Machines" and "Usage" wrapped
+                // mid-word the moment the type grew and a third item arrived.
+                Text(label)
+                    .font(Theme.Typography.label)
+                    .lineLimit(1)
+                    .fixedSize()
                 if count > 0 {
                     Text("\(count)")
                         .font(Theme.Typography.badge)
@@ -363,7 +369,6 @@ struct NavRail: View {
             .foregroundStyle(selected ? palette.foreground : palette.sidebarMutedForeground)
             .padding(.horizontal, Theme.Space.snug)
             .frame(height: 32)
-            .frame(maxWidth: .infinity)
             .background(selected ? palette.sidebarAccent : .clear,
                         in: .rect(cornerRadius: Theme.Radius.control))
             .contentShape(.rect)
@@ -438,7 +443,7 @@ struct BotRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Theme.Space.snug) {
-                BotFace(hue: bot.avatarHue, mood: mood, size: Theme.scaled(34))
+                BotFace(bot: bot, mood: mood, size: Theme.scaled(34))
                     .overlay(alignment: .bottomTrailing) { statusDot }
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -549,7 +554,7 @@ struct RenameFolderSheet: View {
     @State private var name = ""
 
     var body: some View {
-        SheetFrame(title: "Rename folder", width: 380) {
+        SheetFrame(title: "Rename folder", icon: "folder", width: 380) {
             Field(label: "Name",
                   hint: "\(model.bots(in: folder).count) bots move with it.") {
                 TextField("", text: $name, prompt: Text(folder))
@@ -605,7 +610,7 @@ struct NewFolderSheet: View {
     @State private var name = ""
 
     var body: some View {
-        SheetFrame(title: "New folder", width: 380) {
+        SheetFrame(title: "New folder", icon: "folder.badge.plus", width: 380) {
             Field(label: "Name", hint: "\(bot.name) moves into it.") {
                 TextField("", text: $name, prompt: Text("Outreach"))
                     .textFieldStyle(BupsyFieldStyle())
@@ -638,18 +643,18 @@ struct RenameBotSheet: View {
     let bot: Bot
     @State private var name = ""
     @State private var job = ""
+    @State private var shape = BotShape.circle
+    @State private var colour = 0
+    /// Only a face someone actually changed is saved as a choice. Saving every bot's derived face
+    /// as "chosen" on an unrelated rename would quietly pin faces nobody picked.
+    @State private var faceChanged = false
 
     var body: some View {
-        SheetFrame(title: "Edit bot") {
+        SheetFrame(title: "Edit bot", icon: "pencil", subtitle: "Its name, its job, and the face you'll know it by.",
+                   width: 460) {
             HStack(spacing: Theme.Space.step) {
-                // The face does not change with the name: it is set once at creation, so a rename
-                // stays a rename rather than looking like a different bot. Click it for a new one.
-                Button { model.shuffleFace(bot) } label: {
-                    BotFace(hue: model.bots.first { $0.id == bot.id }?.avatarHue ?? bot.avatarHue,
-                            mood: .idle, size: 52)
-                }
-                .buttonStyle(.plain)
-                .help("Shuffle face")
+                // The face shown live as you pick, so the sheet is a preview rather than a form.
+                BotFace(hue: bot.avatarHue, mood: .idle, size: 56, shape: shape, colour: colour)
                 VStack(alignment: .leading, spacing: 4) {
                     TextField("", text: $name, prompt: Text(bot.name))
                         .textFieldStyle(BupsyFieldStyle())
@@ -661,6 +666,11 @@ struct RenameBotSheet: View {
                     }
                 }
             }
+
+            AvatarPicker(
+                shape: $shape, colour: $colour,
+                taken: Set(model.bots.filter { $0.id != bot.id }.map(\.effectiveShape)),
+                onChange: { faceChanged = true })
 
             Field(label: "What's its job?",
                   hint: "Takes effect on the next thing you say — it does not rewrite the thread.") {
@@ -680,14 +690,18 @@ struct RenameBotSheet: View {
                           || model.isNameTaken(name, except: bot.id))
         }
         .onAppear {
-            name = bot.name
-            job = bot.personaPrompt ?? ""
+            let current = model.bots.first { $0.id == bot.id } ?? bot
+            name = current.name
+            job = current.personaPrompt ?? ""
+            shape = current.effectiveShape
+            colour = current.avatarColour ?? BotFace.derivedColour(forHue: current.avatarHue)
         }
     }
 
     private func commit() {
         model.rename(bot, to: name)
         model.setJob(bot, job)
+        if faceChanged { model.setAvatar(bot, shape: shape, colour: colour) }
         dismiss()
     }
 }

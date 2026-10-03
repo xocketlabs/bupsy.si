@@ -57,17 +57,23 @@ public struct BotRecord: Codable, FetchableRecord, MutablePersistableRecord, Sen
     public var hidden: Bool
     /// nil means never opened, which is what makes a new bot read as unread with no row written.
     public var lastReadAt: Date?
+    /// A shape chosen by name, or nil to derive one from the hue.
+    public var avatarShape: String?
+    /// A palette position chosen by hand, or nil to derive one from the hue.
+    public var avatarColour: Int?
 
     public init(id: String = UUID().uuidString, name: String, engine: String,
                 model: String? = nil, machineID: String? = nil, autonomy: String = "ask",
                 personaPrompt: String? = nil, workdir: String? = nil, avatarHue: Double = 0.5,
                 createdAt: Date = Date(), sortIndex: Int = 0, folder: String? = nil,
-                pinned: Bool = false, hidden: Bool = false, lastReadAt: Date? = nil) {
+                pinned: Bool = false, hidden: Bool = false, lastReadAt: Date? = nil,
+                avatarShape: String? = nil, avatarColour: Int? = nil) {
         self.id = id; self.name = name; self.engine = engine; self.model = model
         self.machineID = machineID; self.autonomy = autonomy; self.personaPrompt = personaPrompt
         self.workdir = workdir; self.avatarHue = avatarHue; self.createdAt = createdAt
         self.sortIndex = sortIndex; self.folder = folder; self.pinned = pinned
         self.hidden = hidden; self.lastReadAt = lastReadAt
+        self.avatarShape = avatarShape; self.avatarColour = avatarColour
     }
 }
 
@@ -107,15 +113,17 @@ public struct RunRecord: Codable, FetchableRecord, MutablePersistableRecord, Sen
     public var endedAt: Date?
     public var inputTokens: Int?
     public var outputTokens: Int?
+    /// API-equivalent cost as the engine reported it. Not what a subscriber paid.
+    public var costUSD: Double?
 
     public init(id: String = UUID().uuidString, botID: String, conversationID: String,
                 triggerID: String? = nil, host: String, status: String = "running",
                 startedAt: Date = Date(), endedAt: Date? = nil,
-                inputTokens: Int? = nil, outputTokens: Int? = nil) {
+                inputTokens: Int? = nil, outputTokens: Int? = nil, costUSD: Double? = nil) {
         self.id = id; self.botID = botID; self.conversationID = conversationID
         self.triggerID = triggerID; self.host = host; self.status = status
         self.startedAt = startedAt; self.endedAt = endedAt
-        self.inputTokens = inputTokens; self.outputTokens = outputTokens
+        self.inputTokens = inputTokens; self.outputTokens = outputTokens; self.costUSD = costUSD
     }
 }
 
@@ -231,5 +239,21 @@ public struct BotLinkRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     public init(fromBotID: String, toBotID: String, allowed: Bool, decidedAt: Date = Date()) {
         self.fromBotID = fromBotID; self.toBotID = toBotID
         self.allowed = allowed; self.decidedAt = decidedAt
+    }
+}
+
+
+/// One bot's usage over a period, summed.
+public struct BotUsage: Sendable, Equatable {
+    public let botID: String
+    public let runs: Int
+    public let sentTokens: Int
+    public let receivedTokens: Int
+    /// nil when no run in the period reported a cost — Codex never does. Distinct from zero.
+    public let costUSD: Double?
+
+    public init(botID: String, runs: Int, sentTokens: Int, receivedTokens: Int, costUSD: Double?) {
+        self.botID = botID; self.runs = runs; self.sentTokens = sentTokens
+        self.receivedTokens = receivedTokens; self.costUSD = costUSD
     }
 }

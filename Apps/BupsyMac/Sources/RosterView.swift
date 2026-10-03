@@ -81,12 +81,18 @@ struct NewBotSheet: View {
     @State private var name = ""
     @State private var engine = EngineID.claude
     @State private var job = ""
+    @State private var shape = BotShape.circle
+    @State private var colour = 0
+    /// Until the face is touched, it follows the name — the automatic face, kept distinct from the
+    /// rest of the roster. Once someone picks, their pick stays put while they keep typing.
+    @State private var faceChosen = false
 
     var body: some View {
-        SheetFrame(title: "New bot",
+        SheetFrame(title: "New bot", icon: "sparkles",
                    subtitle: "It starts fully gated — it asks before doing anything beyond reading.") {
             HStack(spacing: Theme.Space.step) {
-                BotFace(hue: previewHue, mood: .idle, size: 52)
+                BotFace(hue: previewHue, mood: .idle, size: 56,
+                        shape: faceChosen ? shape : nil, colour: faceChosen ? colour : nil)
                 VStack(alignment: .leading, spacing: Theme.Space.snug) {
                     // Not "Scout": that is a starter bot's name, and suggesting it invited a
                     // duplicate of a bot the person already has.
@@ -107,6 +113,30 @@ struct NewBotSheet: View {
                 }
             }
 
+            AvatarPicker(
+                // Each setter seeds the *other* half from the automatic face before taking over.
+                // Without it, picking only a colour flipped the face to "chosen" with the shape
+                // still at its placeholder, so the bot jumped to a circle you never picked.
+                shape: Binding(
+                    get: { faceChosen ? shape : BotFace.derivedShape(forHue: previewHue) },
+                    set: { new in
+                        if !faceChosen {
+                            colour = BotFace.derivedColour(forHue: previewHue)
+                            faceChosen = true
+                        }
+                        shape = new
+                    }),
+                colour: Binding(
+                    get: { faceChosen ? colour : BotFace.derivedColour(forHue: previewHue) },
+                    set: { new in
+                        if !faceChosen {
+                            shape = BotFace.derivedShape(forHue: previewHue)
+                            faceChosen = true
+                        }
+                        colour = new
+                    }),
+                taken: Set(model.bots.map(\.effectiveShape)))
+
             Field(label: "What's its job?",
                   hint: "Written to the bot as standing instructions, every time you talk to it.") {
                 TextField("", text: $job,
@@ -122,7 +152,9 @@ struct NewBotSheet: View {
                 model.addBot(
                     name: name.trimmingCharacters(in: .whitespaces),
                     engine: engine,
-                    job: job.trimmingCharacters(in: .whitespaces))
+                    job: job.trimmingCharacters(in: .whitespaces),
+                    shape: faceChosen ? shape : nil,
+                    colour: faceChosen ? colour : nil)
                 dismiss()
             }
             .buttonStyle(PrimaryButton())

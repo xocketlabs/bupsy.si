@@ -156,7 +156,7 @@ private struct PaletteRow: View {
                         .foregroundStyle(palette.foreground)
 
                 case .bot(let bot):
-                    BotFace(hue: bot.avatarHue, mood: .idle, size: Theme.scaled(24))
+                    BotFace(bot: bot, mood: .idle, size: Theme.scaled(24))
                     Text(bot.name)
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
@@ -201,16 +201,18 @@ struct IntroductionSheet: View {
     var body: some View {
         SheetFrame(
             title: "Let \(introduction.from.name) message \(introduction.to.name)?",
+            icon: "bubble.left.and.bubble.right",
             subtitle: "A bot is trying to send another bot an instruction. "
                 + "\(introduction.to.name) would act on it without you reading it first.",
-            width: 460
+            width: 460,
+            closable: false
         ) {
             HStack(spacing: Theme.Space.step) {
-                BotFace(hue: introduction.from.avatarHue, mood: .idle, size: 40)
+                BotFace(bot: introduction.from, mood: .idle, size: 40)
                 Image(systemName: "arrow.right")
                     .font(.system(size: Theme.scaled(11)))
                     .foregroundStyle(palette.mutedForeground)
-                BotFace(hue: introduction.to.avatarHue, mood: .idle, size: 40)
+                BotFace(bot: introduction.to, mood: .idle, size: 40)
                 Spacer(minLength: 0)
             }
 

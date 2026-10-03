@@ -78,9 +78,9 @@ struct RootView: View {
             // The working surface floats inside the rail's colour with a small inset, which is
             // where this layout gets its depth — the panel reads as an object on a ground
             // rather than a second column butted against the first.
+            // The inset is applied per page now rather than here, because a bot page owns its own
+            // card: its details panel sits *outside* the card, on the window, like the rail.
             stage
-                .padding(.leading, 0)
-                .padding([.top, .bottom, .trailing], 8)
                 // Over the conversation rather than in a sheet, so the thread you were reading
                 // stays visible behind it and dismissing costs nothing.
                 .overlay(alignment: .top) {
@@ -189,24 +189,33 @@ struct RootView: View {
 
     @ViewBuilder
     private var panel: some View {
-        PanelSurface {
-            switch destination ?? model.bots.first.map({ .bot($0.id) }) {
-            case .bot(let id):
-                if let bot = model.bots.first(where: { $0.id == id }) {
-                    BotPage(bot: bot)
-                } else {
-                    NothingSelected()
-                }
-            case .machines:
-                Page(trail: ["Machines"]) { MachinesSheet() }
-            case .connectors:
-                Page(trail: ["Apps"]) { ConnectorsSheet() }
-            case .attention:
-                Page(trail: ["Waiting on you"]) { AttentionInbox() }
-            case .none:
-                NothingSelected()
+        switch destination ?? model.bots.first.map({ .bot($0.id) }) {
+        case .bot(let id):
+            if let bot = model.bots.first(where: { $0.id == id }) {
+                // No card here: BotPage draws its own, so its details panel can sit beside the
+                // card on the window rather than inside it. See BotPage.body.
+                BotPage(bot: bot)
+            } else {
+                floating { NothingSelected() }
             }
+        case .machines:
+            floating { Page(trail: ["Machines"]) { MachinesSheet() } }
+        case .connectors:
+            floating { Page(trail: ["Apps"]) { ConnectorsSheet() } }
+        case .attention:
+            floating { Page(trail: ["Waiting on you"]) { AttentionInbox() } }
+        case .usage:
+            floating { Page(trail: ["Usage"]) { UsageSheet() } }
+        case .none:
+            floating { NothingSelected() }
         }
+    }
+
+    /// The floating card every page sits on: inset from the window on three sides and flush to
+    /// the rail on the fourth, which is where the layout's depth comes from.
+    private func floating<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        PanelSurface { content() }
+            .padding([.top, .bottom, .trailing], 8)
     }
 }
 

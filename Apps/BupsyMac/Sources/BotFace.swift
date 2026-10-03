@@ -30,6 +30,27 @@ struct BotFace: View {
     let hue: Double
     let mood: BotMood
     var size: CGFloat = 26
+    /// A face someone picked. nil derives it from the hue, as every face did before.
+    var chosenShape: BotShape?
+    var chosenColour: Int?
+
+    /// The face a bot actually wears — its chosen one if it has one.
+    init(bot: Bot, mood: BotMood, size: CGFloat = 26) {
+        self.hue = bot.avatarHue
+        self.mood = mood
+        self.size = size
+        self.chosenShape = bot.avatarShape
+        self.chosenColour = bot.avatarColour
+    }
+
+    init(hue: Double, mood: BotMood, size: CGFloat = 26,
+         shape: BotShape? = nil, colour: Int? = nil) {
+        self.hue = hue
+        self.mood = mood
+        self.size = size
+        self.chosenShape = shape
+        self.chosenColour = colour
+    }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
@@ -54,12 +75,17 @@ struct BotFace: View {
     // MARK: - Identity
 
     /// 0...359, from the hue. Everything about the face is derived from this one number.
+    ///
+    /// The static helpers below are `nonisolated`: they are pure arithmetic, and `Bot` — a plain
+    /// data struct, used off the main actor — calls them to know which face a bot wears. A
+    /// `View`'s statics are main-actor isolated on the CI toolchain, which a newer local compiler
+    /// did not enforce, so this compiled here and failed there.
     private var seed: Int { Self.seed(forHue: hue) }
 
-    static func seed(forHue hue: Double) -> Int { Int((hue * 360).rounded()) % 360 }
+    nonisolated static func seed(forHue hue: Double) -> Int { Int((hue * 360).rounded()) % 360 }
 
     /// Which of the fourteen shapes a hue produces — used to keep a roster varied.
-    static func shapeIndex(forHue hue: Double) -> Int {
+    nonisolated static func shapeIndex(forHue hue: Double) -> Int {
         mix(seed(forHue: hue), salt: 1) % BotShape.allCases.count
     }
 
@@ -68,13 +94,21 @@ struct BotFace: View {
     /// The first version used `(seed × 7 + 3) % 14`, and 7 shares a factor with 14, so it could
     /// only ever produce two of the fourteen shapes. Any linear map would also have tied colour to
     /// shape, so every pick wore the same colour. Two independent hashes give every combination.
-    private var shape: BotShape {
-        BotShape.allCases[Self.mix(seed, salt: 1) % BotShape.allCases.count]
+    private var shape: BotShape { chosenShape ?? Self.derivedShape(forHue: hue) }
+    private var colour: Color {
+        BotShape.palette[(chosenColour ?? Self.derivedColour(forHue: hue)) % BotShape.palette.count]
     }
-    private var colour: Color { BotShape.palette[Self.mix(seed, salt: 2) % BotShape.palette.count] }
+
+    nonisolated static func derivedShape(forHue hue: Double) -> BotShape {
+        BotShape.allCases[mix(seed(forHue: hue), salt: 1) % BotShape.allCases.count]
+    }
+
+    nonisolated static func derivedColour(forHue hue: Double) -> Int {
+        mix(seed(forHue: hue), salt: 2) % BotShape.palette.count
+    }
 
     /// A small integer hash (murmur-style finaliser). Deterministic, so a face never changes.
-    static func mix(_ value: Int, salt: UInt32) -> Int {
+    nonisolated static func mix(_ value: Int, salt: UInt32) -> Int {
         var h = UInt32(truncatingIfNeeded: value) &* 0x9E37_79B1 ^ salt &* 0x85EB_CA6B
         h ^= h >> 16
         h = h &* 0x7FEB_352D
@@ -273,9 +307,12 @@ private struct Motion {
 /// recoloured. All closed paths in a unit square scaled to the body rect; the polygonal ones are
 /// softened by unioning them with their own round-jointed stroke, which is what makes a triangle
 /// read as plush rather than sharp.
-enum BotShape: CaseIterable {
+enum BotShape: String, CaseIterable, Sendable {
     case circle, drop, pick, triangle, squircle, pill, pebble, ghost, cat, cloud, flower, clover,
          star, hexagon
+
+    /// A word for the picker. Plain, because these are characters, not geometry.
+    var label: String { rawValue.capitalized }
 
     /// Saturated and friendly, with one white — the palette Grok Bot's roster lands on. Chosen
     /// colours rather than raw hues, because a raw hue wheel spends a third of itself on

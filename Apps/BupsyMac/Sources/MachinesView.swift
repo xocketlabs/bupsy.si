@@ -174,7 +174,7 @@ struct NewMachineSheet: View {
     @State private var alwaysOn = false
 
     var body: some View {
-        SheetFrame(title: "New machine",
+        SheetFrame(title: "New machine", icon: "server.rack",
                    subtitle: "Created on your own boat.dev account, billed to you.") {
             Field(label: "Name") {
                 TextField("", text: $name, prompt: Text("work"))

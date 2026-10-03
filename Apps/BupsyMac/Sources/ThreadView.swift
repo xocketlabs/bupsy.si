@@ -21,20 +21,74 @@ struct Bubble: View {
     let entry: TranscriptEntry
     let bot: Bot
     let showsAvatar: Bool
+    /// Reply to this message: who said it, and what. nil where replying makes no sense.
+    var onReply: ((_ author: String, _ text: String) -> Void)?
+
+    @State private var hovering = false
 
     var body: some View {
+        content.onHover { hovering = $0 }
+    }
+
+    /// The reply arrow, shown beside a message while the pointer is over it.
+    ///
+    /// Hover rather than always visible: on every message it would be furniture, and it is a thing
+    /// you reach for occasionally. Takes up its space even when hidden, so bubbles do not shift
+    /// sideways as the pointer moves down a thread.
+    private func replyButton(author: String, text: String) -> some View {
+        Button { onReply?(author, text) } label: {
+            Image(systemName: "arrowshape.turn.up.left")
+                .font(.system(size: Theme.scaled(11)))
+                .foregroundStyle(palette.mutedForeground)
+                .frame(width: 26, height: 26)
+                .background(palette.card, in: .circle)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .help("Reply to this message")
+        .opacity(hovering && onReply != nil ? 1 : 0)
+        .disabled(!hovering || onReply == nil)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch entry.kind {
         case .userMessage(let text):
-            HStack {
+            let parts = Reply.split(text)
+            HStack(alignment: .center, spacing: Theme.Space.tight) {
                 Spacer(minLength: 72)
-                Text(text)
-                    .font(Theme.Typography.body)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, Theme.Space.step)
-                    .padding(.vertical, Theme.Space.snug)
-                    .background(palette.primary, in: .rect(cornerRadius: Theme.Radius.bubble))
-                    .foregroundStyle(palette.onPrimary)
-                    .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .trailing)
+                replyButton(author: "You", text: parts.body)
+                VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                    // What this was a reply to, inside the bubble, so the thread reads the way it
+                    // was meant: this answer, about that message.
+                    if let quote = parts.quote {
+                        HStack(alignment: .top, spacing: Theme.Space.tight) {
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(palette.onPrimary.opacity(0.5))
+                                .frame(width: 2)
+                            VStack(alignment: .leading, spacing: 1) {
+                                if let author = parts.author {
+                                    Text(author)
+                                        .font(Theme.Typography.badge)
+                                        .opacity(0.85)
+                                }
+                                Text(quote)
+                                    .font(Theme.Typography.caption)
+                                    .lineLimit(2)
+                                    .opacity(0.8)
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text(parts.body)
+                        .font(Theme.Typography.body)
+                        .textSelection(.enabled)
+                }
+                .padding(.horizontal, Theme.Space.step)
+                .padding(.vertical, Theme.Space.snug)
+                .background(palette.primary, in: .rect(cornerRadius: Theme.Radius.bubble))
+                .foregroundStyle(palette.onPrimary)
+                .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .trailing)
             }
 
         case .messageFrom(_, let botName, let text):
@@ -63,18 +117,22 @@ struct Bubble: View {
                                 .strokeBorder(palette.border))
                         .foregroundStyle(palette.foreground)
                         .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .leading)
+                    replyButton(author: botName, text: text)
                     Spacer(minLength: 72)
                 }
             }
 
         case .assistantText(let text):
             botAligned {
-                // Cards sit above the background, which is where this palette's depth comes
-                // from — a reply looks like an object on a surface rather than text on a page.
-                FormattedReply(markdown: text)
-                    .padding(.horizontal, Theme.Space.step)
-                    .padding(.vertical, Theme.Space.snug)
-                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
+                HStack(alignment: .center, spacing: Theme.Space.tight) {
+                    // Cards sit above the background, which is where this palette's depth comes
+                    // from — a reply looks like an object on a surface rather than text on a page.
+                    FormattedReply(markdown: text)
+                        .padding(.horizontal, Theme.Space.step)
+                        .padding(.vertical, Theme.Space.snug)
+                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
+                    replyButton(author: bot.name, text: text)
+                }
             }
 
         case .thinking(let text):
@@ -107,7 +165,7 @@ struct Bubble: View {
             // A fixed gutter so bubbles stay aligned whether or not this one shows a face.
             Group {
                 if showsAvatar {
-                    BotFace(hue: bot.avatarHue, mood: .idle, size: Theme.Size.bubbleAvatar)
+                    BotFace(bot: bot, mood: .idle, size: Theme.Size.bubbleAvatar)
                 } else {
                     Color.clear.frame(width: Theme.Size.bubbleAvatar, height: 1)
                 }
@@ -308,10 +366,62 @@ struct Composer: View {
     @Binding var draft: String
     let bot: Bot
     let isRunning: Bool
+    @Binding var replyingTo: ReplyTarget?
     let onSend: () -> Void
     let onStop: () -> Void
 
     var body: some View {
+        // One column for the reply bar and the field, so on a wide window the bar sits exactly
+        // over the box it belongs to instead of stretching past it.
+        VStack(alignment: .leading, spacing: Theme.Space.tight) {
+            if let target = replyingTo { replyBar(target) }
+            field
+        }
+        .padding(.horizontal, Theme.Space.section)
+        .padding(.vertical, Theme.Space.step)
+        .frame(maxWidth: Theme.Size.contentMaxWidth)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// What you are replying to, pinned above the field until you send or dismiss it.
+    private func replyBar(_ target: ReplyTarget) -> some View {
+        HStack(spacing: Theme.Space.snug) {
+            Image(systemName: "arrowshape.turn.up.left.fill")
+                .font(.system(size: Theme.scaled(10)))
+                .foregroundStyle(palette.primary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Replying to \(target.author)")
+                    .font(Theme.Typography.badge)
+                    .foregroundStyle(palette.primary)
+                Text(target.text.replacingOccurrences(of: "\n", with: " "))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: Theme.Space.snug)
+            Button { replyingTo = nil } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: Theme.scaled(9), weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(width: 20, height: 20)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help("Don't reply to this")
+        }
+        .padding(.horizontal, Theme.Space.step)
+        .padding(.vertical, Theme.Space.tight)
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(palette.primary)
+                .frame(width: 2)
+                .padding(.vertical, Theme.Space.tight)
+        }
+    }
+
+    private var field: some View {
         HStack(alignment: .bottom, spacing: Theme.Space.snug) {
             TextField("Message \(bot.name)", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -349,10 +459,7 @@ struct Composer: View {
             .disabled(!sendEnabled)
             .keyboardShortcut(.return, modifiers: .command)
         }
-        .padding(.horizontal, Theme.Space.section)
-        .padding(.vertical, Theme.Space.step)
-        .frame(maxWidth: Theme.Size.contentMaxWidth)
-        .frame(maxWidth: .infinity)
+
         .background(palette.background)
     }
 

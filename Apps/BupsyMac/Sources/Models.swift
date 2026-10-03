@@ -36,6 +36,12 @@ struct Bot: Identifiable, Hashable, Sendable {
     var hidden = false
     /// nil means never opened.
     var lastReadAt: Date?
+    /// A face chosen by hand. nil derives it from the hue.
+    var avatarShape: BotShape?
+    var avatarColour: Int?
+
+    /// The shape this bot actually wears, chosen or derived — for anything that compares faces.
+    var effectiveShape: BotShape { avatarShape ?? BotFace.derivedShape(forHue: avatarHue) }
 
     /// Deterministic from the name, so a bot keeps its colour between launches without
     /// anything being stored.
@@ -70,6 +76,10 @@ struct Bot: Identifiable, Hashable, Sendable {
         self.pinned = record.pinned
         self.hidden = record.hidden
         self.lastReadAt = record.lastReadAt
+        // An unknown name — a shape removed in some later version — falls back to the derived
+        // face rather than failing to load the bot.
+        self.avatarShape = record.avatarShape.flatMap(BotShape.init(rawValue:))
+        self.avatarColour = record.avatarColour
     }
 
     func record(sortIndex: Int = 0) -> BotRecord {
@@ -78,7 +88,8 @@ struct Bot: Identifiable, Hashable, Sendable {
             machineID: machineID, autonomy: autonomy.rawValue,
             personaPrompt: personaPrompt, workdir: workdir,
             avatarHue: avatarHue, sortIndex: sortIndex, folder: folder, pinned: pinned,
-            hidden: hidden, lastReadAt: lastReadAt)
+            hidden: hidden, lastReadAt: lastReadAt,
+            avatarShape: avatarShape?.rawValue, avatarColour: avatarColour)
     }
 }
 

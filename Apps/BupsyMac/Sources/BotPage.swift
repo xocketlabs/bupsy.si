@@ -15,6 +15,8 @@ struct BotPage: View {
     @State private var showsRoutines = false
     @State private var showsObjectives = false
     @State private var showsDetails = false
+    /// The message being replied to, shown above the composer until sent or dismissed.
+    @State private var replyingTo: ReplyTarget?
     @State private var tab = DetailTab.details
 
     private var thread: Thread { model.thread(for: bot.id) }
@@ -23,19 +25,29 @@ struct BotPage: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                conversation
-                Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
-                         onSend: send, onStop: { model.stop(bot.id) })
+            PanelSurface {
+                VStack(spacing: 0) {
+                    conversation
+                    Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
+                             replyingTo: $replyingTo,
+                             onSend: send, onStop: { model.stop(bot.id) })
+                }
+                // The pill floats over the transcript rather than sitting in a bar above it, so
+                // the conversation reaches the top of the window instead of starting below a
+                // strip of chrome that never changes.
+                .overlay(alignment: .top) { titlePill }
             }
-            // The pill floats over the transcript rather than sitting in a bar above it, so the
-            // conversation reaches the top of the window instead of starting below a strip of
-            // chrome that never changes.
-            .overlay(alignment: .top) { titlePill }
+            .padding(.vertical, 8)
+            // Flush to the details panel when it is open, exactly as the card is flush to the rail.
+            .padding(.trailing, showsDetails ? 0 : 8)
 
+            // Outside the card, on the window, full height — the mirror of the rail. It used to be
+            // inside the card, so opening it filled the card's right side with the rail's colour,
+            // swallowed the rounded corner on that edge, and made the two sides of the window
+            // different shapes.
             if showsDetails {
-                Rectangle().fill(palette.border).frame(width: 1)
                 details
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .sheet(isPresented: $showsRoutines) { RoutinesSheet(bot: bot) }
@@ -53,7 +65,7 @@ struct BotPage: View {
     private var titlePill: some View {
         Button { withAnimation(.easeOut(duration: 0.16)) { showsDetails.toggle() } } label: {
             HStack(spacing: Theme.Space.tight) {
-                BotFace(hue: bot.avatarHue, mood: mood, size: Theme.scaled(20))
+                BotFace(bot: bot, mood: mood, size: Theme.scaled(20))
                 Text(bot.name)
                     .font(Theme.Typography.body)
                     .fontWeight(.medium)
@@ -126,7 +138,7 @@ struct BotPage: View {
     /// "which bot am I looking at", which stays true whichever tab is open.
     private var detailsHead: some View {
         VStack(spacing: Theme.Space.snug) {
-            BotFace(hue: bot.avatarHue, mood: mood, size: 64)
+            BotFace(bot: bot, mood: mood, size: 64)
             Text(bot.name)
                 .font(Theme.Typography.heading)
                 .foregroundStyle(palette.foreground)
@@ -147,7 +159,8 @@ struct BotPage: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, Theme.Space.gutter)
-        .padding(.top, Theme.Space.section)
+        // The same clearance as the rail, which also runs up under the title bar.
+        .padding(.top, 30)
         .padding(.bottom, Theme.Space.gutter)
     }
 
@@ -231,6 +244,11 @@ struct BotPage: View {
                         // Says why a long thread is cheaper than its token count suggests, and
                         // why "sent" is so much larger than anything that was typed.
                         FactRow(label: "Largest turn", value: Self.compact(counted.max() ?? 0))
+                        // Labelled as a value, never a bill: on a subscription nobody pays per
+                        // token. Absent rather than "$0" for engines that report no figure.
+                        if let cost = model.usage(for: bot)?.costUSD {
+                            FactRow(label: "API-equivalent", value: UsageFormat.dollars(cost))
+                        }
                     }
                 }
             }
@@ -410,7 +428,10 @@ struct BotPage: View {
                         VStack(alignment: .leading, spacing: Theme.Space.step) {
                             ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
                                 if showsDaySeparator(at: index) { DaySeparator(date: entry.at) }
-                                Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index))
+                                Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index),
+                                       onReply: { author, text in
+                                           replyingTo = ReplyTarget(author: author, text: text)
+                                       })
                                     .id(entry.id)
                             }
                             // Not while it is waiting on you. The dots say "the bot is working" —
@@ -626,9 +647,14 @@ struct BotPage: View {
     }
 
     private func send() {
-        let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { return }
+        let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+        // A reply carries its quote to the engine, so "this" means the message you pointed at.
+        let prompt = replyingTo.map {
+            Reply.compose(quoting: $0.text, from: $0.author, message: message)
+        } ?? message
         draft = ""
+        replyingTo = nil
         model.send(prompt, to: bot)
     }
 }
@@ -749,7 +775,7 @@ struct EmptyConversation: View {
 
     var body: some View {
         VStack(spacing: Theme.Space.step) {
-            BotFace(hue: bot.avatarHue, mood: .idle, size: 56)
+            BotFace(bot: bot, mood: .idle, size: 56)
             Text("Say something to \(bot.name)")
                 .font(Theme.Typography.heading)
                 .foregroundStyle(palette.foreground)
@@ -762,6 +788,12 @@ struct EmptyConversation: View {
     }
 }
 
+
+/// A message someone has chosen to reply to.
+struct ReplyTarget: Equatable {
+    let author: String
+    let text: String
+}
 
 /// The three questions worth asking about a bot, in the order people ask them.
 ///

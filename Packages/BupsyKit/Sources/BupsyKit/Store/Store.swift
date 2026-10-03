@@ -251,6 +251,28 @@ public struct Store: Sendable {
             }
         }
 
+        // A face someone chose, rather than the one derived from the name.
+        //
+        // Both nullable, and nil means "derive it as before", so every existing bot keeps exactly
+        // the face it already has. The shape is stored by name rather than by position, so adding
+        // or reordering shapes later never silently changes a face someone picked.
+        migrator.registerMigration("v7-chosen-avatars") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "avatarShape", .text)
+                t.add(column: "avatarColour", .integer)
+            }
+        }
+
+        // What a run would have cost at API rates, as the engine itself reported it.
+        //
+        // Nullable: Codex reports no figure at all, and a run that failed before its result line
+        // has none either. Neither is zero, and showing $0.00 for them would be a false statement.
+        migrator.registerMigration("v8-run-cost") { db in
+            try db.alter(table: "runs") { t in
+                t.add(column: "costUSD", .double)
+            }
+        }
+
         return migrator
     }
 
@@ -375,6 +397,31 @@ public struct Store: Sendable {
                     toolCalls: tools,
                     inputTokens: run.inputTokens,
                     outputTokens: run.outputTokens)
+            }
+        }
+    }
+
+    /// Usage per bot since a moment, for the usage page.
+    ///
+    /// Summed in SQL rather than by loading every run: a busy roster has thousands of runs and the
+    /// page only ever needs one row per bot.
+    public func usageByBot(since start: Date = .distantPast) throws -> [BotUsage] {
+        try database.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT botID,
+                       COUNT(*)            AS runs,
+                       SUM(inputTokens)    AS sent,
+                       SUM(outputTokens)   AS received,
+                       SUM(costUSD)        AS cost,
+                       COUNT(costUSD)      AS costed
+                FROM runs
+                WHERE startedAt >= ?
+                GROUP BY botID
+                """, arguments: [start])
+            .map { row in
+                BotUsage(botID: row["botID"], runs: row["runs"],
+                         sentTokens: row["sent"] ?? 0, receivedTokens: row["received"] ?? 0,
+                         costUSD: (row["costed"] as Int? ?? 0) > 0 ? row["cost"] : nil)
             }
         }
     }
