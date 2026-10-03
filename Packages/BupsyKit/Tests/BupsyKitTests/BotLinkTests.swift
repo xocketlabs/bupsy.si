@@ -92,3 +92,44 @@ struct BotLinkTests {
         #expect(try store.botLinks().isEmpty)
     }
 }
+
+@Suite("Tool names, as a person reads them")
+struct ToolNameTests {
+    @Test("engine tool names become plain actions")
+    func plainActions() {
+        #expect(ToolNames.action("Bash") == "run a command")
+        #expect(ToolNames.action("Edit") == "edit a file")
+        #expect(ToolNames.action("WebFetch") == "fetch a web page")
+    }
+
+    /// The server is what the person installed and recognises; the function name is detail.
+    @Test("an MCP tool is named for its server")
+    func mcpTools() {
+        #expect(ToolNames.action("mcp__linear__create_issue") == "use Linear")
+        #expect(ToolNames.action("mcp__bupsy__message_bot") == "use Bupsy")
+    }
+
+    @Test("an unknown tool still reads as a sentence")
+    func unknownTools() {
+        #expect(ToolNames.action("Frobnicate") == "use Frobnicate")
+        // Malformed MCP names fall through rather than producing "use ".
+        #expect(ToolNames.action("mcp____x") == "use mcp____x")
+    }
+
+    /// In a proportional font `ls` reads as "Is".
+    @Test("shell commands are flagged for a fixed-width font")
+    func commandsAreMonospaced() {
+        #expect(ToolNames.isCommand("Bash"))
+        #expect(!ToolNames.isCommand("Edit"))
+    }
+
+    @Test("approval reasons are sentences")
+    func reasonsAreSentences() {
+        guard case .ask(let reason) = AutonomyPolicy.decide(
+            tool: "Bash", autonomy: .ask, allowlist: []) else {
+            Issue.record("Bash at .ask must ask"); return
+        }
+        #expect(reason.first?.isUppercase == true)
+        #expect(reason.hasSuffix("."))
+    }
+}

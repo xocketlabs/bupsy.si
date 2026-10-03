@@ -155,15 +155,6 @@ struct NavRail: View {
                         }
                     }
 
-                    let loose = model.ungroupedBots
-                    if !loose.isEmpty {
-                        VStack(alignment: .leading, spacing: 1) {
-                            // Only worth a heading once there are sections to tell it apart from.
-                            if !model.folders.isEmpty { sectionHeader("Unassigned") }
-                            ForEach(loose) { row(for: $0) }
-                        }
-                    }
-
                     ForEach(model.folders, id: \.self) { folder in
                         let members = model.bots(in: folder)
                         if !members.isEmpty {
@@ -181,6 +172,17 @@ struct NavRail: View {
                                     }
                                 ForEach(members) { row(for: $0) }
                             }
+                        }
+                    }
+
+                    let loose = model.ungroupedBots
+                    if !loose.isEmpty {
+                        VStack(alignment: .leading, spacing: 1) {
+                            // Last, and only headed once sections exist. With no sections these are
+                            // simply the list; with sections they are the remainder, and putting
+                            // the remainder above the person's own organisation inverted it.
+                            if !model.folders.isEmpty { sectionHeader("Unassigned") }
+                            ForEach(loose) { row(for: $0) }
                         }
                     }
 
@@ -446,11 +448,10 @@ struct BotRow: View {
                                 .font(.system(size: 8))
                                 .foregroundStyle(palette.sidebarMuted)
                         }
-                        if mood == .waitingForYou {
-                            Circle()
-                                .fill(palette.primary)
-                                .frame(width: 6, height: 6)
-                        } else if unread {
+                        // "Needs you" is already on the face and in the subtitle, in the accent.
+                        // A third signal here drew two pink dots for one state, which reads as two
+                        // things wrong rather than one. The trailing dot is for unread only.
+                        if unread && mood != .waitingForYou {
                             // Blue rather than the accent: "there is something new" is a
                             // different claim from "this is waiting on a decision from you", and
                             // the two must not look alike.
@@ -638,9 +639,16 @@ struct RenameBotSheet: View {
                 // The face does not change with the name: the colour is set once at creation, so
                 // a rename stays a rename rather than looking like a different bot.
                 BotFace(hue: bot.avatarHue, mood: .idle, size: 52)
-                TextField("", text: $name, prompt: Text(bot.name))
-                    .textFieldStyle(BupsyFieldStyle())
-                    .onSubmit(commit)
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("", text: $name, prompt: Text(bot.name))
+                        .textFieldStyle(BupsyFieldStyle())
+                        .onSubmit(commit)
+                    if model.isNameTaken(name, except: bot.id) {
+                        Text("Another bot is already called that.")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
             }
 
             Field(label: "What's its job?",
@@ -657,7 +665,8 @@ struct RenameBotSheet: View {
             Button("Save", action: commit)
                 .buttonStyle(PrimaryButton())
                 .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
+                          || model.isNameTaken(name, except: bot.id))
         }
         .onAppear {
             name = bot.name

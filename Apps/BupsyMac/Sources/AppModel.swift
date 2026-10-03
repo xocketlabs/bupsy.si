@@ -468,10 +468,15 @@ final class AppModel {
         for bot in bots {
             for entry in threads[bot.id]?.entries ?? [] {
                 if case .approval(let approval) = entry.kind, approval.decided == nil {
+                    // "Systems wants to run a command", not "Bash needs approval": the person is
+                    // deciding about a bot doing something, and should not have to translate an
+                    // engine's tool name to know what.
                     items.append(AttentionItem(
-                        id: approval.id, botName: bot.name, hue: bot.avatarHue,
-                        kind: .approval, title: "\(approval.tool) needs approval",
-                        detail: approval.summary))
+                        id: approval.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
+                        kind: .approval,
+                        title: "\(bot.name) wants to \(ToolNames.action(approval.tool))",
+                        detail: approval.summary,
+                        detailIsCommand: ToolNames.isCommand(approval.tool)))
                 }
             }
         }
@@ -479,8 +484,8 @@ final class AppModel {
         for objective in objectives where objective.lastOutcome?.needsAttention == true {
             guard let bot = bots.first(where: { $0.id.rawValue == objective.botID }) else { continue }
             items.append(AttentionItem(
-                id: objective.id, botName: bot.name, hue: bot.avatarHue,
-                kind: .objective, title: objective.goal,
+                id: objective.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
+                kind: .objective, title: "\(bot.name): \(objective.goal)",
                 detail: detail(for: objective.lastOutcome)))
         }
 
@@ -550,7 +555,7 @@ final class AppModel {
         if let store {
             do {
                 for record in try store.transcript(forBot: botID.rawValue) {
-                    created.applyStored(type: record.type, payload: record.payload)
+                    created.applyStored(type: record.type, payload: record.payload, at: record.at)
                 }
                 let engine = bots.first { $0.id == botID }?.engine ?? .claude
                 created.conversationID = try store
@@ -639,7 +644,7 @@ final class AppModel {
 
         let request = RunRequest(
             prompt: bot.personaPrompt.map { "\($0)\n\n\(prompt)" } ?? prompt,
-            workingDirectory: bot.workdir.map { URL(fileURLWithPath: $0) },
+            workingDirectory: workingDirectory(for: bot),
             resume: thread.conversationID,
             model: bot.model,
             autonomy: bot.autonomy,
@@ -822,6 +827,7 @@ final class AppModel {
     }
 
     func addBot(name: String, engine: EngineID, job: String = "", folder: String? = nil) {
+        guard !isNameTaken(name) else { return }
         var bot = Bot(
             name: name, engine: engine,
             personaPrompt: job.isEmpty ? nil : job)
@@ -985,7 +991,49 @@ final class AppModel {
         }
     }
 
+    // MARK: - Where a bot works
+
+    /// The folder a run starts in.
+    ///
+    /// With no folder chosen this used to be `nil`, so the engine inherited the app's own working
+    /// directory — and a Mac app launched normally runs in `/`. Every bot without a folder was
+    /// pointing its tools at the root of the disk: asked to "list the files", one listed `/` and
+    /// said so. Nothing about "this bot only talks" should mean "this bot's shell starts at the
+    /// top of your drive".
+    ///
+    /// So no folder now means a private, empty folder of the bot's own. Contained by default,
+    /// and kept between runs, so anything the bot writes for itself is still there next time.
+    func workingDirectory(for bot: Bot) -> URL {
+        if let chosen = bot.workdir { return URL(fileURLWithPath: chosen) }
+        let folder = Self.workspacesDirectory.appendingPathComponent(bot.id.rawValue, isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+
+    static var workspacesDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first ?? FileManager.default.temporaryDirectory
+        return base
+            .appendingPathComponent("si.bupsy", isDirectory: true)
+            .appendingPathComponent("workspaces", isDirectory: true)
+    }
+
     // MARK: - Naming and pinning
+
+    /// Whether another bot already answers to this name.
+    ///
+    /// Names stopped being cosmetic when bots could message each other: `message_bot` addresses
+    /// its recipient *by name*, because that is what the model knows, and resolves to the first
+    /// match. Two bots called "Scout" meant a message could silently reach the wrong one — the
+    /// worst way for a gated, attributed channel to misroute. So names are unique, compared the
+    /// way the resolver compares them: trimmed and case-insensitive.
+    func isNameTaken(_ name: String, except bot: BotID? = nil) -> Bool {
+        let wanted = name.trimmingCharacters(in: .whitespaces)
+        guard !wanted.isEmpty else { return false }
+        return bots.contains {
+            $0.id != bot && $0.name.compare(wanted, options: .caseInsensitive) == .orderedSame
+        }
+    }
 
     /// Renames a bot. The colour does not follow, on purpose.
     ///
@@ -994,7 +1042,7 @@ final class AppModel {
     /// colour means a rename is a rename rather than a new bot wearing the old one's history.
     func rename(_ bot: Bot, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, trimmed != bot.name,
+        guard !trimmed.isEmpty, trimmed != bot.name, !isNameTaken(trimmed, except: bot.id),
               let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         bots[index].name = trimmed
         try? store?.save(bots[index].record(sortIndex: index))
@@ -1020,6 +1068,14 @@ final class AppModel {
             selectedBotID = bots.first { !$0.hidden }?.id
         }
         try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// When anything last happened in a bot's thread, for ordering by recency.
+    ///
+    /// Reliable only since replayed entries kept their stored timestamps; before that every
+    /// reloaded thread looked equally recent, stamped with the moment it was loaded.
+    func lastActivity(for bot: Bot) -> Date {
+        thread(for: bot.id).entries.last?.at ?? .distantPast
     }
 
     /// Whether a bot has said something since you last looked at it.
@@ -1132,7 +1188,7 @@ final class AppModel {
             of: #" \d+$"#, with: "", options: .regularExpression)
         var candidate = "\(base) 2"
         var number = 2
-        while bots.contains(where: { $0.name == candidate }) {
+        while isNameTaken(candidate) {
             number += 1
             candidate = "\(base) \(number)"
         }

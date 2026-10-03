@@ -175,7 +175,12 @@ struct BotPage: View {
                 SettingRow(label: "Folder", value: folderLabel, icon: "folder") {
                     Button("Choose folder…") { model.chooseWorkdir(for: bot) }
                     if bot.workdir != nil {
-                        Button("No folder") { model.setWorkdir(bot, nil) }
+                        Button("Use its own folder") { model.setWorkdir(bot, nil) }
+                    }
+                    Divider()
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting(
+                            [model.workingDirectory(for: bot)])
                     }
                 }
             }
@@ -297,7 +302,12 @@ struct BotPage: View {
                            icon: "folder", showsDivider: false) {
                     Button("Choose folder…") { model.chooseWorkdir(for: bot) }
                     if bot.workdir != nil {
-                        Button("No folder") { model.setWorkdir(bot, nil) }
+                        Button("Use its own folder") { model.setWorkdir(bot, nil) }
+                    }
+                    Divider()
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting(
+                            [model.workingDirectory(for: bot)])
                     }
                 }
                 SettingRow(label: "Trust", value: trustLabel,
@@ -359,8 +369,11 @@ struct BotPage: View {
 
     /// Shows the folder's own name rather than a path — the path is long and the name is what
     /// anyone actually recognises.
+    /// "Its own folder" rather than "No folder", because there is one: a private, empty folder
+    /// that keeps the bot's tools off the rest of the disk. "No folder" read as harmless and
+    /// hid that the alternative had been the root of the drive.
     private var folderLabel: String {
-        guard let path = bot.workdir else { return "No folder" }
+        guard let path = bot.workdir else { return "Its own folder" }
         return URL(fileURLWithPath: path).lastPathComponent
     }
 
@@ -400,7 +413,13 @@ struct BotPage: View {
                                 Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index))
                                     .id(entry.id)
                             }
-                            if thread.isRunning { TypingIndicator(bot: bot) }
+                            // Not while it is waiting on you. The dots say "the bot is working" —
+                            // under an approval card that is false, and it is false at exactly
+                            // the moment the person needs to understand that nothing will happen
+                            // until they answer.
+                            if thread.isRunning && !model.isWaitingForApproval(bot.id) {
+                                TypingIndicator(bot: bot)
+                            }
                         }
                         // Top padding clears the floating title pill, which overlays this.
                         .padding(.top, 56)

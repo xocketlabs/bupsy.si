@@ -385,14 +385,20 @@ public struct Store: Sendable {
     }
 
     /// The whole transcript for a bot, oldest first, across every run.
+    /// The most recent `limit` events for a bot, oldest first.
+    ///
+    /// Newest-first then reversed, not oldest-first then limited. The latter returned the *first*
+    /// 500 events a bot ever produced, so once a thread grew past that its recent conversation —
+    /// the part anyone opens a thread to see — stopped loading at all.
     public func transcript(forBot botID: String, limit: Int = 500) throws -> [EventRecord] {
         try database.read { db in
             try EventRecord
                 .joining(required: EventRecord.belongsTo(RunRecord.self, using: ForeignKey(["runID"]))
                     .filter(Column("botID") == botID))
-                .order(Column("at"))
+                .order(Column("at").desc, Column("seq").desc)
                 .limit(limit)
                 .fetchAll(db)
+                .reversed()
         }
     }
 

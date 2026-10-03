@@ -32,7 +32,7 @@ struct ApprovalCard: View {
 
             // The command in full. An approval you cannot read is not an approval.
             Text(approval.summary)
-                .font(.system(.callout, design: .monospaced))
+                .font(.system(size: 13, design: .monospaced))
                 .textSelection(.enabled)
                 .padding(Theme.Space.snug)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -46,18 +46,23 @@ struct ApprovalCard: View {
             }
 
             if pending {
-                HStack(spacing: Theme.Space.tight) {
-                    Button("Allow") { decide(true) }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
+                // Full-size, and deliberately the same weight. These were small system chips —
+                // undersized for the most consequential decision in the app. They are not styled
+                // as primary-and-secondary on purpose: drawing the eye to "Allow" is how a gate
+                // turns into a reflex, and this one only works if it is read.
+                HStack(spacing: Theme.Space.snug) {
+                    Button { decide(true) } label: { ShortcutLabel(text: "Allow", keys: "⇧⌘A") }
+                        .buttonStyle(QuietButton(compact: true))
                         .keyboardShortcut("a", modifiers: [.command, .shift])
-                    Button("Deny") { decide(false) }
-                        .controlSize(.small)
+                    Button { decide(false) } label: { ShortcutLabel(text: "Deny", keys: "⇧⌘D") }
+                        .buttonStyle(QuietButton(compact: true))
                         .keyboardShortcut("d", modifiers: [.command, .shift])
-                    Button(showsDetail ? "Less" : "Details") { showsDetail.toggle() }
-                        .buttonStyle(.link)
-                        .controlSize(.small)
                     Spacer(minLength: 0)
+                    // Plain text in the theme rather than `.link`, which drew it in macOS blue.
+                    Button(showsDetail ? "Hide details" : "Details") { showsDetail.toggle() }
+                        .buttonStyle(.plain)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
                 }
             }
         }
@@ -76,7 +81,9 @@ struct ApprovalCard: View {
 
     private var title: String {
         switch approval.decided {
-        case nil: "Can I run this?"
+        // What the bot wants to do, in a person's words, rather than a generic "can I run this?"
+        // that reads the same for a file edit and a shell command.
+        case nil: "Wants to \(ToolNames.action(approval.tool))"
         case .allowed: "You allowed this"
         case .denied: "You declined this"
         case .expired: "Denied — nobody answered in time"
@@ -98,6 +105,23 @@ struct ApprovalCard: View {
         case nil: palette.primary
         case .allowed: palette.info
         case .denied, .expired: palette.mutedForeground
+        }
+    }
+}
+
+/// A button label that shows its keyboard shortcut. The shortcuts existed and were invisible,
+/// which is the same as not existing for anyone who did not read the source.
+struct ShortcutLabel: View {
+    @Environment(\.palette) private var palette
+    let text: String
+    let keys: String
+
+    var body: some View {
+        HStack(spacing: Theme.Space.tight) {
+            Text(text)
+            Text(keys)
+                .font(Theme.Typography.badge)
+                .foregroundStyle(palette.mutedForeground)
         }
     }
 }
