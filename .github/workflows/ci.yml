@@ -55,6 +55,23 @@ jobs:
             -configuration Debug -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO build
 
+      # Every merge to main produces a DMG anyone with access can download from the run's
+      # Artifacts — so "does the current build work?" is answered by installing it, not by
+      # waiting for a release. Unsigned: these are for testing, releases are for people.
+      - name: Package a DMG
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: ./scripts/package.sh "0.0.0-dev.${GITHUB_SHA::7}"
+
+      - name: Upload the DMG
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bupsy-${{ github.sha }}
+          path: |
+            build/Bupsy-*.dmg
+            build/Bupsy-*.dmg.sha256
+          retention-days: 30
+
   # The headless core. Runs on Linux because that is the point of it existing — the Swift core's
   # SQLite layer does not link there, and cloud machines do.
   #

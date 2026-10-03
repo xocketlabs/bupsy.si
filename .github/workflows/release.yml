@@ -1,5 +1,7 @@
 name: Release
 
+# Push a tag like v0.1.0 to publish. Or run it by hand from the Actions tab, which defaults to a
+# *draft* so the whole pipeline can be checked without anything becoming visible to anyone.
 on:
   push:
     tags: ["v*"]
@@ -8,13 +10,27 @@ on:
       version:
         description: Version to build, e.g. 0.1.0
         required: true
+      draft:
+        description: Publish as a draft (only visible to the repo's collaborators)
+        type: boolean
+        default: true
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: macos-15
+    env:
+      # Whether the Apple signing secrets exist. Signed and unsigned builds share every step but
+      # these, so a release ships today and becomes notarized the day the secrets are added —
+      # no workflow change needed.
+      HAS_SIGNING: ${{ secrets.CERTIFICATE_P12 != '' }}
+      HAS_SPARKLE: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -22,22 +38,28 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            VERSION="${{ inputs.version }}"
+            DRAFT="${{ inputs.draft }}"
           else
-            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            VERSION="${GITHUB_REF_NAME#v}"
+            DRAFT=false
           fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION (draft: $DRAFT, signed: $HAS_SIGNING)"
 
       - name: Install xcodegen
         run: brew install xcodegen
 
-      # Tests gate the release. A signed, notarized build of broken code is worse than no build:
-      # it is the one people actually install.
+      # Tests gate the release. A build of broken code is worse than no build: it is the one
+      # people actually install.
       - name: Test
         run: swift test --package-path Packages/BupsyKit
 
       # A keychain created for this run and deleted after it, so the certificate never lingers on
       # a shared runner.
       - name: Import signing certificate
+        if: env.HAS_SIGNING == 'true'
         env:
           CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
           CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
@@ -53,7 +75,9 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN" login.keychain
           rm -f "$RUNNER_TEMP/cert.p12"
 
-      - name: Build, sign, notarize
+      # package.sh picks its mode from which secrets are set: all four → signed and notarized,
+      # none → ad-hoc signed. Some but not all is an error, never a silent downgrade.
+      - name: Build the DMG
         env:
           DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
@@ -62,15 +86,17 @@ jobs:
         run: ./scripts/package.sh "${{ steps.version.outputs.value }}"
 
       # Sparkle will not install an update whose EdDSA signature does not verify, so this step is
-      # what makes the update channel safe rather than merely convenient.
+      # what makes the update channel safe rather than merely convenient. Only meaningful for a
+      # notarized build; skipped otherwise.
       - name: Sign the update for Sparkle
         id: sign_update
+        if: env.HAS_SIGNING == 'true' && env.HAS_SPARKLE == 'true'
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData build -name sign_update -type f 2>/dev/null | head -1)
+          SPARKLE_BIN=$(find build -name sign_update -type f 2>/dev/null | head -1)
           if [ -z "$SPARKLE_BIN" ]; then
-            echo "::warning::sign_update not found — the appcast will be unsigned and Sparkle will refuse it"
+            echo "::warning::sign_update not found — skipping the appcast"
             exit 0
           fi
           echo "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle_key"
@@ -78,34 +104,78 @@ jobs:
                  -f "$RUNNER_TEMP/sparkle_key" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
           rm -f "$RUNNER_TEMP/sparkle_key"
           echo "signature=$SIG" >> "$GITHUB_OUTPUT"
+          ./scripts/appcast.sh "${{ steps.version.outputs.value }}" "$SIG" \
+            "build/Bupsy-${{ steps.version.outputs.value }}.dmg" > build/appcast.xml
 
-      # Built even though nothing consumes it yet. Distribution is GitHub Releases only for
-      # now, so the appcast ships as a release asset rather than being committed to a Pages site
-      # that does not exist. When a feed gets a home, it is already signed and correct.
-      - name: Build the appcast
+      # The notes say which kind of build this is, because the install steps differ. An unsigned
+      # build that does not say so leaves people meeting Gatekeeper with no idea what to do.
+      - name: Write the release notes
         env:
           VERSION: ${{ steps.version.outputs.value }}
-          SIGNATURE: ${{ steps.sign_update.outputs.signature }}
         run: |
-          ./scripts/appcast.sh "$VERSION" "$SIGNATURE" "build/Bupsy-$VERSION.dmg" \
-            > build/appcast.xml
-          cat build/appcast.xml
+          MODE=$(cat build/mode)
+          SUM=$(cut -d' ' -f1 "build/Bupsy-$VERSION.dmg.sha256")
+          {
+            echo "## Install"
+            echo
+            echo "1. Download **Bupsy.dmg** below and open it."
+            echo "2. Drag **Bupsy** into **Applications**."
+            echo "3. Open Bupsy from Applications."
+            echo
+            if [ "$MODE" = "unsigned" ]; then
+              echo "### The first time you open it"
+              echo
+              echo "This build is not yet notarized by Apple, so macOS will say it can't check"
+              echo "it for malicious software. That is a missing Apple signature, not a problem"
+              echo "with the app. To open it the first time:"
+              echo
+              echo "- Open **System Settings → Privacy & Security**, scroll down, and click"
+              echo "  **Open Anyway** next to Bupsy. Confirm with your password."
+              echo
+              echo "Or, in Terminal:"
+              echo
+              echo '```'
+              echo 'xattr -dr com.apple.quarantine /Applications/Bupsy.app'
+              echo '```'
+              echo
+              echo "After that it opens normally. Notarized builds, which open with a"
+              echo "double-click, come once there is an Apple Developer account."
+            else
+              echo "Signed and notarized by Xocket Labs Inc. It opens with a double-click."
+            fi
+            echo
+            echo "## Requirements"
+            echo
+            echo "macOS 14 or later, on Apple Silicon or Intel. Bupsy runs your own"
+            echo "[Claude Code](https://claude.com/claude-code) and Codex sign-ins — install and"
+            echo "sign in to at least one."
+            echo
+            echo "---"
+            echo
+            echo "SHA-256 of \`Bupsy-$VERSION.dmg\`: \`$SUM\`"
+          } > build/notes.md
+          cat build/notes.md
 
+      # Published to this repository by default. Set the RELEASE_REPO variable (and a
+      # RELEASE_TOKEN secret with access to it) to publish to a separate public repository
+      # instead — the way to offer public downloads while the source stays private.
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
+          repository: ${{ vars.RELEASE_REPO || github.repository }}
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
           tag_name: v${{ steps.version.outputs.value }}
-          files: |
-            build/Bupsy-${{ steps.version.outputs.value }}.dmg
-            build/appcast.xml
+          name: Bupsy ${{ steps.version.outputs.value }}
+          draft: ${{ steps.version.outputs.draft }}
+          body_path: build/notes.md
           generate_release_notes: true
-          body: |
-            Download `Bupsy-${{ steps.version.outputs.value }}.dmg` below, open it, and drag
-            Bupsy to Applications.
-
-            Signed and notarized by Xocket Labs Inc. Automatic updates are not switched on yet —
-            check back here for new versions.
+          fail_on_unmatched_files: false
+          files: |
+            build/Bupsy.dmg
+            build/Bupsy-${{ steps.version.outputs.value }}.dmg
+            build/Bupsy-${{ steps.version.outputs.value }}.dmg.sha256
+            build/appcast.xml
 
       - name: Clean up the keychain
-        if: always()
+        if: always() && env.HAS_SIGNING == 'true'
         run: security delete-keychain "$RUNNER_TEMP/build.keychain" || true

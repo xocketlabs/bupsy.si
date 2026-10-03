@@ -1,290 +1,320 @@
-<title>Bupsy</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bupsy — bots on your own AI subscription</title>
+<meta name="description" content="A Mac app where AI bots live. Each runs Claude Code or Codex under your own sign-in — no credits, no server in the middle. Give them routines, goals, and group chats.">
+<meta property="og:title" content="bupsy — bots on your own AI subscription">
+<meta property="og:description" content="A native Mac app for a roster of AI bots running on the subscription you already have.">
+<meta property="og:image" content="icon.png">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap">
 <style>
-  /* Layout: a single narrow column on the app's own ground, so the page reads as an extension
-     of the product rather than an advert for it. */
+  /* The app's own palette, so the page reads as an extension of the product. */
   :root {
-    --ground:   #101010;
-    --surface:  #202020;
-    --card:     #292929;
-    --raised:   #343434;
-    --fg:       #fafafa;
-    --muted:    #a1a1a1;
-    --faint:    #6d6d6d;
-    --accent:   #e075c8;
-    --violet:   #8c4bff;
-    --line:     rgba(255,255,255,.10);
-
+    --ground: #101010;
+    --surface: #1a1a1a;
+    --card: #232323;
+    --raised: #2e2e2e;
+    --fg: #fafafa;
+    --muted: #a8a8a8;
+    --faint: #6f6f6f;
+    --accent: #e075c8;
+    --violet: #7c4ff7;
+    --line: rgba(255, 255, 255, .09);
+    --shadow: 0 30px 80px rgba(0, 0, 0, .55);
     --ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
     color-scheme: dark;
   }
   @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
-      --ground: #ffffff; --surface: #fafafa; --card: #f5f5f5; --raised: #ebebeb;
-      --fg: #0a0a0a; --muted: #585858; --faint: #8a8a8a;
-      --accent: #c14fa6; --violet: #6d2fe0; --line: rgba(0,0,0,.09);
+      --ground: #ffffff; --surface: #f7f7f8; --card: #ffffff; --raised: #efeff1;
+      --fg: #0b0b0c; --muted: #55565c; --faint: #8b8c92;
+      --accent: #c2479f; --violet: #6532e6; --line: rgba(0, 0, 0, .09);
+      --shadow: 0 30px 70px rgba(30, 20, 60, .16);
       color-scheme: light;
     }
   }
+  :root[data-theme="dark"] { color-scheme: dark; }
 
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0; background: var(--ground); color: var(--fg);
-    font-family: var(--ui); font-size: 15px; line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
+    font: 16px/1.6 var(--ui); -webkit-font-smoothing: antialiased; overflow-x: hidden;
   }
-  .wrap { max-width: 760px; margin: 0 auto; padding-inline: 20px; padding-block: 0; }
+  a { color: inherit; }
+  img { display: block; max-width: 100%; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+  @media (min-width: 720px) { .wrap { padding: 0 32px; } }
 
-  /* ── head ── */
-  header { padding-block: 28px 0; display: flex; align-items: center; justify-content: space-between; }
-  .mark { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 17px; letter-spacing: -.02em; }
-  .mark i {
-    width: 20px; height: 20px; border-radius: 6px; display: block;
-    background: linear-gradient(135deg, var(--accent), var(--violet));
-  }
-  .ghost {
-    color: var(--muted); text-decoration: none; font-size: 14px;
-    border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px;
-  }
-  .ghost:hover { color: var(--fg); background: var(--card); }
+  /* Nav */
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 600; font-size: 19px; letter-spacing: -.01em; }
+  .brand img { width: 30px; height: 30px; }
+  .nav-links { display: flex; align-items: center; gap: 18px; font-size: 14px; color: var(--muted); }
+  .nav-links a { text-decoration: none; }
+  .nav-links a:hover { color: var(--fg); }
 
-  /* ── hero ── */
-  .hero { padding-block: 56px 32px; }
-  h1 {
-    margin: 0 0 14px; font-size: clamp(32px, 6vw, 46px); font-weight: 600;
-    letter-spacing: -.035em; line-height: 1.08; text-wrap: balance; max-width: 15ch;
-  }
-  .lede { margin: 0; font-size: 17px; color: var(--muted); max-width: 54ch; }
-  .lede b { color: var(--fg); font-weight: 500; }
-
-  .cta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 26px; }
+  /* Buttons */
   .btn {
-    display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px;
-    border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;
-    background: var(--accent); color: #fff; border: 1px solid transparent;
+    display: inline-flex; align-items: center; gap: 10px; justify-content: center;
+    padding: 0 22px; height: 48px; border-radius: 12px; font: 600 15px var(--ui);
+    text-decoration: none; transition: transform .15s ease, box-shadow .15s ease, background .15s;
+    white-space: nowrap;
   }
-  .btn:hover { filter: brightness(1.08); }
-  .btn.sec { background: var(--card); color: var(--fg); border-color: var(--line); }
-  .btn.sec:hover { background: var(--raised); }
-  .note { font-size: 13px; color: var(--faint); }
-
-  .shot {
-    margin-top: 40px; border-radius: 14px; overflow: hidden;
-    border: 1px solid var(--line); background: var(--surface);
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .btn-primary {
+    color: #fff; background: linear-gradient(135deg, var(--accent), var(--violet));
+    box-shadow: 0 10px 30px color-mix(in srgb, var(--violet) 35%, transparent);
   }
-  .shot img { display: block; width: 100%; }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 14px 36px color-mix(in srgb, var(--violet) 45%, transparent); }
+  .btn-quiet { color: var(--fg); background: var(--raised); border: 1px solid var(--line); }
+  .btn-quiet:hover { background: color-mix(in srgb, var(--raised) 80%, var(--fg) 6%); }
+  .btn svg { width: 18px; height: 18px; }
 
-  /* ── sections ── */
-  section { padding-block: 44px; border-top: 1px solid var(--line); }
-  h2 {
-    margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: .08em;
-    text-transform: uppercase; color: var(--faint);
+  /* Hero */
+  .hero > *, .window > *, .grid > *, .steps > * { min-width: 0; }
+  .hero { display: grid; gap: 48px; align-items: center; padding: 40px 0 80px; }
+  @media (min-width: 960px) { .hero { grid-template-columns: 1fr 1.15fr; padding: 64px 0 110px; } }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+    font-size: 13px; font-weight: 600;
   }
-  .sec-lede { margin: 0 0 24px; font-size: 20px; letter-spacing: -.02em; max-width: 34ch; text-wrap: balance; }
+  h1 { font-size: clamp(36px, 6.2vw, 60px); line-height: 1.04; letter-spacing: -.035em; margin: 18px 0 18px; font-weight: 700; }
+  h1 .grad { background: linear-gradient(120deg, var(--accent), var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { font-size: 18px; color: var(--muted); max-width: 520px; margin: 0 0 30px; }
+  .lede strong { color: var(--fg); font-weight: 600; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+  .meta { margin-top: 16px; font-size: 13px; color: var(--faint); }
 
-  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
-  .card { background: var(--card); border-radius: 12px; padding: 18px; min-width: 0; }
-  .card h3 { margin: 0 0 5px; font-size: 15px; font-weight: 500; }
-  .card p { margin: 0; font-size: 14px; color: var(--muted); }
-
-  .rows { display: flex; flex-direction: column; gap: 8px; }
-  .row { display: flex; gap: 14px; align-items: flex-start; background: var(--card); border-radius: 12px; padding: 14px; }
-  .tile {
-    width: 40px; height: 40px; flex: 0 0 40px; border-radius: 8px; display: grid; place-items: center;
-    background: var(--ground); border: 1px solid var(--line); color: var(--muted);
+  /* The drawn app window */
+  .window {
+    border-radius: 16px; background: var(--ground); border: 1px solid var(--line);
+    box-shadow: var(--shadow); overflow: hidden; display: grid; grid-template-columns: 200px 1fr;
+    min-height: 420px; font-size: 13px;
   }
-  .row div { min-width: 0; }
-  .row h3 { margin: 0 0 3px; font-size: 14px; font-weight: 500; }
-  .row p { margin: 0; font-size: 13px; color: var(--muted); }
+  @media (max-width: 560px) { .window { grid-template-columns: 1fr; min-height: 0; } .side { display: none; } .nav-links a:not(:last-child) { display: none; } .btn { flex: 1 1 auto; } }
+  .side { background: var(--surface); padding: 14px 10px; border-right: 1px solid var(--line); }
+  .dots { display: flex; gap: 6px; margin: 0 4px 16px; }
+  .dots i { width: 10px; height: 10px; border-radius: 50%; background: #ff5f57; }
+  .dots i:nth-child(2) { background: #febc2e; } .dots i:nth-child(3) { background: #28c840; }
+  .side h6 { margin: 12px 6px 6px; font-size: 10px; letter-spacing: .08em; color: var(--faint); font-weight: 600; text-transform: uppercase; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 9px; }
+  .row.on { background: var(--raised); }
+  .row img { width: 28px; height: 28px; flex: none; }
+  .row b { display: block; font-weight: 600; font-size: 12.5px; }
+  .row span { display: block; color: var(--faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 128px; }
+  .stack { position: relative; width: 28px; height: 28px; flex: none; }
+  .stack img { position: absolute; width: 19px; height: 19px; }
+  .stack img + img { left: 10px; top: 9px; }
+  .main { display: flex; flex-direction: column; padding: 14px 18px 16px; background: var(--card); }
+  .pill { align-self: center; display: flex; align-items: center; gap: 7px; padding: 5px 12px 5px 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); font-weight: 600; font-size: 12px; }
+  .pill .stack { width: 22px; height: 22px; } .pill .stack img { width: 15px; height: 15px; } .pill .stack img + img { left: 7px; top: 7px; }
+  .thread { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 18px 0 12px; }
+  .msg-you { align-self: flex-end; max-width: 78%; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--violet))); color: #fff; padding: 8px 12px; border-radius: 14px; }
+  .msg-bot { display: flex; gap: 8px; align-items: flex-start; max-width: 85%; }
+  .msg-bot img { width: 24px; height: 24px; flex: none; margin-top: 16px; }
+  .msg-bot small { display: block; color: var(--faint); font-size: 10.5px; font-weight: 600; margin-bottom: 3px; }
+  .msg-bot p { margin: 0; background: var(--raised); padding: 8px 12px; border-radius: 14px; }
+  .mention { color: var(--accent); font-weight: 600; }
+  .msg-you .mention { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
+  .chips { display: flex; gap: 6px; margin-bottom: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+  .chip img { width: 13px; height: 13px; }
+  .composer { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface); color: var(--faint); }
+  .send { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); }
 
-  blockquote {
-    margin: 0; padding: 18px; border-radius: 12px;
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
-    font-size: 15px;
+  /* Sections */
+  section { padding: 72px 0; }
+  .kicker { color: var(--accent); font-weight: 600; font-size: 14px; letter-spacing: .02em; margin: 0 0 10px; }
+  h2 { font-size: clamp(28px, 4.2vw, 40px); line-height: 1.1; letter-spacing: -.03em; margin: 0 0 14px; font-weight: 700; }
+  .sub { color: var(--muted); max-width: 620px; margin: 0 0 40px; font-size: 17px; }
+
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 980px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px;
+    transition: transform .2s ease, border-color .2s ease;
   }
-  blockquote strong { color: var(--accent); }
+  .card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+  .card img { width: 44px; height: 44px; margin-bottom: 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; letter-spacing: -.01em; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
 
-  pre {
-    margin: 0; background: var(--card); border-radius: 12px; padding: 16px;
-    overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.7; color: var(--muted);
+  .band {
+    border-radius: 22px; padding: 40px 28px; border: 1px solid var(--line);
+    background:
+      radial-gradient(600px 240px at 12% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
+      radial-gradient(600px 260px at 100% 100%, color-mix(in srgb, var(--violet) 18%, transparent), transparent 70%),
+      var(--surface);
   }
-  pre b { color: var(--fg); font-weight: 400; }
-  .cmt { color: var(--faint); }
+  @media (min-width: 820px) { .band { padding: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; } }
+  .band ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+  .band li { display: flex; gap: 12px; color: var(--muted); }
+  .band li b { color: var(--fg); display: block; }
+  .tick { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-size: 13px; font-weight: 700; margin-top: 2px; }
 
-  dl { margin: 0; display: grid; gap: 14px; }
-  dt { font-weight: 500; font-size: 15px; }
-  dd { margin: 3px 0 0; color: var(--muted); font-size: 14px; }
+  .steps { display: grid; gap: 14px; grid-template-columns: 1fr; counter-reset: step; }
+  @media (min-width: 820px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  .step::before {
+    counter-increment: step; content: counter(step);
+    display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; margin-bottom: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--violet)); color: #fff; font-weight: 700; font-size: 14px;
+  }
+  .step h3 { margin: 0 0 6px; font-size: 16px; }
+  .step p { margin: 0; color: var(--muted); font-size: 15px; }
+  .note {
+    margin-top: 18px; padding: 16px 18px; border-radius: 14px; border: 1px dashed var(--line);
+    color: var(--muted); font-size: 14px; background: color-mix(in srgb, var(--surface) 60%, transparent);
+  }
+  .note b { color: var(--fg); }
+  code { font-family: var(--mono); font-size: 13px; background: var(--raised); padding: 2px 6px; border-radius: 6px; color: var(--fg); word-break: break-all; }
 
-  footer { padding-block: 36px 56px; border-top: 1px solid var(--line); color: var(--faint); font-size: 13px; }
-  footer a { color: var(--muted); }
-  .fine { margin-top: 10px; max-width: 62ch; line-height: 1.6; }
+  .final { text-align: center; padding: 90px 0 70px; }
+  .final img { width: 96px; height: 96px; margin: 0 auto 20px; animation: bob 4s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-8px); } }
+  @media (prefers-reduced-motion: reduce) { .final img { animation: none; } .card, .btn { transition: none; } }
+  .final .ctas { justify-content: center; }
 
-  svg.i { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--faint); font-size: 13px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; align-items: center; }
+  footer a { text-decoration: none; } footer a:hover { color: var(--fg); }
 </style>
+</head>
+<body>
 
 <div class="wrap">
-  <header>
-    <span class="mark"><i></i> bupsy</span>
-    <a class="ghost" href="https://github.com/vanshpatelx/bupsy.si">GitHub</a>
-  </header>
+  <nav aria-label="Main">
+    <a class="brand" href="#"><img src="mark.png" alt="">bupsy</a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/vanshpatelx/bupsy.si">GitHub</a>
+    </div>
+  </nav>
 
-  <div class="hero">
-    <h1>Your AI already has a subscription. Give it a job.</h1>
-    <p class="lede">
-      A Mac app where bots live. Each one runs <b>Claude Code</b> or <b>Codex</b> under your own
-      sign-in — no new account, no credits, no server of ours in the middle. Give one a schedule
-      or a standing goal and it keeps working with the lid closed.
-    </p>
-
-    <div class="cta">
-      <a class="btn" href="https://github.com/vanshpatelx/bupsy.si">
-        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-        Download for Mac
-      </a>
-      <a class="btn sec" href="https://github.com/vanshpatelx/bupsy.si">Read the source</a>
-      <span class="note">macOS 14+ · Apple silicon &amp; Intel</span>
+  <!-- Every download link points here. Change it in one place if releases move. -->
+  <header class="hero">
+    <div>
+      <span class="eyebrow">Free · Native Mac app · No credits</span>
+      <h1>Your AI already has a subscription. <span class="grad">Give it a job.</span></h1>
+      <p class="lede">A Mac app where your bots live. Each one runs <strong>Claude Code</strong> or <strong>Codex</strong> under your own sign-in — no new account, no credits, no server of ours in the middle.</p>
+      <div class="ctas">
+        <a class="btn btn-primary" href="https://github.com/vanshpatelx/bupsy.si/releases/latest/download/Bupsy.dmg">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.68 0-1.73-.78-2.85-.76-1.47.02-2.82.85-3.58 2.17-1.53 2.65-.39 6.57 1.1 8.72.73 1.05 1.6 2.23 2.73 2.19 1.1-.04 1.51-.71 2.84-.71 1.32 0 1.7.71 2.85.69 1.18-.02 1.92-1.07 2.64-2.13.83-1.22 1.17-2.4 1.19-2.46-.03-.01-2.28-.87-2.29-3.47zM14.2 6.13c.6-.73 1.01-1.75.9-2.76-.87.04-1.92.58-2.54 1.31-.56.65-1.05 1.68-.92 2.67.97.08 1.96-.49 2.56-1.22z"/></svg>
+          Download for Mac
+        </a>
+        <a class="btn btn-quiet" href="#features">See what it does</a>
+      </div>
+      <p class="meta">macOS 14+ · Apple silicon &amp; Intel · Needs Claude Code or Codex signed in</p>
     </div>
 
-    <div class="shot">
-      <img src="bupsy.png" alt="The bupsy app: a rail of bots on the left, and Scout's page showing its engine, model, machine and trust level, a conversation, standing goals and routines.">
+    <!-- Drawn, not a screenshot: a real screenshot would carry someone's real conversations. -->
+    <div class="window" role="img" aria-label="The bupsy app: a sidebar of bots, and a group chat where Builder hands a task to Scout.">
+      <aside class="side">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <h6>Groups</h6>
+        <div class="row on">
+          <div class="stack"><img src="faces/scout.png" alt=""><img src="faces/builder.png" alt=""></div>
+          <div><b>Launch</b><span>Scout: Goodbye, good luck.</span></div>
+        </div>
+        <h6>Bots</h6>
+        <div class="row"><img src="faces/scout.png" alt=""><div><b>Scout</b><span>Three sources agree…</span></div></div>
+        <div class="row"><img src="faces/builder.png" alt=""><div><b>Builder</b><span>Tests are green.</span></div></div>
+        <div class="row"><img src="faces/inbox.png" alt=""><div><b>Inbox</b><span>2 need a reply</span></div></div>
+        <div class="row"><img src="faces/lead.png" alt=""><div><b>Outreach</b><span>Drafted 4 intros</span></div></div>
+      </aside>
+      <div class="main">
+        <div class="pill"><div class="stack"><img src="faces/scout.png" alt=""><img src="faces/builder.png" alt=""></div>Launch</div>
+        <div class="thread">
+          <div class="msg-you"><span class="mention">@Builder</span> ship the fix, then ask <span class="mention">@Scout</span> to check the docs.</div>
+          <div class="msg-bot"><img src="faces/builder.png" alt=""><div><small>Builder</small><p>Done — 195 tests pass. <span class="mention">@Scout</span>, can you check the docs?</p></div></div>
+          <div class="msg-bot"><img src="faces/scout.png" alt=""><div><small>Scout</small><p>Docs match the change. All good.</p></div></div>
+        </div>
+        <div class="chips">
+          <span class="chip"><img src="faces/scout.png" alt="">@Scout</span>
+          <span class="chip"><img src="faces/builder.png" alt="">@Builder</span>
+        </div>
+        <div class="composer"><span>Message Launch</span><span class="send"></span></div>
+      </div>
+    </div>
+  </header>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <p class="kicker">What it does</p>
+    <h2>A roster of bots, not a chat box.</h2>
+    <p class="sub">Each bot is its own character with its own job, its own engine, and its own sense of when to ask you first.</p>
+    <div class="grid">
+      <div class="card"><img src="faces/lead.png" alt=""><h3>Your subscription, not ours</h3><p>Bots run the Claude Code and Codex CLIs already on your Mac, billed to the plan you already pay for. bupsy never buys, resells or proxies model access.</p></div>
+      <div class="card"><img src="faces/cloud.png" alt=""><h3>Group chats</h3><p>Put bots in one conversation. @mention one to ask it, and bots hand work to each other — with a ceiling, so they can't burn your quota talking forever.</p></div>
+      <div class="card"><img src="faces/star.png" alt=""><h3>Routines &amp; standing goals</h3><p>“Brief me every weekday at 7.” “Keep my inbox under a day old.” It checks on a schedule and acts only when something is off.</p></div>
+      <div class="card"><img src="faces/working.png" alt=""><h3>Asks before it acts</h3><p>New bots are fully gated: anything beyond reading waits for you. If nobody answers, the answer is no. Loosen it per bot when it has earned it.</p></div>
+      <div class="card"><img src="faces/cat.png" alt=""><h3>Every bot is a character</h3><p>Fourteen plush faces that glance around, bounce while they work, and wiggle when they need you. Pick one, or let it choose.</p></div>
+      <div class="card"><img src="faces/flower.png" alt=""><h3>Usage, honestly</h3><p>Runs and tokens per bot, plus what that would cost at API rates — shown as a value, never as a bill, because on a subscription there isn't one.</p></div>
     </div>
   </div>
+</section>
 
-  <section>
-    <h2>The idea</h2>
-    <p class="sec-lede">You are already paying for the hard part.</p>
-    <div class="grid">
-      <div class="card">
-        <h3>Bring your own agent</h3>
-        <p>Bots run the CLIs already on your Mac, billed to the subscription you already hold.
-           bupsy never buys, resells or proxies model access.</p>
-      </div>
-      <div class="card">
-        <h3>No servers. Ours, anyway.</h3>
-        <p>There is no bupsy backend. Transcripts are files on your disk. A bot's cloud machine is
-           rented with your own key, on your own account.</p>
-      </div>
-      <div class="card">
-        <h3>Native, not Electron</h3>
-        <p>A signed Swift app that opens instantly and behaves like a Mac app, because it is one.</p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>What a bot does</h2>
-    <p class="sec-lede">More than a chat window.</p>
-    <div class="rows">
-      <div class="row">
-        <span class="tile"><svg class="i" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-        <div>
-          <h3>Talk to it</h3>
-          <p>Claude Code or Codex, switchable per bot. Each engine keeps its own thread, so
-             switching back picks up where it left off.</p>
-        </div>
-      </div>
-      <div class="row">
-        <span class="tile"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg></span>
-        <div>
-          <h3>Give it a routine</h3>
-          <p>“Brief me every weekday at 7am.” Runs with the app closed. A run missed while your Mac
-             slept happens when it wakes — once, not fourteen times.</p>
-        </div>
-      </div>
-      <div class="row">
-        <span class="tile"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span>
-        <div>
-          <h3>Give it a standing goal</h3>
-          <p>“My inbox has nothing older than a day.” It checks on a schedule and acts only when
-             something is off. Most checks do nothing, which is the point.</p>
-        </div>
-      </div>
-      <div class="row">
-        <span class="tile"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg></span>
-        <div>
-          <h3>Give it a computer</h3>
-          <p>Assign a cloud machine and its work carries on with your Mac shut. Rented on your own
-             account, costed before you create it.</p>
-        </div>
-      </div>
-      <div class="row">
-        <span class="tile"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><rect x="8" y="8" width="8" height="8" rx="2"/></svg></span>
-        <div>
-          <h3>Connect your apps</h3>
-          <p>Any MCP server — GitHub, Slack, Notion, files. They authenticate themselves; bupsy
-             never sees their sign-ins.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>Permission</h2>
-    <p class="sec-lede">An agent with your logins should ask.</p>
-    <blockquote>
-      New bots are fully gated: anything beyond reading stops and waits for you.
-      <strong>If nobody answers, the answer is no.</strong>
-    </blockquote>
-    <dl style="margin-top:20px">
+<section>
+  <div class="wrap">
+    <div class="band">
       <div>
-        <dt>Four levels of trust</dt>
-        <dd>From “ask before everything” to “never ask”, per bot. Loosen it when a bot has earned it.</dd>
+        <p class="kicker">Your credentials</p>
+        <h2>bupsy runs the tools. It never holds the keys.</h2>
+        <p class="sub" style="margin:0">Signing in happens in your own CLI. There is no bupsy backend and no column in the database that could hold a credential — a test checks the live schema on every build to prove it.</p>
       </div>
-      <div>
-        <dt>Every decision is written down</dt>
-        <dd>The transcript is append-only, enforced by the database. What a bot did is a record,
-            not a note that could have been edited afterwards.</dd>
-      </div>
-      <div>
-        <dt>One place for what is waiting</dt>
-        <dd>Approvals and stuck goals collect in a single tray, so unattended work never stalls
-            somewhere nobody is looking.</dd>
-      </div>
-    </dl>
-  </section>
-
-  <section>
-    <h2>Your credentials</h2>
-    <p class="sec-lede">bupsy spawns the binaries. It never holds the keys.</p>
-    <p style="margin:0 0 18px;color:var(--muted);font-size:15px">
-      Signing in happens in a terminal the app renders but does not read. The credential lands in
-      files owned by you and the CLI. There is no column in the codebase that could hold one — and
-      a test walks the live database schema on every build to prove it.
-    </p>
-    <pre><span class="cmt"># connectors work the same way: names, never values</span>
-"env": { "GITHUB_TOKEN": <b>"${GITHUB_TOKEN}"</b> }</pre>
-    <p style="margin:14px 0 0;color:var(--muted);font-size:14px">
-      You set it in your own shell; the server reads it directly. More setup than a paste box, and
-      the app says so. It also means a breach of bupsy leaks nobody's mail.
-    </p>
-  </section>
-
-  <section>
-    <h2>Run it</h2>
-    <p class="sec-lede">From source, today.</p>
-    <pre>git clone https://github.com/vanshpatelx/bupsy.si
-<b>make run</b>      <span class="cmt"># build and launch</span>
-<b>make test</b>     <span class="cmt"># 123 tests</span></pre>
-    <p style="margin:16px 0 0;color:var(--muted);font-size:14px">
-      Needs macOS 14+, Swift 6, and <code style="font-family:var(--mono);font-size:13px">claude</code>
-      or <code style="font-family:var(--mono);font-size:13px">codex</code> installed and signed in.
-      A downloadable build is coming once the app is notarized.
-    </p>
-  </section>
-
-  <footer>
-    <div>
-      <a href="https://github.com/vanshpatelx/bupsy.si">GitHub</a> ·
-      Source-available under BSL 1.1, becoming Apache-2.0 after four years ·
-      © 2026 Xocket Labs Inc.
+      <ul>
+        <li><span class="tick">✓</span><div><b>No servers. Ours, anyway.</b>Transcripts are files on your disk.</div></li>
+        <li><span class="tick">✓</span><div><b>Every decision is written down.</b>The log is append-only, enforced by the database.</div></li>
+        <li><span class="tick">✓</span><div><b>Apps connect themselves.</b>MCP servers read their own keys; bupsy only ever sees the names.</div></li>
+        <li><span class="tick">✓</span><div><b>Native Swift, not Electron.</b>Opens instantly, behaves like a Mac app, because it is one.</div></li>
+      </ul>
     </div>
-    <p class="fine">
-      Not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI, xAI or any other vendor.
-      Product names are their owners' trademarks, used only to say which tools bupsy runs.
-    </p>
-  </footer>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <p class="kicker">Install</p>
+    <h2>Three steps.</h2>
+    <p class="sub">Free. Works with the Claude Code or Codex sign-in you already have.</p>
+    <div class="steps">
+      <div class="step"><h3>Download</h3><p>Get <b>Bupsy.dmg</b>, open it, and drag Bupsy into Applications.</p></div>
+      <div class="step"><h3>Sign in to an engine</h3><p>Install <a href="https://claude.com/claude-code">Claude Code</a> or Codex and sign in. bupsy finds it and never sees the credential.</p></div>
+      <div class="step"><h3>Make a bot</h3><p>Press <code>⌘N</code>, give it a name and a job. It starts fully gated and asks before acting.</p></div>
+    </div>
+    <!-- Honest about the extra step, rather than leaving people to meet Gatekeeper alone. -->
+    <p class="note"><b>Opening it the first time:</b> this early build isn't notarized by Apple yet, so macOS will say it can't check it. Open <b>System Settings → Privacy &amp; Security</b>, scroll down, and click <b>Open Anyway</b>. Or run <code>xattr -dr com.apple.quarantine /Applications/Bupsy.app</code>. After that it opens normally.</p>
+  </div>
+</section>
+
+<div class="wrap final">
+  <img src="mark.png" alt="">
+  <h2>Give your subscription a job.</h2>
+  <p class="sub" style="margin: 0 auto 28px">Free for macOS 14 and later.</p>
+  <div class="ctas">
+    <a class="btn btn-primary" href="https://github.com/vanshpatelx/bupsy.si/releases/latest/download/Bupsy.dmg">Download for Mac</a>
+    <a class="btn btn-quiet" href="https://github.com/vanshpatelx/bupsy.si">View on GitHub</a>
+  </div>
 </div>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Xocket Labs Inc. · <a href="https://github.com/vanshpatelx/bupsy.si/blob/main/LICENSE">Business Source License 1.1</a></span>
+    <span>Not affiliated with Anthropic or OpenAI.</span>
+  </div>
+</footer>
+
+</body>
+</html>
