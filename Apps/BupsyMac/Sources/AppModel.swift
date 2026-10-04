@@ -771,7 +771,8 @@ final class AppModel {
             if let note = queuedNote.removeValue(forKey: bot.id) {
                 thread.entries.removeAll { $0.id == note }
             }
-            _ = startRun(prompt, bot: bot, thread: thread, groupID: nil, onFinish: nil, alreadyShown: true)
+            _ = startRun(prompt, bot: bot, thread: thread, groupID: nil, onFinish: nil,
+                         alreadyShown: true, separateMessages: messages)
             return
         }
         if var pending = waitingForBot[bot.id], !pending.isEmpty {
@@ -792,7 +793,7 @@ final class AppModel {
         _ prompt: String, bot: Bot, thread: Thread, groupID: String?,
         onFinish: (@MainActor @Sendable (String) -> Void)?,
         from sender: Bot? = nil, shown: String? = nil, hidesPrompt: Bool = false,
-        alreadyShown: Bool = false
+        alreadyShown: Bool = false, separateMessages: [String]? = nil
     ) -> Bool {
         // One run per bot at a time, wherever it is. A bot cannot answer in a group while it is
         // still working on something you asked it directly.
@@ -835,6 +836,13 @@ final class AppModel {
             }
         }
         if hidesPrompt {
+        } else if let separateMessages {
+            // Queued messages are stored as the person typed them, so a reloaded thread shows
+            // each one — not the joined prompt bupsy wrote for the bot.
+            for (index, message) in separateMessages.enumerated() {
+                persist(.text(message), run: run.id, seq: index - separateMessages.count,
+                        asUserMessage: true)
+            }
         } else if let sender {
             let joined = [sender.id.rawValue, sender.name, shown ?? prompt].joined(separator: "\u{1}")
             persist(.text(joined), run: run.id, seq: 0, asMessageFrom: true)
