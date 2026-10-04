@@ -20,6 +20,7 @@ struct NavRail: View {
     var onStartChat: () -> Void = {}
     @State private var isAddingBot = false
     @State private var isSearching = false
+    @State private var showsYouMenu = false
     @State private var query = ""
     @State private var renamingFolder: FolderName?
     @State private var filingBot: Bot?
@@ -412,14 +413,46 @@ struct NavRail: View {
         .buttonStyle(.plain)
     }
 
+    // A button with a popover rather than a `Menu`: a macOS menu label keeps only one image and
+    // one line of text, which flattened this row to a bare "You" and dropped the engine line.
     private var footer: some View {
-        Menu {
-            Button("Permissions…") { destination = .permissions }
-            Button("Usage") { destination = .usage }
-        } label: { footerLabel }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize(horizontal: false, vertical: true)
+        Button { showsYouMenu.toggle() } label: {
+            footerLabel
+                .contentShape(.rect)
+                .padding(.vertical, 2)
+                .background(showsYouMenu ? palette.sidebarAccent : .clear,
+                            in: .rect(cornerRadius: Theme.Radius.control))
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showsYouMenu, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                youMenuItem("hand.raised", "Permissions") { destination = .permissions }
+                youMenuItem("chart.bar", "Usage") { destination = .usage }
+                youMenuItem("server.rack", "Machines") { destination = .machines }
+                youMenuItem("puzzlepiece.extension", "Apps") { destination = .connectors }
+            }
+            .padding(6)
+            .frame(width: 200)
+        }
+    }
+
+    private func youMenuItem(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button {
+            showsYouMenu = false
+            action()
+        } label: {
+            HStack(spacing: Theme.Space.snug) {
+                Image(systemName: symbol).frame(width: 16)
+                Text(title)
+                Spacer(minLength: 0)
+            }
+            .font(Theme.Typography.body)
+            .foregroundStyle(palette.foreground)
+            .padding(.horizontal, Theme.Space.snug)
+            .frame(height: 30)
+            .contentShape(.rect)
+        }
+        .buttonStyle(MenuRowStyle())
     }
 
     private var footerLabel: some View {
@@ -776,5 +809,18 @@ struct RoleTag: View {
             .padding(.vertical, 1)
             .background(palette.foreground.opacity(0.07), in: .rect(cornerRadius: 4))
             .fixedSize()
+    }
+}
+
+/// A row in a small popover menu: highlights under the pointer, like a real menu item.
+struct MenuRowStyle: ButtonStyle {
+    @Environment(\.palette) private var palette
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background((hovering || configuration.isPressed) ? palette.foreground.opacity(0.08) : .clear,
+                        in: .rect(cornerRadius: 6))
+            .onHover { hovering = $0 }
     }
 }
