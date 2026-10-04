@@ -220,7 +220,7 @@ struct SuggestionRow: View {
 
     var body: some View {
         CardRow {
-            IconTile(systemName: "shippingbox")
+            IconTile(systemName: icon)
         } content: {
             VStack(alignment: .leading, spacing: 4) {
                 Text(suggestion.title)
@@ -233,6 +233,18 @@ struct SuggestionRow: View {
         } trailing: {
             Button("Add") { model.addConnector(suggestion.server) }
                 .buttonStyle(QuietButton(compact: true))
+        }
+    }
+
+    /// One glyph per app, so the list can be scanned instead of read — four identical boxes said
+    /// nothing about which row was which.
+    private var icon: String {
+        switch suggestion.id {
+        case "github": "chevron.left.forwardslash.chevron.right"
+        case "filesystem": "folder"
+        case "slack": "number"
+        case "notion": "doc.text"
+        default: "shippingbox"
         }
     }
 }
