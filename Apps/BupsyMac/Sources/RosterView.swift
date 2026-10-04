@@ -42,7 +42,7 @@ struct BotMenu: View {
         Button("Rename bot…", action: onRename)
         Button("Shuffle face") { model.shuffleFace(bot) }
         Menu("Engine") {
-            ForEach([EngineID.claude, .codex], id: \.self) { engine in
+            ForEach(EngineID.supported, id: \.self) { engine in
                 Button {
                     model.setEngine(bot, engine)
                 } label: {
@@ -105,7 +105,7 @@ struct NewBotSheet: View {
                             .foregroundStyle(palette.destructive)
                     }
                     Picker("", selection: $engine) {
-                        ForEach([EngineID.claude, .codex], id: \.self) {
+                        ForEach(EngineID.supported, id: \.self) {
                             Text($0.displayName).tag($0)
                         }
                     }

@@ -35,6 +35,11 @@ public enum EngineID: String, Sendable, Codable, CaseIterable {
         case .opencode: "OpenCode"
         }
     }
+
+    /// The engines bupsy can actually run today. The rest are named so stored data stays readable,
+    /// but offering them anywhere — a picker, the onboarding check — showed choices that do nothing
+    /// and an onboarding row stuck on "Checking…" forever.
+    public static let supported: [EngineID] = [.claude, .codex]
 }
 
 public struct BotID: Sendable, Hashable, Codable, RawRepresentable {

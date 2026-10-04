@@ -83,7 +83,7 @@ struct OnboardingSheet: View {
                 .multilineTextAlignment(.center)
 
             VStack(spacing: 0) {
-                ForEach(Array(EngineID.allCases.enumerated()), id: \.element) { index, engine in
+                ForEach(Array(EngineID.supported.enumerated()), id: \.element) { index, engine in
                     if index > 0 { Rectangle().fill(palette.border).frame(height: 1) }
                     engineRow(engine)
                 }

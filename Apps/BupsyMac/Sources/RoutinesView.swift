@@ -99,6 +99,8 @@ struct NewRoutineSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let bot: Bot
+    /// The routine being edited, or nil to make a new one.
+    var editing: Routine? = nil
 
     @State private var name = ""
     @State private var prompt = ""
@@ -106,7 +108,7 @@ struct NewRoutineSheet: View {
     @State private var tier = Routine.Tier.launchAgent
 
     var body: some View {
-        SheetFrame(title: "New routine", icon: "clock.arrow.circlepath",
+        SheetFrame(title: editing == nil ? "New routine" : "Edit routine", icon: "clock.arrow.circlepath",
                    subtitle: "A job \(bot.name) does on a schedule, whether or not you are here.") {
             Field(label: "Name") {
                 TextField("", text: $name, prompt: Text("Morning briefing"))
@@ -122,7 +124,7 @@ struct NewRoutineSheet: View {
 
             Field(label: "When") {
                 Picker("", selection: $preset) {
-                    ForEach(Schedule.presets, id: \.cron) { preset in
+                    ForEach(scheduleChoices, id: \.cron) { preset in
                         Text(preset.label).tag(preset)
                     }
                 }
@@ -153,13 +155,16 @@ struct NewRoutineSheet: View {
         } actions: {
             Button("Cancel") { dismiss() }
                 .buttonStyle(QuietButton())
-            Button("Create") {
-                model.addRoutine(
-                    to: bot,
-                    name: name.trimmingCharacters(in: .whitespaces),
-                    prompt: prompt.trimmingCharacters(in: .whitespaces),
-                    cron: preset.cron,
-                    tier: tier)
+            Button(editing == nil ? "Create" : "Save") {
+                let cleanName = name.trimmingCharacters(in: .whitespaces)
+                let cleanPrompt = prompt.trimmingCharacters(in: .whitespaces)
+                if let editing {
+                    model.updateRoutine(editing, name: cleanName, prompt: cleanPrompt,
+                                        cron: preset.cron, tier: tier)
+                } else {
+                    model.addRoutine(to: bot, name: cleanName, prompt: cleanPrompt,
+                                     cron: preset.cron, tier: tier)
+                }
                 dismiss()
             }
             .buttonStyle(PrimaryButton())
@@ -167,6 +172,21 @@ struct NewRoutineSheet: View {
             .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
                       || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
         }
+        .onAppear {
+            guard let editing else { return }
+            name = editing.name
+            prompt = editing.prompt
+            tier = editing.tier
+            // A schedule that is not one of the presets keeps its own entry, so saving an edit
+            // never quietly changes when it runs.
+            preset = Schedule.presets.first { $0.cron == editing.cron }
+                ?? Schedule.Preset(label: Schedule.describe(editing.cron), cron: editing.cron)
+        }
+    }
+
+    /// The presets, plus the routine's own schedule when it is not one of them.
+    private var scheduleChoices: [Schedule.Preset] {
+        Schedule.presets.contains(preset) ? Schedule.presets : Schedule.presets + [preset]
     }
 
     /// Only offer a cloud machine when the bot has one; offering a choice that silently

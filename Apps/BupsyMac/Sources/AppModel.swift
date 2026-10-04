@@ -398,6 +398,18 @@ final class AppModel {
         syncLaunchAgent()
     }
 
+    /// Saves changes to an existing routine — its name, instruction, schedule or where it runs.
+    func updateRoutine(_ routine: Routine, name: String, prompt: String, cron: String, tier: Routine.Tier) {
+        guard let index = routines.firstIndex(where: { $0.id == routine.id }),
+              let bot = bots.first(where: { $0.id.rawValue == routine.botID }) else { return }
+        routines[index].name = name
+        routines[index].prompt = prompt
+        routines[index].cron = cron
+        routines[index].tier = (tier == .machine && bot.machineID == nil) ? .appOpen : tier
+        try? store?.save(routines[index])
+        syncLaunchAgent()
+    }
+
     func deleteRoutine(_ routine: Routine) {
         routines.removeAll { $0.id == routine.id }
         try? store?.deleteRoutine(id: routine.id)
