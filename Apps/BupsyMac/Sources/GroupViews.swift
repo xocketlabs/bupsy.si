@@ -340,9 +340,11 @@ struct GroupBubble: View {
                 .opacity(showsName ? 1 : 0)
                 VStack(alignment: .leading, spacing: 3) {
                     if showsName {
+                        // In the bot's own colour, as its mentions are — a name you can match to
+                        // a face at a glance in a busy room.
                         Text(message.authorName)
                             .font(Theme.Typography.badge)
-                            .foregroundStyle(palette.mutedForeground)
+                            .foregroundStyle(bot.map(BotFace.colour(of:)) ?? palette.mutedForeground)
                     }
                     FormattedReply(markdown: message.text)
                         .padding(.horizontal, Theme.Space.step)

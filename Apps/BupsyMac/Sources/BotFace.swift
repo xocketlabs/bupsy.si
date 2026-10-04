@@ -95,8 +95,14 @@ struct BotFace: View {
     /// only ever produce two of the fourteen shapes. Any linear map would also have tied colour to
     /// shape, so every pick wore the same colour. Two independent hashes give every combination.
     private var shape: BotShape { chosenShape ?? Self.derivedShape(forHue: hue) }
-    private var colour: Color {
-        BotShape.palette[(chosenColour ?? Self.derivedColour(forHue: hue)) % BotShape.palette.count]
+    private var colour: Color { Self.colour(for: hue, chosen: chosenColour) }
+
+    /// A bot's own colour — for its name and its mentions, so a bot reads as the same character
+    /// in text as it does in its face.
+    static func colour(of bot: Bot) -> Color { colour(for: bot.avatarHue, chosen: bot.avatarColour) }
+
+    private static func colour(for hue: Double, chosen: Int?) -> Color {
+        BotShape.palette[(chosen ?? derivedColour(forHue: hue)) % BotShape.palette.count]
     }
 
     nonisolated static func derivedShape(forHue hue: Double) -> BotShape {
@@ -307,6 +313,28 @@ private struct Motion {
 /// recoloured. All closed paths in a unit square scaled to the body rect; the polygonal ones are
 /// softened by unioning them with their own round-jointed stroke, which is what makes a triangle
 /// read as plush rather than sharp.
+/// Small still faces for inline mentions, rendered once per look and reused.
+///
+/// `Text` cannot hold a view, only an image, so a mention's face is drawn to an image the first
+/// time it is needed. Keyed by everything that changes the face, so a new pick redraws it.
+@MainActor
+enum MentionFaces {
+    private static var cache: [String: NSImage] = [:]
+
+    static func image(for bot: Bot, size: CGFloat) -> NSImage? {
+        let shape = bot.avatarShape ?? BotFace.derivedShape(forHue: bot.avatarHue)
+        let colour = bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue)
+        let key = "\(shape.rawValue)-\(colour)-\(size)"
+        if let cached = cache[key] { return cached }
+        let renderer = ImageRenderer(content: StillBotFace(shape: shape, colour: colour, size: size))
+        renderer.scale = 2
+        guard let cg = renderer.cgImage else { return nil }
+        let image = NSImage(cgImage: cg, size: NSSize(width: size, height: size))
+        cache[key] = image
+        return image
+    }
+}
+
 /// A face held still at one moment — for the app icon and other one-off renders, where a
 /// `TimelineView` has no timeline to run on.
 struct StillBotFace: View {

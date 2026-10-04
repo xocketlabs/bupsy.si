@@ -4,6 +4,7 @@ import SwiftUI
 /// A reply: prose as text, code as code.
 struct FormattedReply: View {
     @Environment(\.palette) private var palette
+    @Environment(AppModel.self) private var model
     let markdown: String
 
     var body: some View {
@@ -15,7 +16,7 @@ struct FormattedReply: View {
                     // full 560pt whatever it said, so "Hey!" drew a bubble the width of a
                     // paragraph — the single thing that stopped these reading as messages.
                     // A code block still sets the bubble's width, which is what should.
-                    Text(inline(text))
+                    inlineText(text)
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
                         .textSelection(.enabled)
@@ -31,7 +32,7 @@ struct FormattedReply: View {
                                 Text("•")
                                     .font(Theme.Typography.body)
                                     .foregroundStyle(palette.mutedForeground)
-                                Text(inline(item))
+                                inlineText(item)
                                     .font(Theme.Typography.body)
                                     .foregroundStyle(palette.foreground)
                                     .textSelection(.enabled)
@@ -40,6 +41,29 @@ struct FormattedReply: View {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// Prose with every "@Name" of a real bot shown as its face and name in its colour.
+    ///
+    /// Joined `Text`, not a view per mention, so a mention wraps and selects with the sentence
+    /// around it like any other word.
+    private func inlineText(_ text: String) -> Text {
+        let pieces = MentionSplitter.split(text, names: model.bots.map(\.name))
+        return pieces.reduce(Text(verbatim: "")) { result, piece in
+            switch piece {
+            case .text(let run):
+                return result + Text(inline(run))
+            case .mention(let name):
+                guard let bot = model.bots.first(where: { $0.name == name }) else {
+                    return result + Text(verbatim: "@" + name)
+                }
+                let face = MentionFaces.image(for: bot, size: Theme.scaled(14))
+                    .map { Text(Image(nsImage: $0)).baselineOffset(-2) + Text(verbatim: " ") }
+                    ?? Text(verbatim: "@")
+                return result + face
+                    + Text(verbatim: bot.name).fontWeight(.semibold).foregroundColor(BotFace.colour(of: bot))
             }
         }
     }
