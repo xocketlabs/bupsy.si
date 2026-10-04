@@ -38,6 +38,29 @@ enum TourMode {
         }
         steps += [
             Step(name: "panel-activity", appearance: .light) { m in reset(m); if let bot { m.tourDestination = .bot(bot.id) }; m.tourDetails = .activity },
+            Step(name: "limits", appearance: .light) { m in
+                reset(m)
+                if let bot {
+                    let thread = m.thread(for: bot.id)
+                    thread.latestUsage = Usage(inputTokens: 84_000, outputTokens: 2_100, cachedInputTokens: 61_000)
+                    thread.latestLimits = RateLimit(windows: [
+                        "five_hour": .init(utilization: 0.38, resetsAt: Date().addingTimeInterval(9_960)),
+                        "seven_day": .init(utilization: 0.21, resetsAt: Date().addingTimeInterval(4 * 86_400)),
+                        "seven_day_opus": .init(utilization: 0.05, resetsAt: Date().addingTimeInterval(4 * 86_400)),
+                    ])
+                }
+                m.tourDetails = .activity
+            },
+            Step(name: "thinking", appearance: .light) { m in
+                reset(m)
+                if let bot {
+                    let thread = m.thread(for: bot.id)
+                    thread.entries.append(TranscriptEntry(kind: .userMessage("Find the three best Swift testing libraries.")))
+                    thread.entries.append(TranscriptEntry(kind: .tool(name: "WebSearch",
+                        arguments: #"{"query":"best Swift testing libraries 2026"}"#, result: nil, failed: false)))
+                    thread.isRunning = true
+                }
+            },
             Step(name: "panel-files", appearance: .light) { m in reset(m); m.tourDetails = .files },
             Step(name: "search", appearance: .light) { m in reset(m); m.tourDetails = nil; m.tourPalette = true },
             Step(name: "apps", appearance: .light) { m in reset(m); m.tourDestination = .connectors },

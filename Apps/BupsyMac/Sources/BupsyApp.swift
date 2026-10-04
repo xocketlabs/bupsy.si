@@ -158,7 +158,7 @@ struct RootView: View {
         // toggles — stop arriving in macOS blue next to a pink accent. Set once here rather than
         // remembered at each call site, which is how the blue got in.
         .tint(palette.primary)
-        .sheet(isPresented: $isAddingBot) { NewBotSheet() }
+        .sheet(isPresented: $isAddingBot) { BotCreatorSheet() }
         .sheet(isPresented: $isAddingGroup) {
             NewGroupSheet(onCreated: { group in destination = .group(group.id) })
         }
