@@ -294,14 +294,7 @@ struct BotPage: View {
                 }
                 SettingRow(label: "Model", value: modelLabel ?? "Default",
                            icon: "slider.horizontal.3") {
-                    ForEach(model.models(for: bot)) { option in
-                        Button {
-                            model.setModel(bot, option.id)
-                        } label: {
-                            Label(option.label,
-                                  systemImage: bot.model == option.id ? "checkmark" : "")
-                        }
-                    }
+                    ModelMenuItems(bot: bot)
                 }
                 SettingRow(label: "Runs on", value: machineName,
                            icon: bot.machineID == nil ? "laptopcomputer" : "server.rack") {
@@ -382,7 +375,8 @@ struct BotPage: View {
 
     private var modelLabel: String? {
         guard bot.model != nil else { return nil }
-        return model.models(for: bot).first { $0.id == bot.model }?.label
+        // A custom model has no label of its own; its ID is the most honest name for it.
+        return model.models(for: bot).first { $0.id == bot.model }?.label ?? bot.model
     }
 
     /// Shows the folder's own name rather than a path — the path is long and the name is what

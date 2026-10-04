@@ -58,6 +58,13 @@ struct NavRail: View {
         .sheet(item: $renamingFolder) { RenameFolderSheet(folder: $0.id) }
         .sheet(item: $filingBot) { NewFolderSheet(bot: $0) }
         .sheet(item: $renamingBot) { RenameBotSheet(bot: $0) }
+        // On its own empty view: two sheets on one view and SwiftUI silently drops one.
+        .background {
+            Color.clear.sheet(item: Binding(get: { model.customModelBot },
+                                            set: { model.customModelBot = $0 })) {
+                CustomModelSheet(bot: $0)
+            }
+        }
         .sheet(item: $renamingGroup) { RenameGroupSheet(group: $0) }
     }
 

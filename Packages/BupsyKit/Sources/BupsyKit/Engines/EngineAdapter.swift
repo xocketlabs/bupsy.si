@@ -78,9 +78,16 @@ public struct ModelOption: Sendable, Hashable, Identifiable {
     public let id: String?
     public let label: String
     public let detail: String?
+    /// Where the picker lists it.
+    public let section: Section
 
-    public init(id: String?, label: String, detail: String? = nil) {
-        self.id = id; self.label = label; self.detail = detail
+    /// A family alias that follows the newest model, or one exact version that never changes.
+    /// Both matter: the alias is the right default, a pinned version is what someone picks when
+    /// a routine must behave tomorrow the way it did today.
+    public enum Section: Sendable, Hashable { case standard, latest, version }
+
+    public init(id: String?, label: String, detail: String? = nil, section: Section = .standard) {
+        self.id = id; self.label = label; self.detail = detail; self.section = section
     }
 }
 

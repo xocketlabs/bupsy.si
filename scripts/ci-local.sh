@@ -35,6 +35,7 @@ fi
 
 step "BupsyKit tests"
 swift test --package-path Packages/BupsyKit 2>&1 | tail -3
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail "BupsyKit tests"
 
 if [ "${1:-}" != "--quick" ]; then
   step "The app builds"

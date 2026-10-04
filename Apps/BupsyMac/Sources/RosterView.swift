@@ -50,15 +50,7 @@ struct BotMenu: View {
                 }
             }
         }
-        Menu("Model") {
-            ForEach(model.models(for: bot)) { option in
-                Button {
-                    model.setModel(bot, option.id)
-                } label: {
-                    Label(option.label, systemImage: bot.model == option.id ? "checkmark" : "")
-                }
-            }
-        }
+        Menu("Model") { ModelMenuItems(bot: bot) }
         Divider()
         Button("Duplicate") { model.duplicate(bot) }
         Button("Copy conversation") { model.copyTranscript(of: bot) }
