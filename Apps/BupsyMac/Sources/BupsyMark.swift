@@ -186,3 +186,20 @@ struct BupsyAppIcon: View {
             .frame(width: diameter, height: diameter)
     }
 }
+
+/// The app icon itself, at any size — the brand mark inside the app.
+///
+/// The sidebar and the welcome screen used the older single-bubble mark after the icon became the
+/// roster huddle, so the app said one thing in the Dock and another in its own window. This draws
+/// the very same icon, scaled so its tile fills the frame.
+struct BupsyIconMark: View {
+    var size: CGFloat = 26
+
+    var body: some View {
+        BupsyAppIcon()
+            .frame(width: 1024, height: 1024)
+            .scaleEffect(size / 824)
+            .frame(width: size, height: size)
+            .accessibilityLabel("bupsy")
+    }
+}
