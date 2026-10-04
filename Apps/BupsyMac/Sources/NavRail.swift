@@ -18,6 +18,7 @@ struct NavRail: View {
     /// Owned by the app rather than the rail: the palette opens over the conversation, which the
     /// rail does not contain.
     var onStartChat: () -> Void = {}
+    var onSearch: () -> Void = {}
     @State private var isAddingBot = false
     @State private var isSearching = false
     @State private var showsYouMenu = false
@@ -83,10 +84,7 @@ struct NavRail: View {
 
             Spacer(minLength: Theme.Space.snug)
 
-            circleButton("magnifyingglass", help: "Search bots") {
-                isSearching.toggle()
-                if isSearching { searchFocused = true } else { query = "" }
-            }
+            circleButton("magnifyingglass", help: "Search (⌘F)") { onSearch() }
             .keyboardShortcut("f", modifiers: .command)
 
             circleButton("plus", help: "Start a chat") { onStartChat() }
@@ -436,6 +434,23 @@ struct NavRail: View {
                 youMenuItem("chart.bar", "Usage") { destination = .usage }
                 youMenuItem("server.rack", "Machines") { destination = .machines }
                 youMenuItem("puzzlepiece.extension", "Apps") { destination = .connectors }
+                Rectangle().fill(palette.border).frame(height: 1).padding(.vertical, 4)
+                HStack(spacing: Theme.Space.snug) {
+                    Image(systemName: "circle.lefthalf.filled").frame(width: 16)
+                    Text("Appearance")
+                    Spacer(minLength: 0)
+                }
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.foreground)
+                .padding(.horizontal, Theme.Space.snug)
+                .padding(.top, 2)
+                Picker("", selection: Binding(get: { model.appearance }, set: { model.appearance = $0 })) {
+                    ForEach(AppModel.Appearance.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, Theme.Space.snug)
+                .padding(.bottom, 2)
             }
             .padding(6)
             .frame(width: 200)

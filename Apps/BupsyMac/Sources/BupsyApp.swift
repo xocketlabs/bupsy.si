@@ -10,6 +10,7 @@ struct BupsyApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .preferredColorScheme(model.appearance.scheme)
                 .task {
                     // launchd starts us with this flag when a routine is due. Run it before
                     // anything slow, so a 7am briefing is not waiting on an auth probe.
@@ -46,6 +47,7 @@ struct RootView: View {
     @Environment(\.palette) private var palette
     @State private var destination: NavRail.Destination?
     @State private var isStartingChat = false
+    @State private var paletteSearchFirst = false
     @State private var isAddingBot = false
     @State private var isAddingGroup = false
 
@@ -78,7 +80,8 @@ struct RootView: View {
                         }
                     }
                 }
-            ), onStartChat: { isStartingChat = true })
+            ), onStartChat: { paletteSearchFirst = false; isStartingChat = true },
+               onSearch: { paletteSearchFirst = true; isStartingChat = true })
 
             // The working surface floats inside the rail's colour with a small inset, which is
             // where this layout gets its depth — the panel reads as an object on a ground
@@ -91,12 +94,17 @@ struct RootView: View {
                 .overlay(alignment: .top) {
                     if isStartingChat {
                         StartChatPalette(
+                            searchFirst: paletteSearchFirst,
                             onPick: { id in
                                 destination = .bot(id)
                                 model.selectedBotID = id
                                 if let bot = model.bots.first(where: { $0.id == id }) {
                                     model.markRead(bot)
                                 }
+                                isStartingChat = false
+                            },
+                            onPickGroup: { id in
+                                destination = .group(id)
                                 isStartingChat = false
                             },
                             onCreate: {
@@ -116,8 +124,8 @@ struct RootView: View {
                             },
                             onDismiss: { isStartingChat = false }
                         )
-                        .padding(.top, 60)
-                        .transition(.opacity)
+                        .padding(.top, 90)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                     }
                 }
         }

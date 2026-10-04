@@ -187,19 +187,27 @@ struct BupsyAppIcon: View {
     }
 }
 
-/// The app icon itself, at any size — the brand mark inside the app.
+/// bupsy's small mark: the icon's lead bot with its bubble.
 ///
-/// The sidebar and the welcome screen used the older single-bubble mark after the icon became the
-/// roster huddle, so the app said one thing in the Dock and another in its own window. This draws
-/// the very same icon, scaled so its tile fills the frame.
+/// The full icon is three bots on a tile; at sidebar size that is a muddle of shapes. The mark
+/// keeps the one thing that reads at 24pt — the round purple bot from the middle of the icon —
+/// with the pink bubble rising off it, so it is clearly the same character as the Dock icon.
 struct BupsyIconMark: View {
     var size: CGFloat = 26
 
     var body: some View {
-        BupsyAppIcon()
-            .frame(width: 1024, height: 1024)
-            .scaleEffect(size / 824)
-            .frame(width: size, height: size)
-            .accessibilityLabel("bupsy")
+        ZStack(alignment: .topTrailing) {
+            StillBotFace(shape: .circle, colour: 8, size: size * 0.92)
+                .frame(width: size, height: size, alignment: .bottomLeading)
+            Circle()
+                .fill(LinearGradient(colors: [BupsyMark.pink, BupsyMark.violet],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(Circle().fill(.white.opacity(0.85)).frame(width: size * 0.09)
+                    .offset(x: -size * 0.05, y: -size * 0.05))
+                .frame(width: size * 0.3, height: size * 0.3)
+                .offset(x: size * 0.06, y: -size * 0.04)
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel("bupsy")
     }
 }

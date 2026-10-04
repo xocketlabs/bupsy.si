@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import BupsyKit
 import Foundation
 import Observation
@@ -36,6 +37,15 @@ final class AppModel {
     var machineProblem: String?
     /// Shown once. Stored in UserDefaults rather than the database: it is a preference about the
     /// app, not part of the user's data, and it should not travel with a restored database.
+    /// Light, dark, or whatever macOS is set to. Saved per home.
+    enum Appearance: String, CaseIterable { case system, light, dark
+        var label: String { switch self { case .system: "Auto"; case .light: "Light"; case .dark: "Dark" } }
+        var scheme: ColorScheme? { switch self { case .system: nil; case .light: .light; case .dark: .dark } }
+    }
+    var appearance = Appearance(rawValue: AppHome.defaults.string(forKey: "si.bupsy.appearance") ?? "") ?? .system {
+        didSet { AppHome.defaults.set(appearance.rawValue, forKey: "si.bupsy.appearance") }
+    }
+
     var needsOnboarding = !AppHome.defaults.bool(forKey: "si.bupsy.onboarded")
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?
