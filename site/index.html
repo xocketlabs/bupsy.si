@@ -69,8 +69,8 @@
   .pill { padding: 9px 16px; border-radius: 999px; color: #fff !important; font-weight: 600; background: linear-gradient(120deg, var(--pink), var(--violet)); box-shadow: var(--shadow-sm); }
   @media (max-width: 640px) { .nav-links a:not(.pill) { display: none; } }
 
-  .hero { text-align: center; padding: 20px 0 36px; }
-  .stage { position: relative; width: min(440px, 84vw); margin: 0 auto -4px; }
+  .hero { text-align: center; padding: 0 0 20px; }
+  .stage { position: relative; width: min(400px, 78vw); margin: -18px auto -14px; }
   .stage img.huddle { width: 100%; animation: float 5s ease-in-out infinite; }
   .bubble {
     position: absolute; border-radius: 50%; opacity: 0;
@@ -87,8 +87,8 @@
     background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-sm); font-size: 13px; font-weight: 600; color: var(--violet);
   }
   .eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--pink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--pink) 25%, transparent); }
-  h1 { font-size: clamp(40px, 7vw, 76px); line-height: .98; font-weight: 800; max-width: 900px; margin: 0 auto 18px; }
-  .lede { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 620px; margin: 0 auto 28px; }
+  h1 { font-size: clamp(40px, 6.6vw, 72px); line-height: 1; font-weight: 800; max-width: 880px; margin: 0 auto 20px; text-wrap: balance; }
+  .lede { font-size: clamp(17px, 1.9vw, 19px); color: var(--muted); max-width: 600px; margin: 0 auto 30px; text-wrap: pretty; }
   .lede b { color: var(--ink); font-weight: 600; }
 
   .waitlist {
@@ -109,33 +109,41 @@
   .form-msg.ok { color: var(--violet); font-weight: 600; }
   .form-msg.err { color: #d93b5c; }
   @media (max-width: 480px) { .waitlist button { flex: 1 1 100%; } }
-  .meta { margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .meta { margin-top: 16px; font-size: 13px; color: var(--muted); }
 
-  .roster { padding: 48px 0 12px; }
+  .roster { padding: 56px 0 8px; }
+  .roster-title { text-align: center; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 18px; }
   .roster-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
-  .mate { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 18px 16px 16px; text-align: center; box-shadow: var(--shadow-sm); transition: transform .25s ease; }
+  @media (max-width: 720px) {
+    .roster-row { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; padding: 4px 16px 16px; margin: 0 -16px; scrollbar-width: none; }
+    .roster-row::-webkit-scrollbar { display: none; }
+    .roster-row .mate { flex: 0 0 150px; scroll-snap-align: center; }
+  }
+  .mate { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 20px 14px 18px; text-align: center; box-shadow: var(--shadow-sm); transition: transform .25s ease; }
   .mate:hover { transform: translateY(-4px) rotate(-1deg); }
   .mate img { width: 72px; height: 72px; margin: 0 auto 10px; }
   .mate b { display: block; font: 700 17px var(--display); letter-spacing: -.02em; }
-  .mate span { font-size: 13px; color: var(--muted); }
+  .mate span { font-size: 13px; color: var(--muted); white-space: nowrap; }
 
-  section { padding: 72px 0; }
+  section { padding: 64px 0; }
+  section + section { padding-top: 24px; }
   .kicker { color: var(--violet); font-weight: 600; font-size: 14px; margin: 0 0 10px; }
-  h2 { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.05; font-weight: 800; margin-bottom: 14px; }
-  .sub { color: var(--muted); max-width: 600px; margin: 0 0 36px; font-size: 17px; }
+  h2 { font-size: clamp(30px, 4.2vw, 44px); line-height: 1.05; font-weight: 800; margin-bottom: 14px; text-wrap: balance; }
+  .sub { color: var(--muted); max-width: 600px; margin: 0 0 32px; font-size: 17px; text-wrap: pretty; }
   .center { text-align: center; }
   .center .sub { margin-left: auto; margin-right: auto; }
 
   .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
   @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
   @media (min-width: 980px) { .grid { grid-template-columns: repeat(3, 1fr); } }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px; box-shadow: var(--shadow-sm); }
-  .card img { width: 48px; height: 48px; margin-bottom: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 24px; box-shadow: var(--shadow-sm); transition: transform .25s ease; }
+  .card:hover { transform: translateY(-3px); }
+  .card img { width: 52px; height: 52px; margin-bottom: 14px; }
   .card h3 { font-size: 20px; margin-bottom: 6px; font-weight: 700; }
   .card p { margin: 0; color: var(--muted); font-size: 15px; }
 
   /* The app is dark, so its window is too — a real-looking object on a light page. */
-  .demo { display: grid; gap: 40px; align-items: center; }
+  .demo { display: grid; gap: 48px; align-items: center; }
   @media (min-width: 920px) { .demo { grid-template-columns: .9fr 1.1fr; } }
   .window { border-radius: 18px; overflow: hidden; background: #141218; box-shadow: 0 40px 90px rgba(40, 20, 90, .35); border: 1px solid rgba(255,255,255,.08); color: #f4f2f8; font-size: 13.5px; }
   .bar { display: flex; align-items: center; gap: 7px; padding: 12px 14px; background: #1b1922; border-bottom: 1px solid rgba(255,255,255,.06); }
@@ -157,13 +165,13 @@
   .ask .btns { display: flex; gap: 6px; flex-wrap: wrap; }
   .ask .btns span { padding: 5px 10px; border-radius: 8px; background: #2a2832; font-size: 12px; font-weight: 600; }
   .composer { margin: 4px 18px 18px; padding: 11px 14px; border-radius: 12px; background: #1b1922; border: 1px solid rgba(225, 122, 201, .55); color: #8b8799; box-shadow: 0 0 14px rgba(225, 122, 201, .25); }
-  .points { display: grid; gap: 16px; margin-top: 8px; }
+  .points { display: grid; gap: 20px; margin-top: 4px; }
   .point { display: flex; gap: 14px; align-items: flex-start; }
   .point img { width: 40px; height: 40px; flex: none; }
   .point b { display: block; font: 700 18px var(--display); letter-spacing: -.02em; }
   .point span { color: var(--muted); font-size: 15px; }
 
-  .band { border-radius: 28px; padding: 44px 28px; text-align: center; color: #fff; background: linear-gradient(130deg, #e86bbd, #8a55f0 60%, #6a45e0); box-shadow: 0 30px 80px rgba(120, 70, 220, .35); }
+  .band { border-radius: 28px; padding: 52px 32px; text-align: center; color: #fff; background: linear-gradient(130deg, #e86bbd, #8a55f0 60%, #6a45e0); box-shadow: 0 30px 80px rgba(120, 70, 220, .35); }
   .band h2 { color: #fff; }
   .band p { color: rgba(255,255,255,.88); max-width: 640px; margin: 0 auto 26px; font-size: 17px; }
   .band ul { list-style: none; padding: 0; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 760px; }
@@ -176,11 +184,11 @@
   .step h3 { font-size: 19px; margin-bottom: 6px; font-weight: 700; }
   .step p { margin: 0; color: var(--muted); font-size: 15px; }
 
-  .final { text-align: center; padding: 80px 0 72px; }
-  .final img { width: 112px; height: 112px; margin: 0 auto 20px; animation: float 5s ease-in-out infinite; }
+  .final { text-align: center; padding: 56px 0 72px; }
+  .final img { width: 104px; height: 104px; margin: 0 auto 18px; animation: float 5s ease-in-out infinite; }
   .final .sub { margin: 0 auto 26px; }
 
-  footer { border-top: 1px solid var(--line); padding: 26px 0 36px; color: var(--muted); font-size: 13px; }
+  footer { border-top: 1px solid var(--line); padding: 24px 0 32px; color: var(--muted); font-size: 13px; }
   footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; align-items: center; }
   footer .brand { font-size: 16px; color: var(--ink); } footer .brand img { width: 22px; height: 22px; }
 
@@ -223,16 +231,17 @@
 </div>
 
 <div class="wrap roster" id="roster">
+  <p class="roster-title">Meet the roster</p>
   <div class="roster-row">
-    <div class="mate"><img src="faces/round.png" alt=""><b>Scout</b><span>Researches and reports back</span></div>
-    <div class="mate"><img src="faces/ghost.png" alt=""><b>Builder</b><span>Writes and fixes code</span></div>
-    <div class="mate"><img src="faces/cat.png" alt=""><b>Inbox</b><span>Triages what needs you</span></div>
-    <div class="mate"><img src="faces/star.png" alt=""><b>Planner</b><span>Breaks big tasks down</span></div>
-    <div class="mate"><img src="faces/cloud.png" alt=""><b>Yours next</b><span>Any job you can describe</span></div>
+    <div class="mate"><img src="faces/round.png" alt=""><b>Scout</b><span>Researches &amp; reports</span></div>
+    <div class="mate"><img src="faces/ghost.png" alt=""><b>Builder</b><span>Writes &amp; fixes code</span></div>
+    <div class="mate"><img src="faces/cat.png" alt=""><b>Inbox</b><span>Triages your inbox</span></div>
+    <div class="mate"><img src="faces/star.png" alt=""><b>Planner</b><span>Breaks work down</span></div>
+    <div class="mate"><img src="faces/cloud.png" alt=""><b>Yours next</b><span>Any job you describe</span></div>
   </div>
 </div>
 
-<section id="team">
+<section id="team" style="padding-top: 72px">
   <div class="wrap demo">
     <div>
       <p class="kicker">Teamwork</p>
@@ -273,7 +282,7 @@
       <div class="card"><img src="faces/round.png" alt=""><h3>Your subscription, not ours</h3><p>Runs the Claude Code and Codex already on your Mac, on the plan you already pay for. No credits to buy.</p></div>
       <div class="card"><img src="faces/star.png" alt=""><h3>Routines &amp; goals</h3><p>"Brief me every weekday at 7." "Keep my inbox under a day old." It checks on a schedule and acts when needed.</p></div>
       <div class="card"><img src="faces/cloud.png" alt=""><h3>Questions with answers</h3><p>When a bot needs a decision it asks with options — tap one, or type your own.</p></div>
-      <div class="card"><img src="faces/squircle.png" alt=""><h3>Connect any tool</h3><p>Gmail, Notion, Linear, any API — through Executor, which keeps the keys. bupsy never sees them.</p></div>
+      <div class="card"><img src="faces/drop.png" alt=""><h3>Connect any tool</h3><p>Gmail, Notion, Linear, any API — through Executor, which keeps the keys. bupsy never sees them.</p></div>
       <div class="card"><img src="faces/pebble.png" alt=""><h3>See what it changed</h3><p>Every file a bot wrote, every action it took, and what it would have cost — shown plainly.</p></div>
       <div class="card"><img src="faces/cat.png" alt=""><h3>Every bot a character</h3><p>Plush little faces that look around, bounce while they work and wiggle when they need you.</p></div>
     </div>
@@ -285,7 +294,7 @@
     <div class="band">
       <h2>bupsy runs the tools. It never holds the keys.</h2>
       <p>You sign in to your CLI yourself. There's no bupsy account and no server of ours — your conversations are files on your own disk.</p>
-      <ul><li>No servers of ours</li><li>No credentials stored</li><li>Native Swift, not Electron</li><li>Every decision logged</li><li>No telemetry</li></ul>
+      <ul><li>No servers of ours</li><li>No credentials stored</li><li>Native Swift</li><li>No telemetry</li></ul>
     </div>
   </div>
 </section>
