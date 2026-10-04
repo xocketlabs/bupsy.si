@@ -117,6 +117,8 @@ struct BotPage: View {
                     case .activity:
                         usage
                         history
+                    case .files:
+                        BotFilesList(bot: bot)
                     case .computer:
                         computer
                     }
@@ -817,13 +819,94 @@ struct ReplyTarget: Equatable {
 enum DetailTab: CaseIterable {
     case details
     case activity
+    case files
     case computer
 
     var label: String {
         switch self {
         case .details: "Details"
         case .activity: "Activity"
+        case .files: "Files"
         case .computer: "Computer"
+        }
+    }
+}
+
+/// The files this bot changed, newest first. Click to show one in Finder.
+struct BotFilesList: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    let bot: Bot
+    @State private var files: [WrittenFile] = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            if files.isEmpty {
+                Text("Files \(bot.name) writes or edits show up here.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.Space.section)
+            } else {
+                SettingsGroup(title: "Files it changed") {
+                    ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
+                        FileRow(file: file, showsDivider: index > 0)
+                    }
+                }
+            }
+        }
+        .task(id: model.thread(for: bot.id).entries.count) {
+            files = model.filesWritten(by: bot)
+        }
+    }
+}
+
+private struct FileRow: View {
+    @Environment(\.palette) private var palette
+    let file: WrittenFile
+    let showsDivider: Bool
+    @State private var hovering = false
+
+    private var url: URL { URL(fileURLWithPath: file.path) }
+    private var exists: Bool { FileManager.default.fileExists(atPath: file.path) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if showsDivider { Rectangle().fill(palette.border).frame(height: 1) }
+            Button {
+                // Gone files cannot be revealed; their row says so instead of doing nothing.
+                if exists { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            } label: {
+                HStack(spacing: Theme.Space.snug) {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: exists ? file.path : "/"))
+                        .resizable().frame(width: 18, height: 18)
+                        .opacity(exists ? 1 : 0.4)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(url.lastPathComponent)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(exists ? palette.foreground : palette.mutedForeground)
+                            .strikethrough(!exists)
+                            .lineLimit(1)
+                        Text(exists ? url.deletingLastPathComponent().path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+                                    : "Deleted since")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    }
+                    Spacer(minLength: 0)
+                    Text(file.at, format: .relative(presentation: .numeric))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                }
+                .padding(.horizontal, Theme.Space.step)
+                .padding(.vertical, Theme.Space.snug)
+                .contentShape(Rectangle())
+                .background(hovering && exists ? palette.foreground.opacity(0.05) : .clear)
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .help(file.path)
         }
     }
 }

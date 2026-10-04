@@ -527,6 +527,42 @@ public struct Store: Sendable {
         }
     }
 
+    /// Files this bot changed, newest first, each once.
+    ///
+    /// A call whose result was an error — including one the approval gate refused — wrote
+    /// nothing, so it is left out.
+    public func filesWritten(forBot botID: String, limit: Int = 100) throws -> [WrittenFile] {
+        let events = try database.read { db in
+            try EventRecord
+                .joining(required: EventRecord.belongsTo(RunRecord.self, using: ForeignKey(["runID"]))
+                    .filter(Column("botID") == botID))
+                .filter(["toolCall", "toolResult"].contains(Column("type")))
+                .order(Column("at").desc)
+                .fetchAll(db)
+        }
+        func object(_ payload: String) -> [String: Any]? {
+            payload.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        }
+        let failed = Set(events.filter { $0.type == "toolResult" }.compactMap { event -> String? in
+            guard let fields = object(event.payload), fields["isError"] as? String == "true" else { return nil }
+            return fields["callID"] as? String
+        })
+
+        var seen = Set<String>()
+        var files: [WrittenFile] = []
+        for event in events where event.type == "toolCall" {
+            guard let fields = object(event.payload),
+                  let name = fields["name"] as? String,
+                  let id = fields["id"] as? String, !failed.contains(id) else { continue }
+            for path in FilesWritten.paths(tool: name, argumentsJSON: fields["arguments"] as? String ?? "")
+            where seen.insert(path).inserted {
+                files.append(WrittenFile(path: path, at: event.at))
+            }
+            if files.count >= limit { break }
+        }
+        return files
+    }
+
     // MARK: - Groups
 
     public func groups() throws -> [GroupRecord] {

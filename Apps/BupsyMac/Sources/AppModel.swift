@@ -1615,6 +1615,11 @@ final class AppModel {
         try? store?.save(bots[index].record(sortIndex: index))
     }
 
+    /// Files the bot changed, from its own recorded tool calls.
+    func filesWritten(by bot: Bot) -> [WrittenFile] {
+        (try? store?.filesWritten(forBot: bot.id.rawValue)) ?? []
+    }
+
     func setJob(_ bot: Bot, _ job: String) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         let trimmed = job.trimmingCharacters(in: .whitespaces)
