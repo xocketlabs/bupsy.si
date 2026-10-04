@@ -18,7 +18,9 @@ struct MachinesSheet: View {
                 icon: "server.rack",
                 title: "Machines",
                 badge: model.machines.isEmpty ? nil : "\(model.machines.count)",
-                subtitle: "Rented on your own boat.dev account, billed to you"
+                // What it is for first; who pays second. Without the first, "rent a machine" was
+                // a cost with no reason attached.
+                subtitle: "Keep bots working while your Mac is asleep or off — on your own boat.dev account"
             ) {
                 if model.hasComputeKey {
                     Button("New machine") { isCreating = true }
@@ -91,7 +93,8 @@ struct ComputeKeySetup: View {
             }
         }
         .padding(Theme.Space.gutter)
-        .frame(maxWidth: 460, alignment: .leading)
+        // Full width, like every other page's cards. At 460pt it sat oddly narrow on its own.
+        .frame(maxWidth: .infinity, alignment: .leading)
         // No `maxHeight: .infinity`. It made this fill the pane and centre itself, so the setup
         // card floated in the middle of the window with a few hundred points of nothing between
         // it and the heading it belongs to.

@@ -217,7 +217,13 @@ struct NavRail: View {
                             // Last, and only headed once sections exist. With no sections these are
                             // simply the list; with sections they are the remainder, and putting
                             // the remainder above the person's own organisation inverted it.
-                            if !model.folders.isEmpty { sectionHeader("Unassigned") }
+                            // Labelled whenever anything above has a heading: under "Groups" an
+                            // unlabelled list of bots read as more groups.
+                            if !model.folders.isEmpty {
+                                sectionHeader("Unassigned")
+                            } else if !model.groups.isEmpty || model.bots.contains(where: \.pinned) {
+                                sectionHeader("Bots")
+                            }
                             ForEach(loose) { row(for: $0) }
                         }
                     }
@@ -480,7 +486,11 @@ struct NavRail: View {
 
     private var engineSummary: String {
         let ready = EngineID.allCases.filter { model.engineStatus[$0]?.isUsable == true }
-        return ready.isEmpty ? "No engine signed in" : ready.map(\.displayName).joined(separator: " · ")
+        if !ready.isEmpty { return ready.map(\.displayName).joined(separator: " · ") }
+        // Until every supported engine has answered, "none signed in" is a guess — and the wrong
+        // first thing for someone who just opened the app to read.
+        let answered = EngineID.supported.allSatisfy { model.engineStatus[$0] != nil }
+        return answered ? "No engine signed in" : "Checking sign-in…"
     }
 
     /// ⌘1 … ⌘9 for the first nine bots, in the order they appear.
