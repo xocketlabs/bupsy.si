@@ -2,6 +2,17 @@ import Foundation
 import Testing
 @testable import BupsyKit
 
+/// Whether this process can write to a keychain at all.
+///
+/// A CI runner installed as a background service has no unlocked login keychain, and every
+/// write fails with errSecInteractionNotAllowed (-25308). That says nothing about bupsy, so the
+/// round-trip tests skip there; the rule test below, which needs no keychain, always runs.
+let keychainWritable: Bool = {
+    let probe = KeychainStore(service: "si.bupsy.tests.probe.\(UUID().uuidString)")
+    guard let key = KeychainStore.Key.allCases.first else { return false }
+    do { try probe.set("x", for: key); try? probe.remove(key); return true } catch { return false }
+}()
+
 /// Uses a test-only service name so nothing here can touch a real key.
 @Suite("Keychain", .serialized)
 struct KeychainStoreTests {
@@ -25,7 +36,7 @@ struct KeychainStoreTests {
         #expect(allCompute.isEmpty)
     }
 
-    @Test("round-trips a key")
+    @Test("round-trips a key", .enabled(if: keychainWritable, "no writable keychain in this process"))
     func roundTrips() throws {
         let keychain = store()
         #expect(!keychain.has(.boatAPIKey))
@@ -40,7 +51,7 @@ struct KeychainStoreTests {
 
     /// Pasting a new key over an old one is the common case — a rotated key, or one pasted with
     /// a stray space the first time.
-    @Test("replaces rather than duplicating")
+    @Test("replaces rather than duplicating", .enabled(if: keychainWritable, "no writable keychain in this process"))
     func replaces() throws {
         let keychain = store()
         try keychain.set("first", for: .boatAPIKey)
@@ -49,7 +60,7 @@ struct KeychainStoreTests {
         try keychain.remove(.boatAPIKey)
     }
 
-    @Test("storing an empty value clears the key instead of saving nothing")
+    @Test("storing an empty value clears the key instead of saving nothing", .enabled(if: keychainWritable, "no writable keychain in this process"))
     func emptyClears() throws {
         let keychain = store()
         try keychain.set("something", for: .boatAPIKey)
