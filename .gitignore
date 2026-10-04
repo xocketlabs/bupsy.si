@@ -22,3 +22,6 @@ docs/samples/*-flags.txt
 
 # XcodeGen output — regenerate with `xcodegen generate` (or `make app`)
 Bupsy.xcodeproj/
+
+# Packaging and local CI output (scripts/package.sh, scripts/ci-local.sh)
+build/
