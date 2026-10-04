@@ -124,7 +124,7 @@ struct BotFace: View {
 
     // MARK: - Drawing
 
-    private func draw(in context: inout GraphicsContext, size canvas: CGSize, time: TimeInterval) {
+    func draw(in context: inout GraphicsContext, size canvas: CGSize, time: TimeInterval) {
         let unit = min(canvas.width, canvas.height)
         let motion = Motion(mood: mood, time: time, phase: phase)
 
@@ -307,6 +307,21 @@ private struct Motion {
 /// recoloured. All closed paths in a unit square scaled to the body rect; the polygonal ones are
 /// softened by unioning them with their own round-jointed stroke, which is what makes a triangle
 /// read as plush rather than sharp.
+/// A face held still at one moment — for the app icon and other one-off renders, where a
+/// `TimelineView` has no timeline to run on.
+struct StillBotFace: View {
+    let shape: BotShape
+    let colour: Int
+    var size: CGFloat
+    var at: TimeInterval = 0.4
+
+    var body: some View {
+        let face = BotFace(hue: 0.5, mood: .idle, size: size, shape: shape, colour: colour)
+        Canvas { context, canvas in face.draw(in: &context, size: canvas, time: at) }
+            .frame(width: size, height: size)
+    }
+}
+
 enum BotShape: String, CaseIterable, Sendable {
     case circle, drop, pick, triangle, squircle, pill, pebble, ghost, cat, cloud, flower, clover,
          star, hexagon
