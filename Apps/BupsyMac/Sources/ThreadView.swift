@@ -200,7 +200,8 @@ struct Bubble: View {
                     .frame(maxWidth: .infinity)
             case .raw:
                 botAligned {
-                    ToolAside(name: name, arguments: arguments, result: result, failed: failed)
+                    ToolAside(name: name, arguments: arguments, result: result, failed: failed,
+                              workingDirectory: model.workingDirectory(for: bot).path)
                 }
             }
 
@@ -253,7 +254,16 @@ struct ToolAside: View {
     let arguments: String
     let result: String?
     let failed: Bool
+    /// The bot's folder, so paths inside it read short.
+    var workingDirectory: String? = nil
     @State private var expanded = false
+
+    /// Refused by you (or by nobody answering) rather than broken. Drawn as a decision, not an
+    /// error: an orange "failed" made a "no" the person chose look like something went wrong.
+    private var declined: Bool {
+        guard failed, let result = result?.lowercased() else { return false }
+        return ["declined", "denied", "nobody answered", "not allowed"].contains { result.contains($0) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
@@ -269,10 +279,10 @@ struct ToolAside: View {
                 HStack(spacing: Theme.Space.tight) {
                     Image(systemName: icon)
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(failed ? .orange : .secondary)
+                        .foregroundStyle(failed && !declined ? .orange : .secondary)
                     Text(verb)
                         .foregroundStyle(.secondary)
-                    Text(summary)
+                    Text(PathShortener.shorten(summary, workingDirectory: workingDirectory))
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -311,6 +321,7 @@ struct ToolAside: View {
     }
 
     private var verb: String {
+        if declined { return "declined" }
         if failed { return "failed" }
         switch name {
         case "Bash", "shell": return "ran"
@@ -322,6 +333,7 @@ struct ToolAside: View {
     }
 
     private var icon: String {
+        if declined { return "hand.raised.slash" }
         if failed { return "exclamationmark.triangle" }
         switch name {
         case "Bash", "shell": return "chevron.right"
