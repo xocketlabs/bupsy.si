@@ -65,7 +65,7 @@ struct OnboardingSheet: View {
 
     private var welcome: some View {
         page(
-            hero: AnyView(BupsyMark(size: 84, alive: true)),
+            hero: AnyView(BupsyIconMark(size: 96)),
             title: "Bots that use the AI you already pay for",
             body: "Each bot runs Claude Code or Codex on this Mac, signed in as you. There's no bupsy "
                 + "account, nothing to buy, and no server of ours in the middle — there isn't one."

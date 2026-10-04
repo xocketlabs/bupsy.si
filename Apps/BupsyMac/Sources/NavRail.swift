@@ -76,7 +76,7 @@ struct NavRail: View {
         HStack(spacing: Theme.Space.snug) {
             // The mark, not a gradient square: the same bubble character as the app icon, and it
             // blinks now and then, because the thing that looks after the bots is one of them.
-            BupsyMark(size: Theme.scaled(26), alive: true)
+            BupsyIconMark(size: Theme.scaled(26))
             Text("bupsy")
                 .font(.system(size: Theme.scaled(17), weight: .semibold))
                 .foregroundStyle(palette.foreground)

@@ -3,206 +3,192 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>bupsy — bots on your own AI subscription</title>
-<meta name="description" content="A Mac app where AI bots live. Each runs Claude Code or Codex under your own sign-in — no credits, no server in the middle. Give them routines, goals, and group chats.">
-<meta property="og:title" content="bupsy — bots on your own AI subscription">
-<meta property="og:description" content="A native Mac app for a roster of AI bots running on the subscription you already have.">
+<title>bupsy — a team of AI bots on your own subscription</title>
+<meta name="description" content="A Mac app where a little team of AI bots lives. Each runs Claude Code or Codex under your own sign-in — no credits, no server in the middle. Join the waitlist.">
+<meta property="og:title" content="bupsy — a team of AI bots on your own subscription">
+<meta property="og:description" content="Give your AI subscription a job. A native Mac app for a roster of bots. Join the waitlist.">
 <meta property="og:image" content="icon.png">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600&display=swap">
 <style>
-  /* The app's own palette, so the page reads as an extension of the product. */
+  /* The icon's own colours: a soft lavender tile, plush bots, a pink-to-violet bubble. */
   :root {
-    --ground: #101010;
-    --surface: #1a1a1a;
-    --card: #232323;
-    --raised: #2e2e2e;
-    --fg: #fafafa;
-    --muted: #a8a8a8;
-    --faint: #6f6f6f;
-    --accent: #e075c8;
-    --violet: #7c4ff7;
-    --line: rgba(255, 255, 255, .09);
-    --shadow: 0 30px 80px rgba(0, 0, 0, .55);
+    --bg: #fbf7ff;
+    --card: #ffffff;
+    --ink: #1c1530;
+    --muted: #6b6380;
+    --line: rgba(60, 30, 120, .10);
+    --pink: #e85fb8;
+    --violet: #7b4ef2;
+    --shadow: 0 24px 60px rgba(90, 50, 170, .14);
+    --shadow-sm: 0 8px 24px rgba(90, 50, 170, .10);
+    --display: "Bricolage Grotesque", "Inter", system-ui, sans-serif;
     --ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    color-scheme: dark;
+    color-scheme: light;
   }
-  @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) {
-      --ground: #ffffff; --surface: #f7f7f8; --card: #ffffff; --raised: #efeff1;
-      --fg: #0b0b0c; --muted: #55565c; --faint: #8b8c92;
-      --accent: #c2479f; --violet: #6532e6; --line: rgba(0, 0, 0, .09);
-      --shadow: 0 30px 70px rgba(30, 20, 60, .16);
-      color-scheme: light;
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #120e1c; --card: #1f1933;
+      --ink: #f6f2ff; --muted: #a59cbb; --line: rgba(255, 255, 255, .09);
+      --shadow: 0 24px 60px rgba(0, 0, 0, .45); --shadow-sm: 0 8px 24px rgba(0, 0, 0, .35);
+      color-scheme: dark;
     }
   }
-  :root[data-theme="dark"] { color-scheme: dark; }
+  :root[data-theme="dark"] {
+    --bg: #120e1c; --card: #1f1933;
+    --ink: #f6f2ff; --muted: #a59cbb; --line: rgba(255, 255, 255, .09);
+    --shadow: 0 24px 60px rgba(0, 0, 0, .45); --shadow-sm: 0 8px 24px rgba(0, 0, 0, .35);
+    color-scheme: dark;
+  }
 
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
   body {
-    margin: 0; background: var(--ground); color: var(--fg);
-    font: 16px/1.6 var(--ui); -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    margin: 0; color: var(--ink); font: 16px/1.6 var(--ui); -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    background:
+      radial-gradient(900px 520px at 85% -10%, color-mix(in srgb, var(--violet) 16%, transparent), transparent 70%),
+      radial-gradient(800px 480px at -10% 10%, color-mix(in srgb, var(--pink) 14%, transparent), transparent 70%),
+      var(--bg);
   }
   a { color: inherit; }
   img { display: block; max-width: 100%; }
   .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
   @media (min-width: 720px) { .wrap { padding: 0 32px; } }
+  h1, h2, h3 { font-family: var(--display); letter-spacing: -.03em; margin: 0; }
+  .grad { background: linear-gradient(110deg, var(--pink), var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
-  /* Nav */
-  nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
-  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 600; font-size: 19px; letter-spacing: -.01em; }
-  .brand img { width: 30px; height: 30px; }
-  .nav-links { display: flex; align-items: center; gap: 18px; font-size: 14px; color: var(--muted); }
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font: 800 22px var(--display); letter-spacing: -.03em; }
+  .brand img { width: 34px; height: 34px; }
+  .nav-links { display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 500; color: var(--muted); }
   .nav-links a { text-decoration: none; }
-  .nav-links a:hover { color: var(--fg); }
+  .nav-links a:hover { color: var(--ink); }
+  .pill { padding: 9px 16px; border-radius: 999px; color: #fff !important; font-weight: 600; background: linear-gradient(120deg, var(--pink), var(--violet)); box-shadow: var(--shadow-sm); }
+  @media (max-width: 640px) { .nav-links a:not(.pill) { display: none; } }
 
-  /* Buttons */
-  .btn {
-    display: inline-flex; align-items: center; gap: 10px; justify-content: center;
-    padding: 0 22px; height: 48px; border-radius: 12px; font: 600 15px var(--ui);
-    text-decoration: none; transition: transform .15s ease, box-shadow .15s ease, background .15s;
-    white-space: nowrap;
+  .hero { text-align: center; padding: 20px 0 36px; }
+  .stage { position: relative; width: min(440px, 84vw); margin: 0 auto -4px; }
+  .stage img.huddle { width: 100%; animation: float 5s ease-in-out infinite; }
+  .bubble {
+    position: absolute; border-radius: 50%; opacity: 0;
+    background: radial-gradient(circle at 32% 30%, rgba(255,255,255,.9) 0 14%, transparent 15%), linear-gradient(135deg, var(--pink), var(--violet));
+    animation: rise 7s ease-in infinite;
   }
-  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-  .btn-primary {
-    color: #fff; background: linear-gradient(135deg, var(--accent), var(--violet));
-    box-shadow: 0 10px 30px color-mix(in srgb, var(--violet) 35%, transparent);
-  }
-  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 14px 36px color-mix(in srgb, var(--violet) 45%, transparent); }
-  .btn-quiet { color: var(--fg); background: var(--raised); border: 1px solid var(--line); }
-  .btn-quiet:hover { background: color-mix(in srgb, var(--raised) 80%, var(--fg) 6%); }
-  .btn svg { width: 18px; height: 18px; }
-
-  /* Hero */
-  .hero > *, .window > *, .grid > *, .steps > * { min-width: 0; }
-  .hero { display: grid; gap: 48px; align-items: center; padding: 40px 0 80px; }
-  @media (min-width: 960px) { .hero { grid-template-columns: 1fr 1.15fr; padding: 64px 0 110px; } }
+  .bubble.b1 { width: 18px; height: 18px; left: 64%; bottom: 62%; animation-delay: .4s; }
+  .bubble.b2 { width: 11px; height: 11px; left: 74%; bottom: 66%; animation-delay: 2.6s; }
+  .bubble.b3 { width: 14px; height: 14px; left: 30%; bottom: 55%; animation-delay: 4.4s; }
+  @keyframes float { 50% { transform: translateY(-10px); } }
+  @keyframes rise { 0% { transform: translateY(0) scale(.6); opacity: 0; } 15% { opacity: .9; } 100% { transform: translateY(-180px) scale(1); opacity: 0; } }
   .eyebrow {
-    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
-    font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; margin-bottom: 18px;
+    background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-sm); font-size: 13px; font-weight: 600; color: var(--violet);
   }
-  h1 { font-size: clamp(36px, 6.2vw, 60px); line-height: 1.04; letter-spacing: -.035em; margin: 18px 0 18px; font-weight: 700; }
-  h1 .grad { background: linear-gradient(120deg, var(--accent), var(--violet)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .lede { font-size: 18px; color: var(--muted); max-width: 520px; margin: 0 0 30px; }
-  .lede strong { color: var(--fg); font-weight: 600; }
-  .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
-  .meta { margin-top: 16px; font-size: 13px; color: var(--faint); }
+  .eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--pink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--pink) 25%, transparent); }
+  h1 { font-size: clamp(40px, 7vw, 76px); line-height: .98; font-weight: 800; max-width: 900px; margin: 0 auto 18px; }
+  .lede { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 620px; margin: 0 auto 28px; }
+  .lede b { color: var(--ink); font-weight: 600; }
 
-  /* The drawn app window */
-  .window {
-    border-radius: 16px; background: var(--ground); border: 1px solid var(--line);
-    box-shadow: var(--shadow); overflow: hidden; display: grid; grid-template-columns: 200px 1fr;
-    min-height: 420px; font-size: 13px;
+  .waitlist {
+    position: relative; display: flex; gap: 8px; max-width: 480px; margin: 0 auto; padding: 6px; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow);
   }
-  @media (max-width: 560px) { .window { grid-template-columns: 1fr; min-height: 0; } .side { display: none; } .nav-links a:not(:last-child) { display: none; } .btn { flex: 1 1 auto; } }
-  .side { background: var(--surface); padding: 14px 10px; border-right: 1px solid var(--line); }
-  .dots { display: flex; gap: 6px; margin: 0 4px 16px; }
-  .dots i { width: 10px; height: 10px; border-radius: 50%; background: #ff5f57; }
-  .dots i:nth-child(2) { background: #febc2e; } .dots i:nth-child(3) { background: #28c840; }
-  .side h6 { margin: 12px 6px 6px; font-size: 10px; letter-spacing: .08em; color: var(--faint); font-weight: 600; text-transform: uppercase; }
-  .row { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 9px; }
-  .row.on { background: var(--raised); }
-  .row img { width: 28px; height: 28px; flex: none; }
-  .row b { display: block; font-weight: 600; font-size: 12.5px; }
-  .row span { display: block; color: var(--faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 128px; }
-  .stack { position: relative; width: 28px; height: 28px; flex: none; }
-  .stack img { position: absolute; width: 19px; height: 19px; }
-  .stack img + img { left: 10px; top: 9px; }
-  .main { display: flex; flex-direction: column; padding: 14px 18px 16px; background: var(--card); }
-  .pill { align-self: center; display: flex; align-items: center; gap: 7px; padding: 5px 12px 5px 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); font-weight: 600; font-size: 12px; }
-  .pill .stack { width: 22px; height: 22px; } .pill .stack img { width: 15px; height: 15px; } .pill .stack img + img { left: 7px; top: 7px; }
-  .thread { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 18px 0 12px; }
-  .msg-you { align-self: flex-end; max-width: 78%; background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, var(--violet))); color: #fff; padding: 8px 12px; border-radius: 14px; }
-  .msg-bot { display: flex; gap: 8px; align-items: flex-start; max-width: 85%; }
-  .msg-bot img { width: 24px; height: 24px; flex: none; margin-top: 16px; }
-  .msg-bot small { display: block; color: var(--faint); font-size: 10.5px; font-weight: 600; margin-bottom: 3px; }
-  .msg-bot p { margin: 0; background: var(--raised); padding: 8px 12px; border-radius: 14px; }
-  .mention { color: var(--accent); font-weight: 600; }
-  .msg-you .mention { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
-  .chips { display: flex; gap: 6px; margin-bottom: 8px; }
-  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 11px; }
-  .chip img { width: 13px; height: 13px; }
-  .composer { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface); color: var(--faint); }
-  .send { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); }
+  .waitlist input[type=email] { flex: 1 1 200px; min-width: 0; height: 48px; padding: 0 14px; border: 0; border-radius: 12px; background: transparent; color: var(--ink); font: 500 16px var(--ui); outline: none; }
+  .waitlist button {
+    flex: 0 0 auto; height: 48px; padding: 0 22px; border: 0; border-radius: 12px; cursor: pointer;
+    font: 600 15px var(--ui); color: #fff; background: linear-gradient(120deg, var(--pink), var(--violet)); transition: transform .15s, filter .15s;
+  }
+  .waitlist button:hover { transform: translateY(-1px); filter: brightness(1.05); }
+  .waitlist button[disabled] { opacity: .65; cursor: default; transform: none; }
+  .waitlist:focus-within { outline: 3px solid color-mix(in srgb, var(--violet) 30%, transparent); outline-offset: 2px; }
+  .waitlist .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+  .form-msg { flex-basis: 100%; margin: 0; padding: 0 10px; font-size: 14px; color: var(--muted); text-align: left; }
+  .form-msg:not(:empty) { padding: 4px 10px 6px; }
+  .form-msg.ok { color: var(--violet); font-weight: 600; }
+  .form-msg.err { color: #d93b5c; }
+  @media (max-width: 480px) { .waitlist button { flex: 1 1 100%; } }
+  .meta { margin-top: 14px; font-size: 13px; color: var(--muted); }
 
-  /* Sections */
+  .roster { padding: 48px 0 12px; }
+  .roster-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+  .mate { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 18px 16px 16px; text-align: center; box-shadow: var(--shadow-sm); transition: transform .25s ease; }
+  .mate:hover { transform: translateY(-4px) rotate(-1deg); }
+  .mate img { width: 72px; height: 72px; margin: 0 auto 10px; }
+  .mate b { display: block; font: 700 17px var(--display); letter-spacing: -.02em; }
+  .mate span { font-size: 13px; color: var(--muted); }
+
   section { padding: 72px 0; }
-  .kicker { color: var(--accent); font-weight: 600; font-size: 14px; letter-spacing: .02em; margin: 0 0 10px; }
-  h2 { font-size: clamp(28px, 4.2vw, 40px); line-height: 1.1; letter-spacing: -.03em; margin: 0 0 14px; font-weight: 700; }
-  .sub { color: var(--muted); max-width: 620px; margin: 0 0 40px; font-size: 17px; }
+  .kicker { color: var(--violet); font-weight: 600; font-size: 14px; margin: 0 0 10px; }
+  h2 { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.05; font-weight: 800; margin-bottom: 14px; }
+  .sub { color: var(--muted); max-width: 600px; margin: 0 0 36px; font-size: 17px; }
+  .center { text-align: center; }
+  .center .sub { margin-left: auto; margin-right: auto; }
 
   .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
   @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
   @media (min-width: 980px) { .grid { grid-template-columns: repeat(3, 1fr); } }
-  .card {
-    background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px;
-    transition: transform .2s ease, border-color .2s ease;
-  }
-  .card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
-  .card img { width: 44px; height: 44px; margin-bottom: 14px; }
-  .card h3 { margin: 0 0 6px; font-size: 17px; letter-spacing: -.01em; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px; box-shadow: var(--shadow-sm); }
+  .card img { width: 48px; height: 48px; margin-bottom: 12px; }
+  .card h3 { font-size: 20px; margin-bottom: 6px; font-weight: 700; }
   .card p { margin: 0; color: var(--muted); font-size: 15px; }
 
-  .band {
-    border-radius: 22px; padding: 40px 28px; border: 1px solid var(--line);
-    background:
-      radial-gradient(600px 240px at 12% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
-      radial-gradient(600px 260px at 100% 100%, color-mix(in srgb, var(--violet) 18%, transparent), transparent 70%),
-      var(--surface);
-  }
-  @media (min-width: 820px) { .band { padding: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; } }
-  .band ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
-  .band li { display: flex; gap: 12px; color: var(--muted); }
-  .band li b { color: var(--fg); display: block; }
-  .tick { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-size: 13px; font-weight: 700; margin-top: 2px; }
+  /* The app is dark, so its window is too — a real-looking object on a light page. */
+  .demo { display: grid; gap: 40px; align-items: center; }
+  @media (min-width: 920px) { .demo { grid-template-columns: .9fr 1.1fr; } }
+  .window { border-radius: 18px; overflow: hidden; background: #141218; box-shadow: 0 40px 90px rgba(40, 20, 90, .35); border: 1px solid rgba(255,255,255,.08); color: #f4f2f8; font-size: 13.5px; }
+  .bar { display: flex; align-items: center; gap: 7px; padding: 12px 14px; background: #1b1922; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .bar i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
+  .bar i:nth-child(2) { background: #febc2e; } .bar i:nth-child(3) { background: #28c840; }
+  .bar b { margin: 0 auto; font-weight: 600; font-size: 13px; color: #cfcbd9; display: flex; align-items: center; gap: 6px; transform: translateX(-24px); }
+  .bar b img { width: 18px; height: 18px; }
+  .thread { padding: 18px 18px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .you { align-self: flex-end; max-width: 80%; padding: 9px 13px; border-radius: 16px 16px 5px 16px; background: linear-gradient(135deg, #e17ac9, #b06ae6); color: #fff; }
+  .bot { display: flex; gap: 9px; align-items: flex-end; max-width: 88%; }
+  .bot img { width: 26px; height: 26px; flex: none; }
+  .bot small { display: block; font-size: 11px; font-weight: 600; margin: 0 0 3px 2px; }
+  .bot p { margin: 0; padding: 9px 13px; border-radius: 16px 16px 16px 5px; background: #24222c; }
+  .chip { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; vertical-align: -2px; }
+  .chip img { width: 14px; height: 14px; }
+  .ask { margin-left: 35px; padding: 12px; border-radius: 14px; border: 1px solid rgba(225, 122, 201, .45); background: rgba(225, 122, 201, .10); }
+  .ask .t { font-weight: 600; margin-bottom: 8px; }
+  .ask code { display: block; font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: #0e0d12; border-radius: 8px; padding: 7px 9px; margin-bottom: 9px; }
+  .ask .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ask .btns span { padding: 5px 10px; border-radius: 8px; background: #2a2832; font-size: 12px; font-weight: 600; }
+  .composer { margin: 4px 18px 18px; padding: 11px 14px; border-radius: 12px; background: #1b1922; border: 1px solid rgba(225, 122, 201, .55); color: #8b8799; box-shadow: 0 0 14px rgba(225, 122, 201, .25); }
+  .points { display: grid; gap: 16px; margin-top: 8px; }
+  .point { display: flex; gap: 14px; align-items: flex-start; }
+  .point img { width: 40px; height: 40px; flex: none; }
+  .point b { display: block; font: 700 18px var(--display); letter-spacing: -.02em; }
+  .point span { color: var(--muted); font-size: 15px; }
 
-  .steps { display: grid; gap: 14px; grid-template-columns: 1fr; counter-reset: step; }
+  .band { border-radius: 28px; padding: 44px 28px; text-align: center; color: #fff; background: linear-gradient(130deg, #e86bbd, #8a55f0 60%, #6a45e0); box-shadow: 0 30px 80px rgba(120, 70, 220, .35); }
+  .band h2 { color: #fff; }
+  .band p { color: rgba(255,255,255,.88); max-width: 640px; margin: 0 auto 26px; font-size: 17px; }
+  .band ul { list-style: none; padding: 0; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 760px; }
+  .band li { padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.16); font-weight: 600; font-size: 14px; }
+
+  .steps { display: grid; gap: 14px; grid-template-columns: 1fr; counter-reset: s; }
   @media (min-width: 820px) { .steps { grid-template-columns: repeat(3, 1fr); } }
-  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
-  .step::before {
-    counter-increment: step; content: counter(step);
-    display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; margin-bottom: 12px;
-    background: linear-gradient(135deg, var(--accent), var(--violet)); color: #fff; font-weight: 700; font-size: 14px;
-  }
-  .step h3 { margin: 0 0 6px; font-size: 16px; }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px; box-shadow: var(--shadow-sm); }
+  .step::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; margin-bottom: 12px; color: #fff; font: 800 15px var(--display); background: linear-gradient(135deg, var(--pink), var(--violet)); }
+  .step h3 { font-size: 19px; margin-bottom: 6px; font-weight: 700; }
   .step p { margin: 0; color: var(--muted); font-size: 15px; }
-  .note {
-    margin-top: 18px; padding: 16px 18px; border-radius: 14px; border: 1px dashed var(--line);
-    color: var(--muted); font-size: 14px; background: color-mix(in srgb, var(--surface) 60%, transparent);
-  }
-  .note b { color: var(--fg); }
-  code { font-family: var(--mono); font-size: 13px; background: var(--raised); padding: 2px 6px; border-radius: 6px; color: var(--fg); word-break: break-all; }
 
-  .final { text-align: center; padding: 90px 0 70px; }
-  .final img { width: 96px; height: 96px; margin: 0 auto 20px; animation: bob 4s ease-in-out infinite; }
-  @keyframes bob { 50% { transform: translateY(-8px); } }
-  @media (prefers-reduced-motion: reduce) { .final img { animation: none; } .card, .btn { transition: none; } }
-  .final .ctas { justify-content: center; }
+  .final { text-align: center; padding: 80px 0 72px; }
+  .final img { width: 112px; height: 112px; margin: 0 auto 20px; animation: float 5s ease-in-out infinite; }
+  .final .sub { margin: 0 auto 26px; }
 
-  .waitlist { display: flex; flex-wrap: wrap; gap: 10px; max-width: 520px; }
-  .final .waitlist { margin: 0 auto; justify-content: center; }
-  .waitlist input[type=email] {
-    flex: 1 1 240px; min-width: 0; height: 48px; padding: 0 16px; border-radius: 12px;
-    border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 500 15px var(--ui);
-    outline: none; transition: border-color .15s, box-shadow .15s;
+  footer { border-top: 1px solid var(--line); padding: 26px 0 36px; color: var(--muted); font-size: 13px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; align-items: center; }
+  footer .brand { font-size: 16px; color: var(--ink); } footer .brand img { width: 22px; height: 22px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stage img.huddle, .final img { animation: none; }
+    .bubble { display: none; }
+    .mate { transition: none; }
   }
-  .waitlist input[type=email]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
-  .waitlist .btn { flex: 0 0 auto; border: 0; cursor: pointer; }
-  .waitlist .btn[disabled] { opacity: .6; cursor: default; transform: none; }
-  .waitlist .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
-  .form-msg { flex-basis: 100%; margin: 2px 0 0; min-height: 20px; font-size: 14px; color: var(--muted); }
-  .form-msg.ok { color: var(--accent); font-weight: 600; }
-  .form-msg.err { color: #f87171; }
-  .final .form-msg { text-align: center; }
-  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--faint); font-size: 13px; }
-  footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; align-items: center; }
-  footer a { text-decoration: none; } footer a:hover { color: var(--fg); }
 </style>
 </head>
 <body>
@@ -211,71 +197,85 @@
   <nav aria-label="Main">
     <a class="brand" href="#"><img src="mark.png" alt="">bupsy</a>
     <div class="nav-links">
-      <a href="#features">Features</a>
-      <a href="#install">How it works</a>
-      <a href="#join">Join</a>
+      <a href="#roster">The roster</a>
+      <a href="#team">Teamwork</a>
+      <a href="#how">How it works</a>
+      <a class="pill" href="#join">Join the waitlist</a>
     </div>
   </nav>
 
-    <header class="hero">
-    <div>
-      <span class="eyebrow">Coming soon · Native Mac app · No credits</span>
-      <h1>Your AI already has a subscription. <span class="grad">Give it a job.</span></h1>
-      <p class="lede">A Mac app where your bots live. Each one runs <strong>Claude Code</strong> or <strong>Codex</strong> under your own sign-in — no new account, no credits, no server of ours in the middle.</p>
-      <form class="waitlist" data-source="hero" novalidate>
-        <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
-        <!-- Left empty by people, filled by bots: anything in it is dropped server-side. -->
-        <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-        <button class="btn btn-primary" type="submit">Join the waitlist</button>
-        <p class="form-msg" role="status" aria-live="polite"></p>
-      </form>
-      <p class="meta">Early access for macOS 14+ · Apple silicon &amp; Intel · One email when it's ready, nothing else.</p>
+  <header class="hero">
+    <div class="stage" aria-hidden="true">
+      <img class="huddle" src="huddle.png" alt="">
+      <span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span>
     </div>
-
-    <!-- Drawn, not a screenshot: a real screenshot would carry someone's real conversations. -->
-    <div class="window" role="img" aria-label="The bupsy app: a sidebar of bots, and a group chat where Builder hands a task to Scout.">
-      <aside class="side">
-        <div class="dots"><i></i><i></i><i></i></div>
-        <h6>Groups</h6>
-        <div class="row on">
-          <div class="stack"><img src="faces/scout.png" alt=""><img src="faces/builder.png" alt=""></div>
-          <div><b>Launch</b><span>Scout: Goodbye, good luck.</span></div>
-        </div>
-        <h6>Bots</h6>
-        <div class="row"><img src="faces/scout.png" alt=""><div><b>Scout</b><span>Three sources agree…</span></div></div>
-        <div class="row"><img src="faces/builder.png" alt=""><div><b>Builder</b><span>Tests are green.</span></div></div>
-        <div class="row"><img src="faces/inbox.png" alt=""><div><b>Inbox</b><span>2 need a reply</span></div></div>
-        <div class="row"><img src="faces/lead.png" alt=""><div><b>Outreach</b><span>Drafted 4 intros</span></div></div>
-      </aside>
-      <div class="main">
-        <div class="pill"><div class="stack"><img src="faces/scout.png" alt=""><img src="faces/builder.png" alt=""></div>Launch</div>
-        <div class="thread">
-          <div class="msg-you"><span class="mention">@Builder</span> ship the fix, then ask <span class="mention">@Scout</span> to check the docs.</div>
-          <div class="msg-bot"><img src="faces/builder.png" alt=""><div><small>Builder</small><p>Done — 195 tests pass. <span class="mention">@Scout</span>, can you check the docs?</p></div></div>
-          <div class="msg-bot"><img src="faces/scout.png" alt=""><div><small>Scout</small><p>Docs match the change. All good.</p></div></div>
-        </div>
-        <div class="chips">
-          <span class="chip"><img src="faces/scout.png" alt="">@Scout</span>
-          <span class="chip"><img src="faces/builder.png" alt="">@Builder</span>
-        </div>
-        <div class="composer"><span>Message Launch</span><span class="send"></span></div>
-      </div>
-    </div>
+    <span class="eyebrow"><i></i>Coming soon for Mac</span>
+    <h1>Your AI already has a subscription. <span class="grad">Give it a job.</span></h1>
+    <p class="lede">bupsy is a little team of AI bots that live on your Mac. Each one runs <b>Claude Code</b> or <b>Codex</b> under your own sign-in — no new account, no credits, no server of ours in the middle.</p>
+    <form class="waitlist" data-source="hero" novalidate>
+      <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+      <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <button type="submit">Join the waitlist</button>
+      <p class="form-msg" role="status" aria-live="polite"></p>
+    </form>
+    <p class="meta">Free · macOS 14+ · Apple silicon &amp; Intel · One email when it's ready, nothing else</p>
   </header>
 </div>
 
-<section id="features">
+<div class="wrap roster" id="roster">
+  <div class="roster-row">
+    <div class="mate"><img src="faces/round.png" alt=""><b>Scout</b><span>Researches and reports back</span></div>
+    <div class="mate"><img src="faces/ghost.png" alt=""><b>Builder</b><span>Writes and fixes code</span></div>
+    <div class="mate"><img src="faces/cat.png" alt=""><b>Inbox</b><span>Triages what needs you</span></div>
+    <div class="mate"><img src="faces/star.png" alt=""><b>Planner</b><span>Breaks big tasks down</span></div>
+    <div class="mate"><img src="faces/cloud.png" alt=""><b>Yours next</b><span>Any job you can describe</span></div>
+  </div>
+</div>
+
+<section id="team">
+  <div class="wrap demo">
+    <div>
+      <p class="kicker">Teamwork</p>
+      <h2>Bots that hand work to each other.</h2>
+      <p class="sub">Put a few bots in one chat and @mention who you need. They pass tasks along, ask when they're unsure, and wait for your OK before anything risky.</p>
+      <div class="points">
+        <div class="point"><img src="faces/drop.png" alt=""><div><b>Group chats</b><span>@mention a bot to ask it. The rest stay quiet — and so does your quota.</span></div></div>
+        <div class="point"><img src="faces/flower.png" alt=""><div><b>Bots make bots</b><span>A bot can propose a new teammate. You approve it; it introduces itself.</span></div></div>
+        <div class="point"><img src="faces/clover.png" alt=""><div><b>Asks before it acts</b><span>Anything beyond reading stops and asks. Say "always allow" once it's earned it.</span></div></div>
+      </div>
+    </div>
+
+    <div class="window" role="img" aria-label="A bupsy group chat: Builder ships a fix, hands the docs to Scout, and Scout asks permission to run a command.">
+      <div class="bar"><i></i><i></i><i></i><b><img src="mark.png" alt="">Launch team</b></div>
+      <div class="thread">
+        <div class="you"><b>@Builder</b> ship the fix, then ask <b>@Scout</b> to check the docs.</div>
+        <div class="bot"><img src="faces/ghost.png" alt=""><div><small style="color:#5bc8b4">Builder</small><p>Fixed and tested. <span class="chip" style="color:#b48cff"><img src="faces/round.png" alt="">Scout</span>, can you check the docs match?</p></div></div>
+        <div class="bot"><img src="faces/round.png" alt=""><div><small style="color:#b48cff">Scout</small><p>On it — one quick check first.</p></div></div>
+        <div class="ask">
+          <div class="t">✋ Wants to run a command</div>
+          <code>grep -n "retry" docs/api.md</code>
+          <div class="btns"><span>Allow</span><span>Deny</span><span>Always allow</span></div>
+        </div>
+      </div>
+      <div class="composer">Message Launch team</div>
+    </div>
+  </div>
+</section>
+
+<section>
   <div class="wrap">
-    <p class="kicker">What it does</p>
-    <h2>A roster of bots, not a chat box.</h2>
-    <p class="sub">Each bot is its own character with its own job, its own engine, and its own sense of when to ask you first.</p>
+    <div class="center">
+      <p class="kicker">Everything a bot needs</p>
+      <h2>A roster, not a chat box.</h2>
+      <p class="sub">Each bot has its own job, its own face, and its own sense of when to ask you first.</p>
+    </div>
     <div class="grid">
-      <div class="card"><img src="faces/lead.png" alt=""><h3>Your subscription, not ours</h3><p>Bots run the Claude Code and Codex CLIs already on your Mac, billed to the plan you already pay for. bupsy never buys, resells or proxies model access.</p></div>
-      <div class="card"><img src="faces/cloud.png" alt=""><h3>Group chats</h3><p>Put bots in one conversation. @mention one to ask it, and bots hand work to each other — with a ceiling, so they can't burn your quota talking forever.</p></div>
-      <div class="card"><img src="faces/star.png" alt=""><h3>Routines &amp; standing goals</h3><p>“Brief me every weekday at 7.” “Keep my inbox under a day old.” It checks on a schedule and acts only when something is off.</p></div>
-      <div class="card"><img src="faces/working.png" alt=""><h3>Asks before it acts</h3><p>New bots are fully gated: anything beyond reading waits for you. If nobody answers, the answer is no. Loosen it per bot when it has earned it.</p></div>
-      <div class="card"><img src="faces/cat.png" alt=""><h3>Every bot is a character</h3><p>Fourteen plush faces that glance around, bounce while they work, and wiggle when they need you. Pick one, or let it choose.</p></div>
-      <div class="card"><img src="faces/flower.png" alt=""><h3>Usage, honestly</h3><p>Runs and tokens per bot, plus what that would cost at API rates — shown as a value, never as a bill, because on a subscription there isn't one.</p></div>
+      <div class="card"><img src="faces/round.png" alt=""><h3>Your subscription, not ours</h3><p>Runs the Claude Code and Codex already on your Mac, on the plan you already pay for. No credits to buy.</p></div>
+      <div class="card"><img src="faces/star.png" alt=""><h3>Routines &amp; goals</h3><p>"Brief me every weekday at 7." "Keep my inbox under a day old." It checks on a schedule and acts when needed.</p></div>
+      <div class="card"><img src="faces/cloud.png" alt=""><h3>Questions with answers</h3><p>When a bot needs a decision it asks with options — tap one, or type your own.</p></div>
+      <div class="card"><img src="faces/squircle.png" alt=""><h3>Connect any tool</h3><p>Gmail, Notion, Linear, any API — through Executor, which keeps the keys. bupsy never sees them.</p></div>
+      <div class="card"><img src="faces/pebble.png" alt=""><h3>See what it changed</h3><p>Every file a bot wrote, every action it took, and what it would have cost — shown plainly.</p></div>
+      <div class="card"><img src="faces/cat.png" alt=""><h3>Every bot a character</h3><p>Plush little faces that look around, bounce while they work and wiggle when they need you.</p></div>
     </div>
   </div>
 </section>
@@ -283,57 +283,49 @@
 <section>
   <div class="wrap">
     <div class="band">
-      <div>
-        <p class="kicker">Your credentials</p>
-        <h2>bupsy runs the tools. It never holds the keys.</h2>
-        <p class="sub" style="margin:0">Signing in happens in your own CLI. There is no bupsy backend and no column in the database that could hold a credential — a test checks the live schema on every build to prove it.</p>
-      </div>
-      <ul>
-        <li><span class="tick">✓</span><div><b>No servers. Ours, anyway.</b>Transcripts are files on your disk.</div></li>
-        <li><span class="tick">✓</span><div><b>Every decision is written down.</b>The log is append-only, enforced by the database.</div></li>
-        <li><span class="tick">✓</span><div><b>Apps connect themselves.</b>MCP servers read their own keys; bupsy only ever sees the names.</div></li>
-        <li><span class="tick">✓</span><div><b>Native Swift, not Electron.</b>Opens instantly, behaves like a Mac app, because it is one.</div></li>
-      </ul>
+      <h2>bupsy runs the tools. It never holds the keys.</h2>
+      <p>You sign in to your CLI yourself. There's no bupsy account and no server of ours — your conversations are files on your own disk.</p>
+      <ul><li>No servers of ours</li><li>No credentials stored</li><li>Native Swift, not Electron</li><li>Every decision logged</li><li>No telemetry</li></ul>
     </div>
   </div>
 </section>
 
-<section id="install">
+<section id="how">
   <div class="wrap">
-    <p class="kicker">How it works</p>
-    <h2>Three steps.</h2>
-    <p class="sub">Free. Works with the Claude Code or Codex sign-in you already have.</p>
-    <div class="steps">
-      <div class="step"><h3>Get early access</h3><p>Join the waitlist and we'll email you the download when your spot opens.</p></div>
-      <div class="step"><h3>Sign in to an engine</h3><p>Install <a href="https://claude.com/claude-code">Claude Code</a> or Codex and sign in. bupsy finds it and never sees the credential.</p></div>
-      <div class="step"><h3>Make a bot</h3><p>Press <code>⌘N</code>, give it a name and a job. It starts fully gated and asks before acting.</p></div>
+    <div class="center">
+      <p class="kicker">How it works</p>
+      <h2>Three steps to your first bot.</h2>
+      <p class="sub">Works with the Claude Code or Codex sign-in you already have.</p>
     </div>
-    <p class="note"><b>No account, no subscription to buy.</b> bupsy runs the Claude Code or Codex you already have. Your email is used for the launch invite and nothing else.</p>
+    <div class="steps">
+      <div class="step"><h3>Get early access</h3><p>Join the waitlist — we'll email you the download when your spot opens.</p></div>
+      <div class="step"><h3>Sign in to an engine</h3><p>Install Claude Code or Codex and sign in once. bupsy finds it and never sees the credential.</p></div>
+      <div class="step"><h3>Make a bot</h3><p>Click +, and your new bot asks what it's for. It names itself and gets to work.</p></div>
+    </div>
   </div>
 </section>
 
 <div class="wrap final" id="join">
-  <img src="mark.png" alt="">
+  <img src="icon.png" alt="bupsy app icon">
   <h2>Give your subscription a job.</h2>
-  <p class="sub" style="margin: 0 auto 28px">Free for macOS 14 and later. Be first in when it opens.</p>
+  <p class="sub">Be first in when bupsy opens. Free for macOS 14 and later.</p>
   <form class="waitlist" data-source="footer" novalidate>
     <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
-    <!-- Left empty by people, filled by bots: anything in it is dropped server-side. -->
     <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-    <button class="btn btn-primary" type="submit">Join the waitlist</button>
+    <button type="submit">Join the waitlist</button>
     <p class="form-msg" role="status" aria-live="polite"></p>
   </form>
 </div>
 
 <footer>
   <div class="wrap">
-    <span>© 2026 Xocket Labs Inc. · Business Source License 1.1</span>
-    <span>Not affiliated with Anthropic or OpenAI.</span>
+    <a class="brand" href="#"><img src="mark.png" alt="">bupsy</a>
+    <span>© 2026 Xocket Labs Inc. · Not affiliated with Anthropic or OpenAI.</span>
   </div>
 </footer>
 
 <script>
-  // Posts to the Cloudflare function next to this page; nothing else ever sees the address.
+  // Posts to the Cloudflare function beside this page; nothing else ever sees the address.
   document.querySelectorAll('form.waitlist').forEach(function (form) {
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -343,7 +335,7 @@
       var email = input.value.trim();
       msg.className = 'form-msg';
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        msg.textContent = 'That doesn\'t look like an email address.';
+        msg.textContent = 'That doesn’t look like an email address.';
         msg.classList.add('err'); input.focus(); return;
       }
       button.disabled = true; msg.textContent = 'Adding you…';
@@ -354,7 +346,7 @@
         });
         var data = await res.json().catch(function () { return {}; });
         if (!res.ok) throw new Error(data.error || 'Something went wrong — please try again.');
-        msg.textContent = data.already ? 'You\'re already on the list — we\'ll be in touch.' : 'You\'re on the list. We\'ll email you when it\'s ready.';
+        msg.textContent = data.already ? 'You’re already on the list — we’ll be in touch.' : 'You’re on the list! We’ll email you when it’s ready.';
         msg.classList.add('ok'); input.value = '';
       } catch (err) {
         msg.textContent = err.message; msg.classList.add('err');
