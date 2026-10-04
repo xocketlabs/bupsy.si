@@ -74,3 +74,31 @@ func TestListBotsReadsRoster(t *testing.T) {
 		t.Fatalf("roster not listed: %q", text)
 	}
 }
+
+func TestAskPersonDropsQuestion(t *testing.T) {
+	outbox := t.TempDir()
+	r := callTool(t, outbox, "ask_person", map[string]any{
+		"question": "Fill the tracker?", "options": []string{"Yes", " Only clients ", ""},
+	})
+	if r["isError"] == true {
+		t.Fatalf("unexpected error: %v", r)
+	}
+	files := dropped(t, outbox)
+	if len(files) != 1 || files[0]["kind"] != "question" {
+		t.Fatalf("no question dropped: %v", files)
+	}
+	options := files[0]["options"].([]any)
+	if len(options) != 2 || options[1] != "Only clients" {
+		t.Fatalf("options not cleaned: %v", options)
+	}
+}
+
+func TestAskPersonNeedsTwoToFourOptions(t *testing.T) {
+	outbox := t.TempDir()
+	if r := callTool(t, outbox, "ask_person", map[string]any{"question": "Q", "options": []string{"only"}}); r["isError"] != true {
+		t.Fatal("one option should be refused")
+	}
+	if len(dropped(t, outbox)) != 0 {
+		t.Fatal("nothing should be dropped")
+	}
+}

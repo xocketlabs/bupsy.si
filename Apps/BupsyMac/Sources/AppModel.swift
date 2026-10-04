@@ -1194,6 +1194,8 @@ final class AppModel {
                 self?.receive(from: from, toName: toName, text: text)
             case .createBot(let from, let name, let job):
                 self?.receiveCreation(from: from, name: name, job: job)
+            case .question(let from, let question, let options):
+                self?.receiveQuestion(from: from, question: question, options: options)
             }
         }
         watcher.start()
@@ -1217,6 +1219,24 @@ final class AppModel {
             return
         }
         deliver(from: sender, to: recipient, text: text)
+    }
+
+    // MARK: - Questions with set answers
+
+    private func receiveQuestion(from senderID: String, question: String, options: [String]) {
+        guard let bot = bots.first(where: { $0.id.rawValue == senderID }) else { return }
+        thread(for: bot.id).entries.append(TranscriptEntry(kind: .question(BotQuestion(
+            id: UUID().uuidString, question: question, options: options))))
+        notifier.needsApproval(bot: bot.name, tool: "a question", summary: question)
+    }
+
+    /// Sends the person's answer as their next message — what the bot stopped to wait for.
+    /// An empty answer dismisses the question without sending anything.
+    func answer(_ question: BotQuestion, with answer: String, for bot: Bot) {
+        let text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        thread(for: bot.id).answerQuestion(id: question.id, with: text)
+        guard !text.isEmpty else { return }
+        send(text, to: bot)
     }
 
     // MARK: - Bots creating bots

@@ -104,7 +104,7 @@ func handle(req request, outbox, sender string) response {
 		}
 
 	case "tools/list":
-		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool()}}
+		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool(), askPersonTool()}}
 
 	case "tools/call":
 		reply.Result = call(req.Params, outbox, sender)
@@ -177,6 +177,38 @@ func createBotTool() map[string]any {
 	}
 }
 
+// askPersonTool describes asking the person a multiple-choice question.
+//
+// A question with set answers is quicker to answer than prose and harder to misread: the person
+// taps one, or types their own. The answer arrives as their next message, so the bot must stop
+// and wait rather than carry on with a guess.
+func askPersonTool() map[string]any {
+	return map[string]any{
+		"name": "ask_person",
+		"description": "Ask the person a question with 2 to 4 short answers to choose from (they " +
+			"can also type their own). Use it when you need a decision before continuing. " +
+			"Their answer arrives as their next message: end your turn right after calling " +
+			"this, and do not guess the answer.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"question": map[string]any{
+					"type":        "string",
+					"description": "The question, in one sentence.",
+				},
+				"options": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"minItems":    2,
+					"maxItems":    4,
+					"description": "2 to 4 short answers, a few words each.",
+				},
+			},
+			"required": []any{"question", "options"},
+		},
+	}
+}
+
 // listBotsTool describes reading the roster.
 func listBotsTool() map[string]any {
 	return map[string]any{
@@ -189,10 +221,12 @@ func listBotsTool() map[string]any {
 type callParams struct {
 	Name      string `json:"name"`
 	Arguments struct {
-		To   string `json:"to"`
-		Text string `json:"text"`
-		Name string `json:"name"`
-		Job  string `json:"job"`
+		To       string   `json:"to"`
+		Text     string   `json:"text"`
+		Name     string   `json:"name"`
+		Job      string   `json:"job"`
+		Question string   `json:"question"`
+		Options  []string `json:"options"`
 	} `json:"arguments"`
 }
 
@@ -235,6 +269,25 @@ func call(params json.RawMessage, outbox, sender string) map[string]any {
 
 	case "list_bots":
 		return listBots()
+
+	case "ask_person":
+		question := strings.TrimSpace(args.Question)
+		var options []string
+		for _, option := range args.Options {
+			if option = strings.TrimSpace(option); option != "" {
+				options = append(options, option)
+			}
+		}
+		if question == "" || len(options) < 2 || len(options) > 4 {
+			return toolError("give a question and 2 to 4 non-empty options")
+		}
+		if err := drop(outbox, map[string]any{
+			"kind": "question", "from": sender, "question": question, "options": options,
+		}); err != nil {
+			return toolError("could not ask: " + err.Error())
+		}
+		return toolText("Asked the person. Their answer will arrive as their next message — " +
+			"end your turn now and do not guess it.")
 
 	default:
 		return toolError("unknown tool " + decoded.Name)

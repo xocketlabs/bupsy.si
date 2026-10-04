@@ -139,6 +139,7 @@ struct TranscriptEntry: Identifiable, Sendable {
         case thinking(String)
         case tool(name: String, arguments: String, result: String?, failed: Bool)
         case approval(PendingApproval)
+        case question(BotQuestion)
         case limits(RateLimit)
         case failure(EngineFailure)
         case finished(Outcome)
@@ -150,6 +151,20 @@ struct TranscriptEntry: Identifiable, Sendable {
 }
 
 /// A tool call waiting on the user, as the UI holds it.
+/// A question a bot asked with answers to pick from. The answer goes back as the person's next
+/// message, which is what the bot was told to wait for.
+///
+/// Held in memory, like approvals: an unanswered question is live, and one restored after a
+/// restart would be asking on behalf of a run that has long ended. The answer itself is saved,
+/// as an ordinary message.
+struct BotQuestion: Identifiable, Sendable, Equatable {
+    let id: String
+    let question: String
+    let options: [String]
+    /// What the person chose or typed; nil while waiting. Empty means they dismissed it.
+    var answer: String?
+}
+
 struct PendingApproval: Identifiable, Sendable, Equatable {
     let id: String
     let tool: String
@@ -201,6 +216,8 @@ final class Thread {
                     .replacingOccurrences(of: "\n", with: " ")
                     .trimmingCharacters(in: .whitespaces)
                 if !flat.isEmpty { return flat }
+            case .question(let question) where question.answer == nil:
+                return "Asks: \(question.question)"
             case .approval(let approval):
                 return "Asked about \(approval.tool)"
             case .failure(let failure):
@@ -293,6 +310,15 @@ final class Thread {
         }), case .approval(var approval) = entries[index].kind else { return }
         approval.decided = decision
         entries[index].kind = .approval(approval)
+    }
+
+    func answerQuestion(id: String, with answer: String) {
+        guard let index = entries.lastIndex(where: {
+            if case .question(let question) = $0.kind { return question.id == id }
+            return false
+        }), case .question(var question) = entries[index].kind else { return }
+        question.answer = answer
+        entries[index].kind = .question(question)
     }
 
     func raiseApproval(_ approval: PendingApproval) {
