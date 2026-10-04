@@ -26,9 +26,9 @@ struct ConnectorsSheet: View {
 
                 ExecutorCard()
 
-                if !model.connectors.isEmpty {
+                if model.connectors.contains(where: { $0.name != Executor.name }) {
                     VStack(spacing: Theme.Space.snug) {
-                        ForEach(model.connectors) { server in
+                        ForEach(model.connectors.filter { $0.name != Executor.name }) { server in
                             ConnectorRow(server: server)
                         }
                     }
@@ -81,10 +81,92 @@ struct ExecutorCard: View {
     private var isOn: Bool { model.connectors.contains { $0.name == Executor.name && $0.enabled } }
     private var isAdded: Bool { model.connectors.contains { $0.name == Executor.name } }
 
+    @State private var showsGuide = false
+
     var body: some View {
-        CardRow {
+        VStack(alignment: .leading, spacing: 0) {
+            card
+            if showsGuide || model.executorInstalled == false {
+                guide
+            }
+        }
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
+    }
+
+    /// Three steps, in the order they happen, each with the button that does it.
+    private var guide: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.step) {
+            Rectangle().fill(palette.border).frame(height: 1)
+            step(1, "Install Executor",
+                 model.executorInstalled == true ? "Installed on this Mac."
+                    : "Free and open source. Needs Node.js — the installer says so if it's missing.",
+                 done: model.executorInstalled == true) {
+                if model.executorInstalled != true {
+                    Button("Install") { model.installExecutor() }
+                        .buttonStyle(QuietButton(compact: true))
+                        .disabled(model.executorInstalling)
+                }
+            }
+            step(2, "Connect your tools in Executor",
+                 "Open it, add Gmail, Notion, Linear, GitHub or any API, and sign in to each there. "
+                    + "The keys stay in Executor.",
+                 done: false) {
+                Button("Open Executor") { NSWorkspace.shared.open(Executor.webURL) }
+                    .buttonStyle(QuietButton(compact: true))
+                    .disabled(model.executorInstalled != true)
+            }
+            step(3, "Ask any bot to use them",
+                 "Executor is switched on for every bot. Try \"check my latest emails\" — the bot asks "
+                    + "you before it uses a tool, and you can say Always allow.",
+                 done: false) { EmptyView() }
+            if let server = model.connectors.first(where: { $0.name == Executor.name }) {
+                HStack {
+                    Spacer(minLength: 0)
+                    Button("Turn off for my bots") { model.removeConnector(server) }
+                        .buttonStyle(.plain)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Space.step)
+        .padding(.bottom, Theme.Space.step)
+    }
+
+    private func step<Action: View>(_ number: Int, _ title: String, _ detail: String, done: Bool,
+                                    @ViewBuilder action: () -> Action) -> some View {
+        HStack(alignment: .top, spacing: Theme.Space.step) {
+            ZStack {
+                Circle().fill(done ? Color.green.opacity(0.2) : palette.primary.opacity(0.15))
+                if done {
+                    Image(systemName: "checkmark").font(.system(size: Theme.scaled(10), weight: .bold)).foregroundStyle(.green)
+                } else {
+                    Text("\(number)").font(.system(size: Theme.scaled(11), weight: .bold)).foregroundStyle(palette.primary)
+                }
+            }
+            .frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(Theme.Typography.body.weight(.medium)).foregroundStyle(palette.foreground)
+                Text(detail).font(Theme.Typography.caption).foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            action()
+        }
+    }
+
+    private var card: some View {
+        HStack(spacing: Theme.Space.step) {
             IconTile(systemName: "point.3.connected.trianglepath.dotted")
-        } content: {
+            cardText
+            Spacer(minLength: 0)
+            cardTrailing
+        }
+        .padding(Theme.Space.step)
+    }
+
+    private var cardText: some View {
+        Group {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text("Executor")
@@ -101,8 +183,20 @@ struct ExecutorCard: View {
                     .foregroundStyle(palette.mutedForeground)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        } trailing: {
-            action
+        }
+    }
+
+    private var cardTrailing: some View {
+        Group {
+            HStack(spacing: Theme.Space.tight) {
+                action
+                if model.executorInstalled == true {
+                    Button(showsGuide ? "Hide steps" : "How to connect") { showsGuide.toggle() }
+                        .buttonStyle(.plain)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                }
+            }
         }
     }
 
