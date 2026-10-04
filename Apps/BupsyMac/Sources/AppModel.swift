@@ -1684,6 +1684,9 @@ final class AppModel {
         thread(for: bot.id).entries.last?.at ?? .distantPast
     }
 
+    /// When each bot had last been read before it was opened this time — where "New" starts.
+    var readBeforeOpening: [BotID: Date?] = [:]
+
     /// Whether a bot has said something since you last looked at it.
     func isUnread(_ bot: Bot) -> Bool {
         // The conversation you are looking at is never unread. `markRead` fires when the
@@ -1702,6 +1705,9 @@ final class AppModel {
     /// Called when a thread is opened. Idempotent and cheap.
     func markRead(_ bot: Bot) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        // Kept so the thread can draw a "New" line where the unread messages begin. Taken before
+        // the update, because by the time the page draws, this bot already counts as read.
+        readBeforeOpening[bot.id] = bots[index].lastReadAt
         bots[index].lastReadAt = Date()
         try? store?.save(bots[index].record(sortIndex: index))
     }

@@ -18,6 +18,7 @@ struct BotPage: View {
     /// The message being replied to, shown above the composer until sent or dismissed.
     @State private var replyingTo: ReplyTarget?
     @State private var tab = DetailTab.details
+    @State private var awayFromBottom = false
 
     private var thread: Thread { model.thread(for: bot.id) }
     private var routines: [Routine] { model.routines.filter { $0.botID == bot.id.rawValue } }
@@ -445,6 +446,7 @@ struct BotPage: View {
                         VStack(alignment: .leading, spacing: Theme.Space.step) {
                             ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
                                 if showsDaySeparator(at: index) { DaySeparator(date: entry.at) }
+                                if index == firstUnreadIndex { NewDivider().id(NewDivider.anchor) }
                                 Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index),
                                        onReply: { author, text in
                                            replyingTo = ReplyTarget(author: author, text: text)
@@ -472,6 +474,48 @@ struct BotPage: View {
                         // empty pane. Every messaging app does this, and the first reply in a new
                         // conversation is exactly when the difference is most obvious.
                         .frame(minHeight: geometry.size.height, alignment: .bottom)
+                        // Where the end of the thread is, relative to the visible pane — so the
+                        // jump-to-latest button shows only once you have scrolled away from it.
+                        .background(alignment: .bottom) {
+                            GeometryReader { end in
+                                Color.clear.preference(
+                                    key: ThreadEndKey.self,
+                                    value: end.frame(in: .named("thread")).maxY - geometry.size.height)
+                            }
+                        }
+                    }
+                    .coordinateSpace(name: "thread")
+                    .onPreferenceChange(ThreadEndKey.self) { distance in
+                        awayFromBottom = distance > 120
+                    }
+                    .overlay(alignment: .bottom) {
+                        if awayFromBottom {
+                            Button {
+                                guard let last = thread.entries.last else { return }
+                                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
+                            } label: {
+                                Image(systemName: "arrow.down")
+                                    .font(.system(size: Theme.scaled(12), weight: .semibold))
+                                    .foregroundStyle(palette.foreground)
+                                    .frame(width: 32, height: 32)
+                                    .background(palette.card, in: .circle)
+                                    .overlay(Circle().strokeBorder(palette.border))
+                                    .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Jump to the latest message")
+                            .padding(.bottom, Theme.Space.step)
+                            .transition(.opacity)
+                        }
+                    }
+                    // Open where you left off: at the first unread message if there is one,
+                    // otherwise at the end.
+                    .onAppear {
+                        if firstUnreadIndex != nil {
+                            proxy.scrollTo(NewDivider.anchor, anchor: .top)
+                        } else if let last = thread.entries.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
                     }
                     .onChange(of: thread.entries.count) {
                         guard let last = thread.entries.last else { return }
@@ -490,6 +534,16 @@ struct BotPage: View {
         guard let tightest = thread.latestLimits?.tightest else { return nil }
         let window = tightest.name.replacingOccurrences(of: "_", with: "-")
         return "\(Int(tightest.window.utilization * 100))% of \(window) limit"
+    }
+
+    /// The first message from the bot that arrived after you last read it, or nil when there is
+    /// none — nothing new, or a bot you are opening for the first time, where everything is new
+    /// and a line above the first message would say nothing.
+    private var firstUnreadIndex: Int? {
+        guard let seenEntry = model.readBeforeOpening[bot.id], let seen = seenEntry else { return nil }
+        guard let index = thread.entries.firstIndex(where: { $0.isFromBot && $0.at > seen }),
+              index > 0 else { return nil }
+        return index
     }
 
     private func showsDaySeparator(at index: Int) -> Bool {
@@ -909,4 +963,27 @@ private struct FileRow: View {
             .help(file.path)
         }
     }
+}
+
+/// Where the unread messages begin.
+struct NewDivider: View {
+    static let anchor = "new-divider"
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        HStack(spacing: Theme.Space.snug) {
+            Rectangle().fill(palette.primary.opacity(0.5)).frame(height: 1)
+            Text("NEW")
+                .font(.system(size: Theme.scaled(10), weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(palette.primary)
+            Rectangle().fill(palette.primary.opacity(0.5)).frame(height: 1)
+        }
+        .padding(.vertical, Theme.Space.tight)
+    }
+}
+
+private struct ThreadEndKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
