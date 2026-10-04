@@ -39,7 +39,9 @@ struct BotPage: View {
                 // The pill floats over the transcript rather than sitting in a bar above it, so
                 // the conversation reaches the top of the window instead of starting below a
                 // strip of chrome that never changes.
-                .overlay(alignment: .top) { titlePill }
+                .overlay(alignment: .top) {
+                    ZStack(alignment: .top) { TopFade(); titlePill }
+                }
             }
             .padding(.vertical, 8)
             // Flush to the details panel when it is open, exactly as the card is flush to the rail.
@@ -86,8 +88,9 @@ struct BotPage: View {
             .padding(.leading, Theme.Space.snug)
             .padding(.trailing, Theme.Space.step)
             .padding(.vertical, 7)
-            .background(palette.card, in: .capsule)
+            .background(palette.popover, in: .capsule)
             .overlay(Capsule().stroke(palette.border, lineWidth: 1))
+            .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)

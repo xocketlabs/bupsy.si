@@ -94,7 +94,9 @@ struct GroupPage: View {
                 transcript
                 composer
             }
-            .overlay(alignment: .top) { titlePill }
+            .overlay(alignment: .top) {
+                ZStack(alignment: .top) { TopFade(); titlePill }
+            }
         }
         .padding(.vertical, 8)
         .padding(.trailing, 8)
@@ -127,8 +129,11 @@ struct GroupPage: View {
         .padding(.leading, Theme.Space.snug)
         .padding(.trailing, Theme.Space.step)
         .padding(.vertical, 6)
-        .background(palette.card, in: .capsule)
+        // A solid, raised pill: on palette.card alone it was the same colour as the message
+        // bubbles, and text scrolling behind it looked like it ran straight through.
+        .background(palette.popover, in: .capsule)
         .overlay(Capsule().stroke(palette.border, lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
         .padding(.top, Theme.Space.step)
     }
 
@@ -255,6 +260,21 @@ struct GroupPage: View {
             }
 
             HStack(alignment: .bottom, spacing: Theme.Space.snug) {
+                // The same + as a one-to-one thread: files go in as paths, for whichever bot
+                // answers to open itself.
+                Button(action: pickFiles) {
+                    Image(systemName: "plus")
+                        .font(.system(size: Theme.scaled(13), weight: .semibold))
+                        .foregroundStyle(palette.mutedForeground)
+                        .frame(width: 34, height: 34)
+                        .background(palette.card, in: .circle)
+                        .overlay(Circle().strokeBorder(palette.border))
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .help("Attach files")
+                .padding(.bottom, 5)
+
                 TextField("Message \(group.name)", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(Theme.Typography.body)
@@ -268,12 +288,15 @@ struct GroupPage: View {
                     .onSubmit(send)
                 Button(action: send) {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: Theme.scaled(13), weight: .semibold))
+                        .font(.system(size: Theme.scaled(13), weight: .bold))
                         .foregroundStyle(draft.isEmpty ? palette.mutedForeground : palette.onPrimary)
                         .frame(width: 34, height: 34)
-                        .background(draft.isEmpty ? palette.secondary : palette.primary, in: .circle)
+                        .background(draft.isEmpty ? palette.card : palette.primary, in: .circle)
+                        .overlay(Circle().strokeBorder(draft.isEmpty ? palette.border : .clear))
+                        .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
+                .padding(.bottom, 5)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
             }
@@ -282,6 +305,17 @@ struct GroupPage: View {
         .padding(.vertical, Theme.Space.step)
         .frame(maxWidth: Theme.Size.contentMaxWidth)
         .frame(maxWidth: .infinity)
+    }
+
+    private func pickFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
+        panel.prompt = "Attach"
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+        let paths = panel.urls.count == 1 ? panel.urls[0].path
+            : panel.urls.map { "- \($0.path)" }.joined(separator: "\n")
+        draft = draft.isEmpty ? paths : draft + "\n" + paths
     }
 
     private func mention(_ bot: Bot) {

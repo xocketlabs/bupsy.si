@@ -596,3 +596,15 @@ struct LimitBar: View {
         }
     }
 }
+
+/// A soft fade at the top of a thread, under its floating title pill, so messages scrolling up
+/// pass behind the pill instead of being legible right through and around it.
+struct TopFade: View {
+    @Environment(\.palette) private var palette
+    var body: some View {
+        LinearGradient(colors: [palette.background, palette.background.opacity(0)],
+                       startPoint: .top, endPoint: .bottom)
+            .frame(height: 76)
+            .allowsHitTesting(false)
+    }
+}
