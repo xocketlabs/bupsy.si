@@ -81,7 +81,9 @@ struct StartChatPalette: View {
             }
             .padding(Theme.Space.tight)
         }
-        .frame(maxHeight: 320)
+        // Sized to its rows, up to a cap: a fixed 320pt left a block of empty panel under a
+        // short list.
+        .frame(height: min(CGFloat(max(rows.count, 1)) * 38 + 12, 340))
     }
 
     /// What is listed: making a bot first, then every bot that matches.
