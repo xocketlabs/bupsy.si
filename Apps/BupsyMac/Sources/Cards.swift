@@ -34,7 +34,9 @@ struct ApprovalCard: View {
             }
 
             // The command in full. An approval you cannot read is not an approval.
-            Text(approval.summary)
+            // Paths shortened for reading; Details still shows the full input.
+            Text(PathShortener.shorten(approval.summary,
+                                       workingDirectory: bot.map { model.workingDirectory(for: $0).path }))
                 .font(.system(size: Theme.scaled(13), design: .monospaced))
                 .textSelection(.enabled)
                 .padding(Theme.Space.snug)
