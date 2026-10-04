@@ -220,13 +220,10 @@ final class Thread {
             // else is. Left out of this switch, a bot whose only content came from another bot
             // read as "No messages yet" while holding a message.
             case .messageFrom(_, let name, let text):
-                let flat = text.replacingOccurrences(of: "\n", with: " ")
-                    .trimmingCharacters(in: .whitespaces)
+                let flat = PlainPreview.of(text)
                 if !flat.isEmpty { return "\(name): \(flat)" }
             case .assistantText(let text), .userMessage(let text):
-                let flat = text
-                    .replacingOccurrences(of: "\n", with: " ")
-                    .trimmingCharacters(in: .whitespaces)
+                let flat = PlainPreview.of(text)
                 if !flat.isEmpty { return flat }
             case .question(let question) where question.answer == nil:
                 return "Asks: \(question.question)"
@@ -414,7 +411,7 @@ final class GroupThread {
     var preview: String? {
         guard let last = messages.last(where: { $0.author != GroupMessageRecord.systemAuthor })
         else { return nil }
-        let text = last.text.replacingOccurrences(of: "\n", with: " ")
+        let text = PlainPreview.of(last.text)
         return last.isFromUser ? "You: \(text)" : "\(last.authorName): \(text)"
     }
 }
