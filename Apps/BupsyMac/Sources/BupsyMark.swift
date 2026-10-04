@@ -129,42 +129,60 @@ struct BupsyMark: View {
     }
 }
 
-/// The app icon: the mark on a dark, softly lit tile in macOS's own icon proportions.
+/// The app icon: three of the roster's own bots huddled together, with bupsy's bubbles rising
+/// above them.
 ///
-/// Drawn at 1024 and scaled down for every slot, so the Dock, Finder and the menu bar all show the
-/// same character the sidebar does. The character fills most of the tile: at Dock size anything
-/// smaller reads as a dot on a dark square.
+/// bupsy is a roster, not one assistant, so the icon is a group — drawn with the same `BotFace`
+/// code the sidebar uses, so the icon's characters are the app's characters. Every face is kept
+/// clear of the others: at Dock size a half-hidden face reads as a smudge. Drawn at 1024 and scaled
+/// down for every slot.
 struct BupsyAppIcon: View {
+    private let tile = RoundedRectangle(cornerRadius: 185, style: .continuous)
+
     var body: some View {
         ZStack {
             // macOS icons sit on a rounded tile inset from the canvas edge, not full bleed.
-            RoundedRectangle(cornerRadius: 185, style: .continuous)
-                .fill(LinearGradient(
-                    colors: [Color(red: 0.22, green: 0.16, blue: 0.33),
-                             Color(red: 0.08, green: 0.07, blue: 0.12)],
+            tile.fill(LinearGradient(
+                    colors: [Color(red: 1, green: 0.96, blue: 0.99), Color(red: 0.91, green: 0.87, blue: 1)],
                     startPoint: .top, endPoint: .bottom))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 185, style: .continuous)
-                        .strokeBorder(LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.04)],
-                                                     startPoint: .top, endPoint: .bottom),
-                                      lineWidth: 4))
+                .overlay(tile.fill(LinearGradient(colors: [.white.opacity(0.35), .clear],
+                                                  startPoint: .top, endPoint: .center)))
+                .overlay(tile.strokeBorder(.white.opacity(0.5), lineWidth: 4))
                 .frame(width: 824, height: 824)
-                .shadow(color: .black.opacity(0.35), radius: 18, y: 10)
-            // A glow behind the character, in its own colours.
-            Circle()
-                .fill(RadialGradient(
-                    colors: [BupsyMark.pink.opacity(0.35), BupsyMark.violet.opacity(0.2), .clear],
-                    center: .center, startRadius: 0, endRadius: 400))
-                .frame(width: 800, height: 800)
-            // Its shadow on the floor of the tile, so it sits rather than floats.
-            Ellipse()
-                .fill(RadialGradient(colors: [.black.opacity(0.45), .clear],
-                                     center: .center, startRadius: 0, endRadius: 240))
-                .frame(width: 480, height: 90)
-                .offset(x: -18, y: 300)
-            BupsyMark(size: 690)
-                .offset(x: 6, y: -2)
+            ZStack {
+                floor(width: 300, opacity: 0.22).offset(x: -235, y: 250)
+                floor(width: 300, opacity: 0.22).offset(x: 235, y: 250)
+                StillBotFace(shape: .ghost, colour: 3, size: 330)
+                    .rotationEffect(.degrees(-8)).offset(x: -235, y: 110)
+                StillBotFace(shape: .cat, colour: 5, size: 330)
+                    .rotationEffect(.degrees(8)).offset(x: 235, y: 110)
+                floor(width: 400, opacity: 0.3).offset(y: 260)
+                StillBotFace(shape: .circle, colour: 8, size: 440).offset(y: 50)
+                bubble(110).offset(x: 150, y: -265)
+                bubble(56).offset(x: 230, y: -335)
+            }
+            .mask(tile.frame(width: 824, height: 824))
         }
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
         .frame(width: 1024, height: 1024)
+    }
+
+    /// A soft shadow on the floor of the tile, so the bots stand rather than float.
+    private func floor(width: CGFloat, opacity: Double) -> some View {
+        Ellipse()
+            .fill(RadialGradient(colors: [.black.opacity(opacity), .clear], center: .center,
+                                 startRadius: 0, endRadius: width / 2))
+            .frame(width: width, height: width * 0.22)
+    }
+
+    /// bupsy's bubble, the same one the sidebar mark carries.
+    private func bubble(_ diameter: CGFloat) -> some View {
+        Circle()
+            .fill(LinearGradient(colors: [BupsyMark.pink, BupsyMark.violet],
+                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay(Circle().fill(.white.opacity(0.8)).frame(width: diameter * 0.28)
+                .offset(x: -diameter * 0.18, y: -diameter * 0.18))
+            .frame(width: diameter, height: diameter)
     }
 }
