@@ -25,3 +25,6 @@ Bupsy.xcodeproj/
 
 # Packaging and local CI output (scripts/package.sh, scripts/ci-local.sh)
 build/
+
+# Local wrangler state
+.wrangler/
