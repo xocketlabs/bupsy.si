@@ -70,6 +70,9 @@ public enum AutonomyPolicy {
             return .ask(reason: "Not on the list of things this bot may do without asking.")
 
         case .ask:
+            // "Asks before everything" means everything you have not already said yes to for
+            // good. Ignoring the person's own "always allow" made the button a lie.
+            if covers(allowlist, tool: tool) { return .allow(rule: "you said always allow") }
             return .ask(reason: "This bot asks before every action.")
         }
     }

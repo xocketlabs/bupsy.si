@@ -33,6 +33,7 @@ struct NavRail: View {
         case connectors
         case attention
         case usage
+        case permissions
         case group(String)
     }
 
@@ -412,6 +413,16 @@ struct NavRail: View {
     }
 
     private var footer: some View {
+        Menu {
+            Button("Permissions…") { destination = .permissions }
+            Button("Usage") { destination = .usage }
+        } label: { footerLabel }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var footerLabel: some View {
         HStack(spacing: Theme.Space.snug) {
             RoundedRectangle(cornerRadius: Theme.Radius.control)
                 .fill(palette.sidebarAccent)

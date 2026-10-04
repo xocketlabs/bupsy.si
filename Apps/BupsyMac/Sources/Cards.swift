@@ -60,6 +60,13 @@ struct ApprovalCard: View {
                     Button { decide(false) } label: { ShortcutLabel(text: "Deny", keys: "⇧⌘D") }
                         .buttonStyle(QuietButton(compact: true))
                         .keyboardShortcut("d", modifiers: [.command, .shift])
+                    if ToolNames.canAlwaysAllow(approval.tool), let bot {
+                        Button("Always allow") {
+                            model.decide(approval, allow: true, for: bot, always: true)
+                        }
+                        .buttonStyle(QuietButton(compact: true))
+                        .help("Stop asking before \(bot.name) does this. Undo any time in Permissions.")
+                    }
                     Spacer(minLength: 0)
                     // Plain text in the theme rather than `.link`, which drew it in macOS blue.
                     Button(showsDetail ? "Hide details" : "Details") { showsDetail.toggle() }

@@ -914,7 +914,14 @@ final class AppModel {
     }
 
     /// The user's answer on an approval card.
-    func decide(_ approval: PendingApproval, allow: Bool, for bot: Bot) {
+    func decide(_ approval: PendingApproval, allow: Bool, for bot: Bot, always: Bool = false) {
+        // "Always" is recorded before the answer goes back, so a second call already queued for
+        // the same tool in this run is allowed rather than asked again.
+        if allow, always, ToolNames.canAlwaysAllow(approval.tool),
+           let index = bots.firstIndex(where: { $0.id == bot.id }) {
+            bots[index].toolAllowlist.insert(approval.tool)
+            try? store?.save(bots[index].record(sortIndex: index))
+        }
         guard let gate = gates[bot.id] else { return }
         let thread = activeThread[bot.id] ?? thread(for: bot.id)
         thread.resolveApproval(id: approval.id, as: allow ? .allowed : .denied)
@@ -925,7 +932,26 @@ final class AppModel {
         }
         recordDecision(run: nil, requestID: approval.id, tool: approval.tool,
                        inputJSON: approval.inputJSON,
-                       decision: allow ? "allowed" : "denied", rule: "decided by you")
+                       decision: allow ? "allowed" : "denied",
+                       rule: always && allow ? "you said always allow" : "decided by you")
+    }
+
+    // MARK: - Permissions
+
+    /// Stops a bot using a tool without asking.
+    func disallow(_ tool: String, for bot: Bot) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].toolAllowlist.remove(tool)
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    /// Every remembered decision about one bot messaging another.
+    var linkDecisions: [BotLinkRecord] { links.decisions }
+
+    /// Forgets a decision, so the next message between the two asks again.
+    func forgetLink(from sender: String, to recipient: String) {
+        links.forget(from: sender, to: recipient)
+        try? store?.deleteLink(from: sender, to: recipient)
     }
 
     private func recordDecision(run: String?, request: GateRequest, decision: String, rule: String) {
