@@ -71,6 +71,11 @@ private final class ProcessBox: @unchecked Sendable {
         // Engines are better behaved when they know they are not on a terminal.
         environment["TERM"] = "dumb"
         environment["NO_COLOR"] = "1"
+        #if !os(Windows)
+        // So whatever the engine starts — MCP servers above all — is found the way it would be
+        // in the person's own terminal. See `BinaryResolver.searchPath`.
+        environment["PATH"] = BinaryResolver.searchPath(current: environment["PATH"])
+        #endif
         environment.merge(invocation.environment) { _, new in new }
         process.environment = environment
     }

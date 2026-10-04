@@ -18,6 +18,7 @@ struct BupsyApp: App {
                     }
                     model.startRoutineTimer()
                     model.startOutbox()
+                    model.refreshExecutor()
                     await model.refreshEngineStatus()
                 }
         }
