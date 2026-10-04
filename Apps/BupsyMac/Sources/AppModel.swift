@@ -46,6 +46,12 @@ final class AppModel {
         didSet { AppHome.defaults.set(appearance.rawValue, forKey: "si.bupsy.appearance") }
     }
 
+    // Hooks for the debug tour (TourMode); nil in normal use.
+    var tourDestination: NavRail.Destination?
+    var tourPalette: Bool?
+    var tourDetails: DetailTab?
+    var tourSheet: String?
+
     var needsOnboarding = !AppHome.defaults.bool(forKey: "si.bupsy.onboarded")
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?

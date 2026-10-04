@@ -18,12 +18,15 @@ struct BupsyApp: App {
                         model.runDueRoutines()
                     }
                     model.startRoutineTimer()
+                    #if DEBUG
+                    if TourMode.isOn { Task { await TourMode.run(model: model) } }
+                    #endif
                     model.startOutbox()
                     model.refreshExecutor()
                     await model.refreshEngineStatus()
                 }
         }
-        .defaultSize(width: 1000, height: 680)
+        .defaultSize(width: 1280, height: 820)
         // Left as the standard window on purpose. `.hiddenTitleBar` is the look this design was
         // drawn for and what Grok Bot uses, but it has to be done with the close, minimise and
         // zoom buttons verifiably still reachable — shipping a window someone cannot close is
@@ -54,6 +57,14 @@ struct RootView: View {
     var body: some View {
         content
             .withPalette(colorScheme)
+            .onChange(of: model.tourDestination) { _, new in if let new { destination = new; if case .bot(let id) = new { model.selectedBotID = id } } }
+            .onChange(of: model.tourPalette) { _, new in
+                if let new { paletteSearchFirst = new; isStartingChat = true } else { isStartingChat = false }
+            }
+            .onChange(of: model.tourSheet) { _, new in
+                isAddingBot = new == "newBot"; isAddingGroup = new == "newGroup"
+                if new == "onboarding" { model.needsOnboarding = true } else if model.needsOnboarding && new == nil { model.needsOnboarding = false }
+            }
             // Only the Start button finishes onboarding. Treating any dismissal as done marked it
             // complete when SwiftUI tore the sheet down on its own — the window re-created, a
             // second sheet — so a new user could lose the welcome without ever seeing it.
@@ -61,7 +72,10 @@ struct RootView: View {
                 get: { model.needsOnboarding },
                 set: { _ in }
             )) {
+                // Its own palette: this sheet hangs off the root, outside withPalette above, so it
+                // fell back to the dark default and showed a dark welcome in light mode.
                 OnboardingSheet()
+                    .withPalette(colorScheme)
             }
     }
 

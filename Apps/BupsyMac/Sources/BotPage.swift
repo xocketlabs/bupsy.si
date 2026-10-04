@@ -19,6 +19,7 @@ struct BotPage: View {
     @State private var confirmsDelete = false
     @State private var showsObjectives = false
     @State private var showsDetails = false
+    @State private var editingBot: Bot?
     /// The message being replied to, shown above the composer until sent or dismissed.
     @State private var replyingTo: ReplyTarget?
     @State private var tab = DetailTab.details
@@ -63,6 +64,14 @@ struct BotPage: View {
         .background { Color.clear.sheet(isPresented: $showsRoutines) { NewRoutineSheet(bot: bot) } }
         .background { Color.clear.sheet(isPresented: $showsObjectives) { NewObjectiveSheet(bot: bot) } }
         .background { Color.clear.sheet(item: $editingRoutine) { NewRoutineSheet(bot: bot, editing: $0) } }
+        .background { Color.clear.sheet(item: $editingBot) { RenameBotSheet(bot: $0) } }
+        .onChange(of: model.tourDetails, initial: true) { _, new in
+            if let new { tab = new; showsDetails = true } else { showsDetails = false }
+        }
+        .onChange(of: model.tourSheet, initial: true) { _, new in
+            showsRoutines = new == "newRoutine"
+            if new == "editBot" { editingBot = bot } else { editingBot = nil }
+        }
     }
 
     // MARK: - Title
