@@ -1,17 +1,34 @@
 name: CI
 
+# Private repos pay for Actions by the minute, and macOS minutes count ten times. So CI runs on
+# pull requests only — a squash merge puts exactly the tested code on main, and running it all
+# again there doubled the bill for no new information — and skips changes that cannot break a
+# build. Run it by hand from the Actions tab for a dev DMG or the portability check.
 on:
-  push:
-    branches: [main]
   pull_request:
+    paths-ignore:
+      - "site/**"
+      - "docs/**"
+      - "**/*.md"
+      - "**/*.png"
+      - "LICENSE"
+      - "NOTICE"
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Build and test BupsyKit
+  # The package tests and the app build share one macOS machine. Two jobs meant paying twice for
+  # checkout, toolchain start-up and minute rounding, at ten times the Linux rate.
+  #
+  # The app build is here because adding one case to an enum in BupsyKit once broke two exhaustive
+  # switches in the app while CI stayed green: every job built the package, none built the thing
+  # people actually run. The project file is generated, so it is regenerated rather than committed —
+  # a stale checked-in project silently omits new files.
+  mac:
+    name: Test BupsyKit and build the app
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -19,51 +36,32 @@ jobs:
       - name: Show toolchain
         run: swift --version
 
-      - name: Build
-        run: swift build --package-path Packages/BupsyKit
-
       - name: Test
         run: swift test --package-path Packages/BupsyKit
 
-      # Its own step, so the log says plainly which thing broke. These are the cases every
-      # implementation must pass, and "the Swift one stopped agreeing with the shared
-      # definition" is a different kind of failure from an ordinary test going red.
+      # Its own step, so the log says plainly which thing broke: "the Swift core stopped agreeing
+      # with the shared definition" is a different failure from an ordinary test going red.
       - name: Conformance
         run: swift test --package-path Packages/BupsyKit --filter Conformance
 
-  # Compiles the app itself, which nothing else here did.
-  #
-  # Added after adding one case to an enum in BupsyKit broke two exhaustive switches in the app
-  # and CI stayed green through all of it: every job built the package, none built the thing
-  # people actually run. A UI that does not compile is not a smaller problem than a failing test.
-  #
-  # The project file is generated, so it is regenerated here rather than committed — xcodegen
-  # enumerates sources at generation time, and a stale checked-in project silently omits new files.
-  app:
-    name: The app compiles
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
       - name: Install xcodegen
         run: brew install xcodegen
-      - name: Generate the project
-        run: xcodegen generate
-      - name: Build
+
+      - name: Build the app
         run: |
           set -o pipefail
+          xcodegen generate
           xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac \
             -configuration Debug -destination 'platform=macOS' \
-            CODE_SIGNING_ALLOWED=NO build
+            CODE_SIGNING_ALLOWED=NO build | tail -20
 
-      # Every merge to main produces a DMG anyone with access can download from the run's
-      # Artifacts — so "does the current build work?" is answered by installing it, not by
-      # waiting for a release. Unsigned: these are for testing, releases are for people.
+      # Only on a manual run: a dev DMG anyone with access can download from the run's Artifacts.
       - name: Package a DMG
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'workflow_dispatch'
         run: ./scripts/package.sh "0.0.0-dev.${GITHUB_SHA::7}"
 
       - name: Upload the DMG
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: Bupsy-${{ github.sha }}
@@ -132,6 +130,8 @@ jobs:
   portable:
     name: Core builds without Apple frameworks
     runs-on: ubuntu-latest
+    # Informational, and it always stops at GRDB, so it runs only when asked for.
+    if: github.event_name == 'workflow_dispatch'
     continue-on-error: true   # informational until a port is actually committed to
     steps:
       - uses: actions/checkout@v4
