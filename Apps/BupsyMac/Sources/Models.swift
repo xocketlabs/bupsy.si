@@ -39,6 +39,8 @@ struct Bot: Identifiable, Hashable, Sendable {
     /// A face chosen by hand. nil derives it from the hue.
     var avatarShape: BotShape?
     var avatarColour: Int?
+    /// A short label beside the name — "PA", "Finance". Not instructions; that is the job.
+    var role: String?
 
     /// The shape this bot actually wears, chosen or derived — for anything that compares faces.
     var effectiveShape: BotShape { avatarShape ?? BotFace.derivedShape(forHue: avatarHue) }
@@ -80,6 +82,7 @@ struct Bot: Identifiable, Hashable, Sendable {
         // face rather than failing to load the bot.
         self.avatarShape = record.avatarShape.flatMap(BotShape.init(rawValue:))
         self.avatarColour = record.avatarColour
+        self.role = record.role
     }
 
     func record(sortIndex: Int = 0) -> BotRecord {
@@ -89,7 +92,7 @@ struct Bot: Identifiable, Hashable, Sendable {
             personaPrompt: personaPrompt, workdir: workdir,
             avatarHue: avatarHue, sortIndex: sortIndex, folder: folder, pinned: pinned,
             hidden: hidden, lastReadAt: lastReadAt,
-            avatarShape: avatarShape?.rawValue, avatarColour: avatarColour)
+            avatarShape: avatarShape?.rawValue, avatarColour: avatarColour, role: role)
     }
 }
 

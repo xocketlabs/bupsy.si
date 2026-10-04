@@ -171,6 +171,10 @@ func createBotTool() map[string]any {
 					"type":        "string",
 					"description": "What the bot is for, in a sentence or two. Becomes its standing instructions and its first message from you.",
 				},
+				"role": map[string]any{
+					"type":        "string",
+					"description": "Optional: a one- or two-word tag shown beside its name, e.g. \"Research\".",
+				},
 			},
 			"required": []any{"name", "job"},
 		},
@@ -225,6 +229,7 @@ type callParams struct {
 		Text     string   `json:"text"`
 		Name     string   `json:"name"`
 		Job      string   `json:"job"`
+		Role     string   `json:"role"`
 		Question string   `json:"question"`
 		Options  []string `json:"options"`
 	} `json:"arguments"`
@@ -260,6 +265,7 @@ func call(params json.RawMessage, outbox, sender string) map[string]any {
 		}
 		if err := drop(outbox, map[string]any{
 			"kind": "create_bot", "from": sender, "name": name, "job": job,
+			"role": strings.TrimSpace(args.Role),
 		}); err != nil {
 			return toolError("could not queue the request: " + err.Error())
 		}

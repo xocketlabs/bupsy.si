@@ -354,9 +354,12 @@ struct BotPage: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(bot.name)
-                .font(Theme.Typography.title)
-                .foregroundStyle(palette.foreground)
+            HStack(spacing: Theme.Space.tight) {
+                Text(bot.name)
+                    .font(Theme.Typography.title)
+                    .foregroundStyle(palette.foreground)
+                if let role = bot.role { RoleTag(text: role) }
+            }
             if let job = bot.personaPrompt {
                 Text(job).font(Theme.Typography.body).foregroundStyle(palette.mutedForeground)
             }

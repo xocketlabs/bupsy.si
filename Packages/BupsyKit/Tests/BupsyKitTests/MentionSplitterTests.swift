@@ -23,3 +23,13 @@ struct MentionSplitterTests {
         #expect(MentionSplitter.split("mail me@example.com", names: ["Scout"]) == [.text("mail me@example.com")])
     }
 }
+
+@Suite("Bot roles")
+struct BotRoleStoreTests {
+    @Test("a bot's role tag round-trips through the store")
+    func roleRoundTrips() throws {
+        let store = try Store.inMemory()
+        try store.save(BotRecord(name: "zarya", engine: "claude", role: "PA"))
+        #expect(try store.bots().first?.role == "PA")
+    }
+}

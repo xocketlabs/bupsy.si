@@ -321,6 +321,12 @@ public struct Store: Sendable {
             }
         }
 
+        // A short role shown beside a bot's name — "PA", "Finance". Separate from the job, which is
+        // instructions; this is a label for people scanning the sidebar.
+        migrator.registerMigration("v10-bot-role") { db in
+            try db.alter(table: "bots") { t in t.add(column: "role", .text) }
+        }
+
         return migrator
     }
 
