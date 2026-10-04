@@ -185,6 +185,21 @@
   @media (prefers-reduced-motion: reduce) { .final img { animation: none; } .card, .btn { transition: none; } }
   .final .ctas { justify-content: center; }
 
+  .waitlist { display: flex; flex-wrap: wrap; gap: 10px; max-width: 520px; }
+  .final .waitlist { margin: 0 auto; justify-content: center; }
+  .waitlist input[type=email] {
+    flex: 1 1 240px; min-width: 0; height: 48px; padding: 0 16px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 500 15px var(--ui);
+    outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .waitlist input[type=email]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .waitlist .btn { flex: 0 0 auto; border: 0; cursor: pointer; }
+  .waitlist .btn[disabled] { opacity: .6; cursor: default; transform: none; }
+  .waitlist .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+  .form-msg { flex-basis: 100%; margin: 2px 0 0; min-height: 20px; font-size: 14px; color: var(--muted); }
+  .form-msg.ok { color: var(--accent); font-weight: 600; }
+  .form-msg.err { color: #f87171; }
+  .final .form-msg { text-align: center; }
   footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--faint); font-size: 13px; }
   footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; align-items: center; }
   footer a { text-decoration: none; } footer a:hover { color: var(--fg); }
@@ -197,25 +212,24 @@
     <a class="brand" href="#"><img src="mark.png" alt="">bupsy</a>
     <div class="nav-links">
       <a href="#features">Features</a>
-      <a href="#install">Install</a>
-      <a href="https://github.com/vanshpatelx/bupsy.si">GitHub</a>
+      <a href="#install">How it works</a>
+      <a href="#join">Join</a>
     </div>
   </nav>
 
-  <!-- Every download link points here. Change it in one place if releases move. -->
-  <header class="hero">
+    <header class="hero">
     <div>
-      <span class="eyebrow">Free · Native Mac app · No credits</span>
+      <span class="eyebrow">Coming soon · Native Mac app · No credits</span>
       <h1>Your AI already has a subscription. <span class="grad">Give it a job.</span></h1>
       <p class="lede">A Mac app where your bots live. Each one runs <strong>Claude Code</strong> or <strong>Codex</strong> under your own sign-in — no new account, no credits, no server of ours in the middle.</p>
-      <div class="ctas">
-        <a class="btn btn-primary" href="https://github.com/vanshpatelx/bupsy.si/releases/latest/download/Bupsy.dmg">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.68 0-1.73-.78-2.85-.76-1.47.02-2.82.85-3.58 2.17-1.53 2.65-.39 6.57 1.1 8.72.73 1.05 1.6 2.23 2.73 2.19 1.1-.04 1.51-.71 2.84-.71 1.32 0 1.7.71 2.85.69 1.18-.02 1.92-1.07 2.64-2.13.83-1.22 1.17-2.4 1.19-2.46-.03-.01-2.28-.87-2.29-3.47zM14.2 6.13c.6-.73 1.01-1.75.9-2.76-.87.04-1.92.58-2.54 1.31-.56.65-1.05 1.68-.92 2.67.97.08 1.96-.49 2.56-1.22z"/></svg>
-          Download for Mac
-        </a>
-        <a class="btn btn-quiet" href="#features">See what it does</a>
-      </div>
-      <p class="meta">macOS 14+ · Apple silicon &amp; Intel · Needs Claude Code or Codex signed in</p>
+      <form class="waitlist" data-source="hero" novalidate>
+        <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+        <!-- Left empty by people, filled by bots: anything in it is dropped server-side. -->
+        <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <button class="btn btn-primary" type="submit">Join the waitlist</button>
+        <p class="form-msg" role="status" aria-live="polite"></p>
+      </form>
+      <p class="meta">Early access for macOS 14+ · Apple silicon &amp; Intel · One email when it's ready, nothing else.</p>
     </div>
 
     <!-- Drawn, not a screenshot: a real screenshot would carry someone's real conversations. -->
@@ -286,35 +300,67 @@
 
 <section id="install">
   <div class="wrap">
-    <p class="kicker">Install</p>
+    <p class="kicker">How it works</p>
     <h2>Three steps.</h2>
     <p class="sub">Free. Works with the Claude Code or Codex sign-in you already have.</p>
     <div class="steps">
-      <div class="step"><h3>Download</h3><p>Get <b>Bupsy.dmg</b>, open it, and drag Bupsy into Applications.</p></div>
+      <div class="step"><h3>Get early access</h3><p>Join the waitlist and we'll email you the download when your spot opens.</p></div>
       <div class="step"><h3>Sign in to an engine</h3><p>Install <a href="https://claude.com/claude-code">Claude Code</a> or Codex and sign in. bupsy finds it and never sees the credential.</p></div>
       <div class="step"><h3>Make a bot</h3><p>Press <code>⌘N</code>, give it a name and a job. It starts fully gated and asks before acting.</p></div>
     </div>
-    <!-- Honest about the extra step, rather than leaving people to meet Gatekeeper alone. -->
-    <p class="note"><b>Opening it the first time:</b> this early build isn't notarized by Apple yet, so macOS will say it can't check it. Open <b>System Settings → Privacy &amp; Security</b>, scroll down, and click <b>Open Anyway</b>. Or run <code>xattr -dr com.apple.quarantine /Applications/Bupsy.app</code>. After that it opens normally.</p>
+    <p class="note"><b>No account, no subscription to buy.</b> bupsy runs the Claude Code or Codex you already have. Your email is used for the launch invite and nothing else.</p>
   </div>
 </section>
 
-<div class="wrap final">
+<div class="wrap final" id="join">
   <img src="mark.png" alt="">
   <h2>Give your subscription a job.</h2>
-  <p class="sub" style="margin: 0 auto 28px">Free for macOS 14 and later.</p>
-  <div class="ctas">
-    <a class="btn btn-primary" href="https://github.com/vanshpatelx/bupsy.si/releases/latest/download/Bupsy.dmg">Download for Mac</a>
-    <a class="btn btn-quiet" href="https://github.com/vanshpatelx/bupsy.si">View on GitHub</a>
-  </div>
+  <p class="sub" style="margin: 0 auto 28px">Free for macOS 14 and later. Be first in when it opens.</p>
+  <form class="waitlist" data-source="footer" novalidate>
+    <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+    <!-- Left empty by people, filled by bots: anything in it is dropped server-side. -->
+    <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <button class="btn btn-primary" type="submit">Join the waitlist</button>
+    <p class="form-msg" role="status" aria-live="polite"></p>
+  </form>
 </div>
 
 <footer>
   <div class="wrap">
-    <span>© 2026 Xocket Labs Inc. · <a href="https://github.com/vanshpatelx/bupsy.si/blob/main/LICENSE">Business Source License 1.1</a></span>
+    <span>© 2026 Xocket Labs Inc. · Business Source License 1.1</span>
     <span>Not affiliated with Anthropic or OpenAI.</span>
   </div>
 </footer>
 
+<script>
+  // Posts to the Cloudflare function next to this page; nothing else ever sees the address.
+  document.querySelectorAll('form.waitlist').forEach(function (form) {
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var input = form.querySelector('input[type=email]');
+      var msg = form.querySelector('.form-msg');
+      var button = form.querySelector('button');
+      var email = input.value.trim();
+      msg.className = 'form-msg';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        msg.textContent = 'That doesn\'t look like an email address.';
+        msg.classList.add('err'); input.focus(); return;
+      }
+      button.disabled = true; msg.textContent = 'Adding you…';
+      try {
+        var res = await fetch('/api/waitlist', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, company: form.company.value, source: form.dataset.source })
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.error || 'Something went wrong — please try again.');
+        msg.textContent = data.already ? 'You\'re already on the list — we\'ll be in touch.' : 'You\'re on the list. We\'ll email you when it\'s ready.';
+        msg.classList.add('ok'); input.value = '';
+      } catch (err) {
+        msg.textContent = err.message; msg.classList.add('err');
+      } finally { button.disabled = false; }
+    });
+  });
+</script>
 </body>
 </html>
