@@ -15,13 +15,9 @@ import Foundation
 final class OutboxWatcher {
     /// Where `bupsy-mcp` drops messages. Passed to it by value in the MCP config.
     static var directory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first ?? FileManager.default.temporaryDirectory
-        // Beside the database, under the app's own bundle id, rather than a second folder
-        // called "bupsy" that nothing else uses.
-        return base
-            .appendingPathComponent("si.bupsy", isDirectory: true)
-            .appendingPathComponent("outbox", isDirectory: true)
+        // Beside the database, under the app's own home, rather than a second folder called
+        // "bupsy" that nothing else uses.
+        AppHome.directory.appendingPathComponent("outbox", isDirectory: true)
     }
 
     /// What a bot can ask for. Both are requests: bupsy decides, and asks a person where it must.

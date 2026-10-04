@@ -36,7 +36,7 @@ final class AppModel {
     var machineProblem: String?
     /// Shown once. Stored in UserDefaults rather than the database: it is a preference about the
     /// app, not part of the user's data, and it should not travel with a restored database.
-    var needsOnboarding = !UserDefaults.standard.bool(forKey: "si.bupsy.onboarded")
+    var needsOnboarding = !AppHome.defaults.bool(forKey: "si.bupsy.onboarded")
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?
     /// Whether the database opened at all, which changes what a storage problem means.
@@ -103,13 +103,13 @@ final class AppModel {
     private static let connectorsKey = "si.bupsy.connectors"
 
     private static func loadConnectors() -> [MCPServer] {
-        guard let data = UserDefaults.standard.data(forKey: connectorsKey) else { return [] }
+        guard let data = AppHome.defaults.data(forKey: connectorsKey) else { return [] }
         return (try? JSONDecoder().decode([MCPServer].self, from: data)) ?? []
     }
 
     private func saveConnectors() {
         if let data = try? JSONEncoder().encode(connectors) {
-            UserDefaults.standard.set(data, forKey: Self.connectorsKey)
+            AppHome.defaults.set(data, forKey: Self.connectorsKey)
         }
     }
 
@@ -123,7 +123,7 @@ final class AppModel {
         // Removing Executor is a decision, and it must stick: it is never switched back on behind
         // the person's back. Adding it again from its card clears this.
         if server.name == Executor.name {
-            UserDefaults.standard.set(true, forKey: Self.executorRemovedKey)
+            AppHome.defaults.set(true, forKey: Self.executorRemovedKey)
         }
         connectors.removeAll { $0.id == server.id }
         // Leave no bot allowing a connector that no longer exists.
@@ -152,14 +152,14 @@ final class AppModel {
         if installed { executorInstalling = false }
         if Executor.shouldAutoAdd(
             installed: installed, existing: connectors,
-            removedByPerson: UserDefaults.standard.bool(forKey: Self.executorRemovedKey)) {
+            removedByPerson: AppHome.defaults.bool(forKey: Self.executorRemovedKey)) {
             addConnector(Executor.server)
         }
     }
 
     /// Turns Executor back on after the person removed it.
     func addExecutor() {
-        UserDefaults.standard.removeObject(forKey: Self.executorRemovedKey)
+        AppHome.defaults.removeObject(forKey: Self.executorRemovedKey)
         addConnector(Executor.server)
     }
 
@@ -224,7 +224,7 @@ final class AppModel {
     // someone did not knowingly sign up with would be worse than any bug in here.
 
     func completeOnboarding() {
-        UserDefaults.standard.set(true, forKey: "si.bupsy.onboarded")
+        AppHome.defaults.set(true, forKey: "si.bupsy.onboarded")
         needsOnboarding = false
     }
 
@@ -417,6 +417,8 @@ final class AppModel {
     /// truth is far easier to reason about than a set of incremental edits, and launchd is a
     /// user-visible resource we should leave tidy.
     private func syncLaunchAgent() {
+        // A throwaway home must not install, change or remove the real background scheduler.
+        guard !AppHome.isSandboxed else { return }
         let objectiveRoutines = objectives.map {
             Routine(id: $0.id, botID: $0.botID, name: "check", prompt: "",
                     cron: $0.checkCron, enabled: $0.enabled, tier: $0.tier)
@@ -1542,11 +1544,7 @@ final class AppModel {
     }
 
     static var workspacesDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first ?? FileManager.default.temporaryDirectory
-        return base
-            .appendingPathComponent("si.bupsy", isDirectory: true)
-            .appendingPathComponent("workspaces", isDirectory: true)
+        AppHome.directory.appendingPathComponent("workspaces", isDirectory: true)
     }
 
     // MARK: - Usage

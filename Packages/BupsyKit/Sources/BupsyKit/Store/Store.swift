@@ -10,12 +10,7 @@ public struct Store: Sendable {
 
     /// `~/Library/Application Support/si.bupsy/bupsy.sqlite`
     public static func defaultURL() throws -> URL {
-        let support = try FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: true)
-        let directory = support.appendingPathComponent("si.bupsy", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("bupsy.sqlite")
+        AppHome.directory.appendingPathComponent("bupsy.sqlite")
     }
 
     public init(url: URL) throws {
