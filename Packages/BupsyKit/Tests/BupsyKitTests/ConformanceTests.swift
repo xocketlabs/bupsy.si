@@ -405,3 +405,15 @@ struct ConformanceTests {
         #expect(try Self.cases(ofKind: "gate").count >= 1)
     }
 }
+
+@Suite("Apps from the engine account")
+struct OnlyGivenAppsTests {
+    @Test("a bot kept to bupsy's apps runs Claude with --strict-mcp-config")
+    func strictFlag() {
+        let plain = ClaudeAdapter().invocation(for: RunRequest(prompt: "hi", mcpConfigPaths: ["/x.json"]))
+        #expect(!plain.arguments.contains("--strict-mcp-config"))
+        let kept = ClaudeAdapter().invocation(for: RunRequest(prompt: "hi", mcpConfigPaths: ["/x.json"], onlyGivenApps: true))
+        #expect(kept.arguments.contains("--strict-mcp-config"))
+        #expect(kept.arguments.contains("/x.json"))
+    }
+}

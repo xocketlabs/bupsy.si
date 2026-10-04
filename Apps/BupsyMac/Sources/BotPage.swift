@@ -332,6 +332,24 @@ struct BotPage: View {
                         }
                     }
                 }
+                // Claude only: Codex has no way to leave out the apps on its account.
+                if bot.engine == .claude {
+                    SettingRow(label: "Apps", value: bot.onlyBupsyApps ? "Only bupsy's" : "All of yours",
+                               icon: "puzzlepiece.extension") {
+                        Button {
+                            model.setOnlyBupsyApps(bot, false)
+                        } label: {
+                            Label("Everything on your Claude account",
+                                  systemImage: bot.onlyBupsyApps ? "" : "checkmark")
+                        }
+                        Button {
+                            model.setOnlyBupsyApps(bot, true)
+                        } label: {
+                            Label("Only apps added in bupsy",
+                                  systemImage: bot.onlyBupsyApps ? "checkmark" : "")
+                        }
+                    }
+                }
                 SettingRow(label: "Folder in sidebar", value: bot.folder ?? "None",
                            icon: "tray.2") {
                     ForEach(model.folders, id: \.self) { folder in

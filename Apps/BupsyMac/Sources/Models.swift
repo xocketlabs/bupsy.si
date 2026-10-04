@@ -41,6 +41,8 @@ struct Bot: Identifiable, Hashable, Sendable {
     var avatarColour: Int?
     /// A short label beside the name — "PA", "Finance". Not instructions; that is the job.
     var role: String?
+    /// Kept to apps added in bupsy, without the ones on the person's Claude account.
+    var onlyBupsyApps = false
 
     /// The shape this bot actually wears, chosen or derived — for anything that compares faces.
     var effectiveShape: BotShape { avatarShape ?? BotFace.derivedShape(forHue: avatarHue) }
@@ -83,6 +85,7 @@ struct Bot: Identifiable, Hashable, Sendable {
         self.avatarShape = record.avatarShape.flatMap(BotShape.init(rawValue:))
         self.avatarColour = record.avatarColour
         self.role = record.role
+        self.onlyBupsyApps = record.onlyBupsyApps
     }
 
     func record(sortIndex: Int = 0) -> BotRecord {
@@ -92,7 +95,8 @@ struct Bot: Identifiable, Hashable, Sendable {
             personaPrompt: personaPrompt, workdir: workdir,
             avatarHue: avatarHue, sortIndex: sortIndex, folder: folder, pinned: pinned,
             hidden: hidden, lastReadAt: lastReadAt,
-            avatarShape: avatarShape?.rawValue, avatarColour: avatarColour, role: role)
+            avatarShape: avatarShape?.rawValue, avatarColour: avatarColour, role: role,
+            onlyBupsyApps: onlyBupsyApps)
     }
 }
 

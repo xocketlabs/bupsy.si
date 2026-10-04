@@ -115,6 +115,11 @@ public struct ClaudeAdapter: EngineAdapter {
         for path in request.mcpConfigPaths {
             arguments += ["--mcp-config", path]
         }
+        // Without this a bot also gets every app connected to the person's Claude account —
+        // their mail, their Slack — whether or not they meant this bot to have them.
+        if request.onlyGivenApps {
+            arguments.append("--strict-mcp-config")
+        }
         if let settings = request.gateSettingsPath {
             // Command-line settings sit above project and user settings in precedence, and —
             // unlike project `.claude/settings.json` hooks, which do not run in `-p` sessions —
