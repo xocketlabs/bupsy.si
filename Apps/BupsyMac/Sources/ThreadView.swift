@@ -547,7 +547,8 @@ struct Composer: View {
             .help("Attach files — or drop them on the message box")
             .padding(.bottom, 5)
 
-            TextField("Message \(bot.name)", text: $draft, axis: .vertical)
+            TextField(isRunning ? "Add more — \(bot.name) reads it when done" : "Message \(bot.name)",
+                      text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Theme.Typography.body)
                 .lineLimit(1...8)
