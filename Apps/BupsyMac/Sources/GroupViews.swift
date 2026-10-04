@@ -143,7 +143,11 @@ struct GroupPage: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Space.step) {
                         if thread.messages.isEmpty {
+                            // Centred in the pane, like an empty one-to-one thread, rather than
+                            // sitting on the composer at the bottom.
                             empty
+                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: geometry.size.height * 0.7, alignment: .center)
                         }
                         ForEach(Array(thread.messages.enumerated()), id: \.element.id) { index, message in
                             if index == 0 || !Calendar.current.isDate(
