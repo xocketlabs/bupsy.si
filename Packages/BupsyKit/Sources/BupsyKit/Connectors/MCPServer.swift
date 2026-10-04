@@ -107,11 +107,12 @@ public enum MCPConfig {
     /// is one. Attribution in particular has to be a value — a server that could be told which
     /// bot it speaks for by the surrounding environment could be made to lie about who sent a
     /// message, and attribution is the only thing making an inter-bot message auditable.
-    public static func bupsyServer(binary: String, outbox: String, botID: String) -> [String: Any] {
-        [
-            "command": binary,
-            "env": ["BUPSY_OUTBOX": outbox, "BUPSY_BOT_ID": botID],
-        ]
+    /// `roster` is the file `list_bots` reads — names and jobs, the same things the sidebar shows.
+    public static func bupsyServer(binary: String, outbox: String, botID: String,
+                                   roster: String? = nil) -> [String: Any] {
+        var env = ["BUPSY_OUTBOX": outbox, "BUPSY_BOT_ID": botID]
+        if let roster { env["BUPSY_ROSTER"] = roster }
+        return ["command": binary, "env": env]
     }
 
     public static func document(for servers: [MCPServer],

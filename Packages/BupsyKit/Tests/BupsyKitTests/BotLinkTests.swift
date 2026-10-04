@@ -133,3 +133,35 @@ struct ToolNameTests {
         #expect(reason.hasSuffix("."))
     }
 }
+
+@Suite("bupsy's own tools")
+struct BupsyOwnToolsPolicyTests {
+    @Test("are not gated twice — bupsy asks about their effects itself")
+    func bupsyToolsSkipTheGate() {
+        for tool in ["mcp__bupsy__create_bot", "mcp__bupsy__message_bot", "mcp__bupsy__list_bots"] {
+            for autonomy in [Autonomy.ask, .allowlist, .trusted] {
+                if case .ask = AutonomyPolicy.decide(tool: tool, autonomy: autonomy) {
+                    Issue.record("\(tool) asked under \(autonomy)")
+                }
+            }
+        }
+        // Another server's tools still ask.
+        if case .allow = AutonomyPolicy.decide(tool: "mcp__bupsyx__send", autonomy: .trusted) {
+            Issue.record("a lookalike server was let through")
+        }
+    }
+}
+
+@Suite("Engine plumbing")
+struct EnginePlumbingPolicyTests {
+    @Test("ToolSearch never asks, even on a bot that asks before everything")
+    func toolSearchIsNotAnAction() {
+        if case .ask = AutonomyPolicy.decide(tool: "ToolSearch", autonomy: .ask) {
+            Issue.record("ToolSearch asked")
+        }
+        // A real action on the same bot still asks.
+        if case .allow = AutonomyPolicy.decide(tool: "Bash", autonomy: .ask) {
+            Issue.record("Bash was let through")
+        }
+    }
+}

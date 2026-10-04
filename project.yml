@@ -55,3 +55,28 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGNING_ALLOWED: NO
+        # The build phase below runs Go from the repo and writes into the app bundle, which
+        # Xcode's script sandbox forbids.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      # bupsy-mcp — the tool server that lets bots message, list and create other bots — is Go,
+      # and the app looks for it inside its own bundle. Nothing used to put it there, so every
+      # real build ran without it and those tools silently did not exist. Built universal, like
+      # the app, and never vendored as a prebuilt binary: what ships is what this commit says.
+      - name: Build bupsy-mcp
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          GO="$(command -v go || true)"
+          for candidate in /opt/homebrew/bin/go /usr/local/go/bin/go /usr/local/bin/go; do
+            [ -z "$GO" ] && [ -x "$candidate" ] && GO="$candidate"
+          done
+          if [ -z "$GO" ]; then
+            echo "warning: Go not found — this build cannot let bots message or create other bots. Install Go (brew install go)."
+            exit 0
+          fi
+          cd "$SRCROOT/Tools/bupsy-run"
+          OUT="$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH"
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$GO" build -trimpath -o "$DERIVED_FILE_DIR/bupsy-mcp-arm64" ./cmd/bupsy-mcp
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 "$GO" build -trimpath -o "$DERIVED_FILE_DIR/bupsy-mcp-amd64" ./cmd/bupsy-mcp
+          lipo -create "$DERIVED_FILE_DIR/bupsy-mcp-arm64" "$DERIVED_FILE_DIR/bupsy-mcp-amd64" -output "$OUT/bupsy-mcp"

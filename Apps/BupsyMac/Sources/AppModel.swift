@@ -718,13 +718,21 @@ final class AppModel {
     @discardableResult
     func startRun(
         _ prompt: String, bot: Bot, thread: Thread, groupID: String?,
-        onFinish: (@MainActor @Sendable (String) -> Void)?
+        onFinish: (@MainActor @Sendable (String) -> Void)?,
+        from sender: Bot? = nil, shown: String? = nil
     ) -> Bool {
         // One run per bot at a time, wherever it is. A bot cannot answer in a group while it is
         // still working on something you asked it directly.
         guard running[bot.id] == nil, let adapter = adapters[bot.engine] else { return false }
 
-        thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
+        // A run another bot started reads as that bot's message, showing what it actually wrote
+        // (`shown`) rather than bupsy's framing around it — never as something the person said.
+        if let sender {
+            thread.entries.append(TranscriptEntry(kind: .messageFrom(
+                botID: sender.id.rawValue, botName: sender.name, text: shown ?? prompt)))
+        } else {
+            thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
+        }
         thread.isRunning = true
         activeThread[bot.id] = thread
 
@@ -736,7 +744,12 @@ final class AppModel {
             groupID: groupID
         )
         try? store?.save(run)
-        persist(.text(prompt), run: run.id, seq: 0, asUserMessage: true)
+        if let sender {
+            let joined = [sender.id.rawValue, sender.name, shown ?? prompt].joined(separator: "\u{1}")
+            persist(.text(joined), run: run.id, seq: 0, asMessageFrom: true)
+        } else {
+            persist(.text(prompt), run: run.id, seq: 0, asUserMessage: true)
+        }
 
         // A fresh gate per run: the hook script and settings are written to a temporary
         // directory, and the engine is told about them with `--settings`. An engine started
@@ -760,7 +773,8 @@ final class AppModel {
                     MCPConfig.bupsyServer(
                         binary: $0,
                         outbox: OutboxWatcher.directory.path,
-                        botID: bot.id.rawValue)
+                        botID: bot.id.rawValue,
+                        roster: writeRoster(excluding: bot))
                 }
             )).flatMap { $0 }.map { [$0] } ?? [],
             gateSettingsPath: gateSettings
@@ -1174,8 +1188,13 @@ final class AppModel {
     /// Starts listening for messages bots want to send each other.
     func startOutbox() {
         guard outbox == nil else { return }
-        let watcher = OutboxWatcher { [weak self] from, toName, text in
-            self?.receive(from: from, toName: toName, text: text)
+        let watcher = OutboxWatcher { [weak self] request in
+            switch request {
+            case .message(let from, let toName, let text):
+                self?.receive(from: from, toName: toName, text: text)
+            case .createBot(let from, let name, let job):
+                self?.receiveCreation(from: from, name: name, job: job)
+            }
         }
         watcher.start()
         outbox = watcher
@@ -1198,6 +1217,84 @@ final class AppModel {
             return
         }
         deliver(from: sender, to: recipient, text: text)
+    }
+
+    // MARK: - Bots creating bots
+
+    /// A bot asking for a new bot, waiting on a person.
+    struct PendingCreation: Identifiable, Equatable {
+        let id = UUID()
+        let from: Bot
+        let name: String
+        let job: String
+    }
+
+    /// Held in memory for the same reason introductions are: an unanswered request is a live
+    /// question, and one that outlived a restart would be asked with nobody around who asked it.
+    var pendingCreations: [PendingCreation] = []
+
+    private func receiveCreation(from senderID: String, name: String, job: String) {
+        guard let sender = bots.first(where: { $0.id.rawValue == senderID }) else { return }
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Said in the asking bot's thread rather than asked of the person: there is nothing to
+        // decide when the name is taken, and the bot should message the existing one instead.
+        guard !isNameTaken(name) else {
+            thread(for: sender.id).entries.append(TranscriptEntry(kind: .failure(EngineFailure(
+                kind: .unknown,
+                message: "\(sender.name) asked for a bot called “\(name)”, but there already is one."))))
+            return
+        }
+        guard !pendingCreations.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })
+        else { return }
+        pendingCreations.append(PendingCreation(from: sender, name: name, job: job))
+    }
+
+    /// Creates the bot if the person said yes.
+    ///
+    /// Every creation asks — unlike messaging, nothing is remembered — because each new bot is a
+    /// standing thing on the person's subscription, and they should see every one arrive. Once
+    /// made, the creator and the new bot may message each other without a second question: the
+    /// person just approved the two of them working together.
+    func decideCreation(_ creation: PendingCreation, allow: Bool) {
+        pendingCreations.removeAll { $0.id == creation.id }
+        guard allow else {
+            thread(for: creation.from.id).entries.append(TranscriptEntry(kind: .failure(EngineFailure(
+                kind: .unknown, message: "You said no to creating “\(creation.name)”."))))
+            return
+        }
+        let selected = selectedBotID
+        addBot(name: creation.name, engine: creation.from.engine, job: creation.job,
+               folder: creation.from.folder)
+        // addBot opens the new bot; a request from the background should not pull you away.
+        selectedBotID = selected
+        guard let created = bots.first(where: { $0.name == creation.name }) else { return }
+
+        for (from, to) in [(creation.from, created), (created, creation.from)] {
+            links.decide(from: from.id.rawValue, to: to.id.rawValue, allowed: true)
+            if let link = links.decisions.last { try? store?.save(link) }
+        }
+        // Its first run is the creator's brief, and it genuinely introduces itself — no hello
+        // written by bupsy and attributed to a bot that never said it.
+        _ = startRun(
+            creation.job + "\n\n(You were just created by \(creation.from.name) for the job above. "
+                + "Introduce yourself to the person in one or two sentences, then say hello to "
+                + "\(creation.from.name) with the message_bot tool. Don't start the work until asked.)",
+            bot: created, thread: thread(for: created.id), groupID: nil, onFinish: nil,
+            from: creation.from, shown: creation.job)
+    }
+
+    /// Writes the roster `list_bots` reads, leaving out the bot that is asking.
+    ///
+    /// Names and jobs only — what the sidebar already shows. Nothing from any conversation.
+    private func writeRoster(excluding bot: Bot) -> String? {
+        let entries = bots.filter { $0.id != bot.id && !$0.hidden }.map {
+            ["name": $0.name, "job": $0.personaPrompt ?? ""]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return nil }
+        let url = OutboxWatcher.rosterFile
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return (try? data.write(to: url, options: .atomic)) != nil ? url.path : nil
     }
 
     /// A message one bot wants to send another, waiting on a person.

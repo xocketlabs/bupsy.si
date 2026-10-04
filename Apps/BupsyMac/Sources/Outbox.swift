@@ -24,11 +24,23 @@ final class OutboxWatcher {
             .appendingPathComponent("outbox", isDirectory: true)
     }
 
-    private var timer: Timer?
-    private let onMessage: (_ from: String, _ toName: String, _ text: String) -> Void
+    /// What a bot can ask for. Both are requests: bupsy decides, and asks a person where it must.
+    enum Request {
+        case message(from: String, toName: String, text: String)
+        case createBot(from: String, name: String, job: String)
+    }
 
-    init(onMessage: @escaping (_ from: String, _ toName: String, _ text: String) -> Void) {
-        self.onMessage = onMessage
+    /// The roster `list_bots` reads, beside the outbox rather than in it — the outbox is drained
+    /// and emptied every second.
+    static var rosterFile: URL {
+        directory.deletingLastPathComponent().appendingPathComponent("roster.json")
+    }
+
+    private var timer: Timer?
+    private let onRequest: (Request) -> Void
+
+    init(onRequest: @escaping (Request) -> Void) {
+        self.onRequest = onRequest
     }
 
     func start() {
@@ -58,19 +70,22 @@ final class OutboxWatcher {
         }) {
             defer { try? FileManager.default.removeItem(at: file) }
 
+            // Deleted rather than retried when unreadable. A file we cannot read will not become
+            // readable, and leaving it here would mean parsing it again every second forever.
             guard let data = try? Data(contentsOf: file),
                   let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let from = payload["from"] as? String,
-                  let to = payload["to"] as? String,
-                  let text = payload["text"] as? String,
-                  !text.isEmpty
-            else {
-                // Deleted rather than retried. A file we cannot read will not become readable,
-                // and leaving it here would mean parsing it again every second forever.
-                continue
-            }
+                  let from = payload["from"] as? String
+            else { continue }
 
-            onMessage(from, to, text)
+            if payload["kind"] as? String == "create_bot" {
+                guard let name = payload["name"] as? String, !name.isEmpty,
+                      let job = payload["job"] as? String, !job.isEmpty else { continue }
+                onRequest(.createBot(from: from, name: name, job: job))
+            } else {
+                guard let to = payload["to"] as? String,
+                      let text = payload["text"] as? String, !text.isEmpty else { continue }
+                onRequest(.message(from: from, toName: to, text: text))
+            }
         }
     }
 }
