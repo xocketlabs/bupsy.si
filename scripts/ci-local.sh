@@ -50,6 +50,10 @@ if [ "${1:-}" != "--quick" ]; then
   fi
   grep -E "warning: Go not found" "$log" || true
   rm -f "$log"
+  # A throwaway test build must not appear as another "Bupsy" in Spotlight, Launchpad or Open With.
+  touch build/.metadata_never_index
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+    -u build/ci-local/Build/Products/Debug/Bupsy.app 2>/dev/null || true
   echo "BUILD SUCCEEDED"
 fi
 
