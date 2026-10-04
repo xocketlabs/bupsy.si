@@ -1478,7 +1478,7 @@ final class AppModel {
 
         switch links.decision(from: sender.id.rawValue, to: recipient.id.rawValue) {
         case .some(true):
-            append(message: text, from: sender, to: recipient)
+            handOver(text, from: sender, to: recipient)
         case .some(false):
             // Dropped rather than retried. A refused link must not become a loop, and the sender
             // learning it was refused is not information it needs — the person already decided.
@@ -1496,8 +1496,44 @@ final class AppModel {
         if let link = links.decisions.last { try? store?.save(link) }
 
         if allow {
-            append(message: introduction.text, from: introduction.from, to: introduction.to)
+            handOver(introduction.text, from: introduction.from, to: introduction.to)
         }
+    }
+
+    /// When each bot last started work because another bot messaged it, per ordered pair.
+    private var autoRuns: [String: [Date]] = [:]
+
+    /// Automatic turns one bot may set off in another within ten minutes.
+    ///
+    /// Without a ceiling two bots that each end by messaging the other would talk forever, on the
+    /// person's own subscription, with nobody watching. Five is plenty for a real hand-off and few
+    /// enough that a loop stops quickly; the message is still delivered, just not acted on.
+    static let autoRunsPerPair = 5
+
+    /// Delivers a message and, if the recipient is free, has it act on it.
+    ///
+    /// A message that only sat in the recipient's thread until the person happened to open it
+    /// meant bots could not hand work to each other at all. Now an allowed message starts the
+    /// recipient working, told plainly who it is from — unless it is already busy, or this pair
+    /// has hit its ceiling, in which case the message waits in its thread for the person.
+    private func handOver(_ text: String, from sender: Bot, to recipient: Bot) {
+        let key = "\(sender.id.rawValue)>\(recipient.id.rawValue)"
+        let recent = (autoRuns[key] ?? []).filter { $0 > Date().addingTimeInterval(-600) }
+        guard running[recipient.id] == nil, recent.count < Self.autoRunsPerPair else {
+            append(message: text, from: sender, to: recipient)
+            if recent.count >= Self.autoRunsPerPair {
+                thread(for: recipient.id).entries.append(TranscriptEntry(kind: .note(
+                    "\(sender.name) and \(recipient.name) have handed work back and forth a lot — "
+                        + "this one is waiting for you.")))
+            }
+            return
+        }
+        autoRuns[key] = recent + [Date()]
+        let prompt = "Message from \(sender.name), another bot on this roster:\n\n\(text)\n\n"
+            + "Act on it if it's within your job. If \(sender.name) needs an answer, reply with the "
+            + "message_bot tool; otherwise just say what you did."
+        _ = startRun(prompt, bot: recipient, thread: thread(for: recipient.id), groupID: nil,
+                     onFinish: nil, from: sender, shown: text)
     }
 
     /// Every decision made so far. The rules themselves live in `BotLinks`, in the package,
