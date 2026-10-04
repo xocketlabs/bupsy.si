@@ -90,6 +90,30 @@ struct BupsyMark: View {
             }
         }
 
+        // Cheeks and a small smile, only where there are pixels enough to read them: at sidebar
+        // size they turn into smudges, at icon size they are what makes it a character.
+        if unit >= 96 {
+            for x in [0.27, 0.70] {
+                let cheek = CGRect(x: body.minX + body.width * x - unit * 0.05,
+                                   y: body.minY + body.height * 0.62 - unit * 0.025,
+                                   width: unit * 0.1, height: unit * 0.05)
+                context.fill(Ellipse().path(in: cheek.insetBy(dx: -unit * 0.02, dy: -unit * 0.012)),
+                             with: .radialGradient(
+                                Gradient(colors: [Color(red: 1, green: 0.45, blue: 0.7).opacity(0.75),
+                                                  Color(red: 1, green: 0.45, blue: 0.7).opacity(0)]),
+                                center: CGPoint(x: cheek.midX, y: cheek.midY),
+                                startRadius: 0, endRadius: unit * 0.07))
+            }
+            var smile = Path()
+            let mouth = CGPoint(x: body.minX + body.width * 0.47 + unit * 0.02,
+                                y: body.minY + body.height * 0.63)
+            smile.move(to: CGPoint(x: mouth.x - unit * 0.035, y: mouth.y))
+            smile.addQuadCurve(to: CGPoint(x: mouth.x + unit * 0.035, y: mouth.y),
+                               control: CGPoint(x: mouth.x, y: mouth.y + unit * 0.04))
+            context.stroke(smile, with: .color(ink),
+                           style: StrokeStyle(lineWidth: unit * 0.018, lineCap: .round))
+        }
+
         // The companion bubble, rising off the top right. It bobs very gently when alive.
         let bob = alive ? CGFloat(sin(time * 1.6)) * unit * 0.012 : 0
         let small = CGRect(x: unit * 0.68, y: unit * 0.06 + bob, width: unit * 0.24, height: unit * 0.24)
@@ -108,29 +132,38 @@ struct BupsyMark: View {
 /// The app icon: the mark on a dark, softly lit tile in macOS's own icon proportions.
 ///
 /// Drawn at 1024 and scaled down for every slot, so the Dock, Finder and the menu bar all show the
-/// same character the sidebar does.
+/// same character the sidebar does. The character fills most of the tile: at Dock size anything
+/// smaller reads as a dot on a dark square.
 struct BupsyAppIcon: View {
     var body: some View {
         ZStack {
             // macOS icons sit on a rounded tile inset from the canvas edge, not full bleed.
             RoundedRectangle(cornerRadius: 185, style: .continuous)
                 .fill(LinearGradient(
-                    colors: [Color(red: 0.16, green: 0.14, blue: 0.21),
-                             Color(red: 0.07, green: 0.07, blue: 0.09)],
+                    colors: [Color(red: 0.22, green: 0.16, blue: 0.33),
+                             Color(red: 0.08, green: 0.07, blue: 0.12)],
                     startPoint: .top, endPoint: .bottom))
                 .overlay(
                     RoundedRectangle(cornerRadius: 185, style: .continuous)
-                        .strokeBorder(.white.opacity(0.08), lineWidth: 4))
+                        .strokeBorder(LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.04)],
+                                                     startPoint: .top, endPoint: .bottom),
+                                      lineWidth: 4))
                 .frame(width: 824, height: 824)
                 .shadow(color: .black.opacity(0.35), radius: 18, y: 10)
-            // A faint glow behind the character, in its own colours.
+            // A glow behind the character, in its own colours.
             Circle()
                 .fill(RadialGradient(
-                    colors: [BupsyMark.violet.opacity(0.45), .clear],
-                    center: .center, startRadius: 0, endRadius: 330))
-                .frame(width: 660, height: 660)
-            BupsyMark(size: 560)
-                .offset(x: 10, y: 6)
+                    colors: [BupsyMark.pink.opacity(0.35), BupsyMark.violet.opacity(0.2), .clear],
+                    center: .center, startRadius: 0, endRadius: 400))
+                .frame(width: 800, height: 800)
+            // Its shadow on the floor of the tile, so it sits rather than floats.
+            Ellipse()
+                .fill(RadialGradient(colors: [.black.opacity(0.45), .clear],
+                                     center: .center, startRadius: 0, endRadius: 240))
+                .frame(width: 480, height: 90)
+                .offset(x: -18, y: 300)
+            BupsyMark(size: 690)
+                .offset(x: 6, y: -2)
         }
         .frame(width: 1024, height: 1024)
     }
