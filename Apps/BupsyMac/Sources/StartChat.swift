@@ -291,6 +291,7 @@ struct CreationSheet: View {
                 Text(creation.name)
                     .font(Theme.Typography.title)
                     .foregroundStyle(palette.foreground)
+                if let role = creation.role { RoleTag(text: role) }
                 Spacer(minLength: 0)
             }
             Field(label: "Its job") {

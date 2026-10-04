@@ -1192,8 +1192,8 @@ final class AppModel {
             switch request {
             case .message(let from, let toName, let text):
                 self?.receive(from: from, toName: toName, text: text)
-            case .createBot(let from, let name, let job):
-                self?.receiveCreation(from: from, name: name, job: job)
+            case .createBot(let from, let name, let job, let role):
+                self?.receiveCreation(from: from, name: name, job: job, role: role)
             case .question(let from, let question, let options):
                 self?.receiveQuestion(from: from, question: question, options: options)
             }
@@ -1247,13 +1247,14 @@ final class AppModel {
         let from: Bot
         let name: String
         let job: String
+        var role: String?
     }
 
     /// Held in memory for the same reason introductions are: an unanswered request is a live
     /// question, and one that outlived a restart would be asked with nobody around who asked it.
     var pendingCreations: [PendingCreation] = []
 
-    private func receiveCreation(from senderID: String, name: String, job: String) {
+    private func receiveCreation(from senderID: String, name: String, job: String, role: String?) {
         guard let sender = bots.first(where: { $0.id.rawValue == senderID }) else { return }
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         // Said in the asking bot's thread rather than asked of the person: there is nothing to
@@ -1266,7 +1267,7 @@ final class AppModel {
         }
         guard !pendingCreations.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })
         else { return }
-        pendingCreations.append(PendingCreation(from: sender, name: name, job: job))
+        pendingCreations.append(PendingCreation(from: sender, name: name, job: job, role: role))
     }
 
     /// Creates the bot if the person said yes.
@@ -1287,7 +1288,11 @@ final class AppModel {
                folder: creation.from.folder)
         // addBot opens the new bot; a request from the background should not pull you away.
         selectedBotID = selected
-        guard let created = bots.first(where: { $0.name == creation.name }) else { return }
+        guard var created = bots.first(where: { $0.name == creation.name }) else { return }
+        if let role = creation.role {
+            setRole(created, role)
+            created = bots.first(where: { $0.id == created.id }) ?? created
+        }
 
         for (from, to) in [(creation.from, created), (created, creation.from)] {
             links.decide(from: from.id.rawValue, to: to.id.rawValue, allowed: true)
@@ -1520,6 +1525,15 @@ final class AppModel {
     }
 
     /// Edits what a bot is for. Takes effect on the next thing you say to it, not retroactively.
+    /// Sets the label beside a bot's name. Kept to a couple of words: it is a tag, and a long one
+    /// pushes the name itself out of the sidebar.
+    func setRole(_ bot: Bot, _ role: String?) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        let trimmed = String((role ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(16))
+        bots[index].role = trimmed.isEmpty ? nil : trimmed
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
     func setJob(_ bot: Bot, _ job: String) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         let trimmed = job.trimmingCharacters(in: .whitespaces)

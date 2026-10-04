@@ -27,7 +27,7 @@ final class OutboxWatcher {
     /// What a bot can ask for. Both are requests: bupsy decides, and asks a person where it must.
     enum Request {
         case message(from: String, toName: String, text: String)
-        case createBot(from: String, name: String, job: String)
+        case createBot(from: String, name: String, job: String, role: String?)
         case question(from: String, question: String, options: [String])
     }
 
@@ -86,7 +86,8 @@ final class OutboxWatcher {
             } else if payload["kind"] as? String == "create_bot" {
                 guard let name = payload["name"] as? String, !name.isEmpty,
                       let job = payload["job"] as? String, !job.isEmpty else { continue }
-                onRequest(.createBot(from: from, name: name, job: job))
+                let role = (payload["role"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                onRequest(.createBot(from: from, name: name, job: job, role: role))
             } else {
                 guard let to = payload["to"] as? String,
                       let text = payload["text"] as? String, !text.isEmpty else { continue }

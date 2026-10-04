@@ -488,6 +488,8 @@ struct BotRow: View {
                             .fontWeight(unread ? .semibold : .medium)
                             .foregroundStyle(palette.foreground)
                             .lineLimit(1)
+                            .layoutPriority(1)
+                        if let role = bot.role { RoleTag(text: role) }
                         Spacer(minLength: 0)
                         if bot.pinned {
                             Image(systemName: "pin.fill")
@@ -678,6 +680,7 @@ struct RenameBotSheet: View {
     let bot: Bot
     @State private var name = ""
     @State private var job = ""
+    @State private var role = ""
     @State private var shape = BotShape.circle
     @State private var colour = 0
     /// Only a face someone actually changed is saved as a choice. Saving every bot's derived face
@@ -707,6 +710,11 @@ struct RenameBotSheet: View {
                 taken: Set(model.bots.filter { $0.id != bot.id }.map(\.effectiveShape)),
                 onChange: { faceChanged = true })
 
+            Field(label: "Role tag", hint: "A word or two shown beside its name, like PA or Finance.") {
+                TextField("", text: $role, prompt: Text("Optional"))
+                    .textFieldStyle(BupsyFieldStyle())
+            }
+
             Field(label: "What's its job?",
                   hint: "Takes effect on the next thing you say — it does not rewrite the thread.") {
                 TextField("", text: $job,
@@ -728,6 +736,7 @@ struct RenameBotSheet: View {
             let current = model.bots.first { $0.id == bot.id } ?? bot
             name = current.name
             job = current.personaPrompt ?? ""
+            role = current.role ?? ""
             shape = current.effectiveShape
             colour = current.avatarColour ?? BotFace.derivedColour(forHue: current.avatarHue)
         }
@@ -736,7 +745,25 @@ struct RenameBotSheet: View {
     private func commit() {
         model.rename(bot, to: name)
         model.setJob(bot, job)
+        model.setRole(bot, role)
         if faceChanged { model.setAvatar(bot, shape: shape, colour: colour) }
         dismiss()
+    }
+}
+
+/// A bot's role, as a small quiet chip beside its name.
+struct RoleTag: View {
+    @Environment(\.palette) private var palette
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: Theme.scaled(10), weight: .medium))
+            .foregroundStyle(palette.sidebarMuted)
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(palette.foreground.opacity(0.07), in: .rect(cornerRadius: 4))
+            .fixedSize()
     }
 }
