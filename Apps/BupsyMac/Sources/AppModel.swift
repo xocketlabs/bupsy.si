@@ -11,7 +11,16 @@ final class AppModel {
     /// The bot whose custom-model sheet is open. Lives here because the menus that open it — the
     /// sidebar's and the bot page's — are in different views, and the sheet is presented once.
     var customModelBot: Bot?
-    var selectedBotID: BotID?
+    var selectedBotID: BotID? {
+        // Leaving a bot is as much "having read it" as opening it. Marking only on open missed
+        // the bot shown at launch — selected by default, never opened — so it lit up as unread
+        // the moment you moved to another bot, having been on screen the whole time.
+        didSet {
+            guard let previous = oldValue, previous != selectedBotID,
+                  let bot = bots.first(where: { $0.id == previous }) else { return }
+            markRead(bot)
+        }
+    }
     var engineStatus: [EngineID: AuthStatus] = [:]
     var routines: [Routine] = []
     var machines: [MachineRecord] = []
