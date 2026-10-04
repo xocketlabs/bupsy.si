@@ -189,6 +189,8 @@ struct PendingApproval: Identifiable, Sendable, Equatable {
 
     enum Decision: Sendable, Equatable {
         case allowed
+        /// Allowed, and the person said not to ask about this tool again.
+        case alwaysAllowed
         case denied
         /// Nobody answered and the gate denied it to fail closed.
         case expired

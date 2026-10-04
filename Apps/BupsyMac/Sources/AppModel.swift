@@ -763,13 +763,27 @@ final class AppModel {
         activeThread[bot.id] = thread
 
         let conversationID = ensureConversation(for: bot, thread: thread, group: groupID)
-        let run = RunRecord(
+        var run = RunRecord(
             botID: bot.id.rawValue,
             conversationID: conversationID,
             host: bot.machineID.map { "cloud:\($0)" } ?? "local",
             groupID: groupID
         )
-        do { try store?.save(run) } catch { storageProblem = "Run not saved: \(error)" }
+        do {
+            try store?.save(run)
+        } catch {
+            // Seen once on a fresh install and never reproduced: the run would not save, and every
+            // event after it failed its foreign key. Rather than leave the thread unrecorded,
+            // re-create what the run hangs off and try once more; only then say so.
+            let fresh = ConversationRecord(botID: bot.id.rawValue, engine: bot.engine.rawValue,
+                                           groupID: groupID)
+            try? store?.save(bot.record(sortIndex: bots.firstIndex { $0.id == bot.id } ?? 0))
+            try? store?.save(fresh)
+            run.conversationID = fresh.id
+            do { try store?.save(run) } catch {
+                storageProblem = "This conversation couldn't be saved: \(error.localizedDescription)"
+            }
+        }
         if hidesPrompt {
         } else if let sender {
             let joined = [sender.id.rawValue, sender.name, shown ?? prompt].joined(separator: "\u{1}")
@@ -938,7 +952,8 @@ final class AppModel {
         }
         guard let gate = gates[bot.id] else { return }
         let thread = activeThread[bot.id] ?? thread(for: bot.id)
-        thread.resolveApproval(id: approval.id, as: allow ? .allowed : .denied)
+        thread.resolveApproval(id: approval.id,
+                               as: allow ? (always && ToolNames.canAlwaysAllow(approval.tool) ? .alwaysAllowed : .allowed) : .denied)
         Task {
             try? await gate.decide(
                 approval.id,
@@ -1878,6 +1893,7 @@ final class AppModel {
             case .approval(let approval):
                 let decision = switch approval.decided {
                 case .allowed: "allowed"
+                case .alwaysAllowed: "always allowed"
                 case .denied: "denied"
                 case .expired: "denied, nobody answered"
                 case nil: "waiting"
