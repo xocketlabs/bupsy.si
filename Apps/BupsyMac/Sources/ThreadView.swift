@@ -148,6 +148,9 @@ struct Bubble: View {
         case .approval(let approval):
             botAligned { ApprovalCard(approval: approval) }
 
+        case .question(let question):
+            botAligned { QuestionCard(question: question, bot: bot) }
+
         case .limits(let limits):
             botAligned { LimitsGauge(limits: limits) }
 

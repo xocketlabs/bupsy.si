@@ -175,3 +175,95 @@ struct LimitsGauge: View {
         return lines.joined(separator: "\n")
     }
 }
+
+/// A bot's multiple-choice question: lettered answers, plus a field for your own.
+///
+/// One tap answers. Answers are lettered so a long list can be scanned and talked about ("B"),
+/// and the free-text field is always there because the bot's options are its guesses, not a
+/// limit on what you can say.
+struct QuestionCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    let question: BotQuestion
+    let bot: Bot
+    @State private var custom = ""
+    @State private var hovered: Int?
+
+    private var busy: Bool { model.thread(for: bot.id).isRunning }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            HStack(alignment: .top, spacing: Theme.Space.tight) {
+                Text(question.question)
+                    .font(Theme.Typography.body.weight(.semibold))
+                    .foregroundStyle(palette.foreground)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                if question.answer == nil {
+                    Button { model.answer(question, with: "", for: bot) } label: {
+                        Image(systemName: "xmark").font(.system(size: Theme.scaled(10), weight: .semibold))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(palette.mutedForeground)
+                    .help("Dismiss without answering")
+                }
+            }
+
+            if let answer = question.answer {
+                Label(answer.isEmpty ? "Dismissed" : "You answered: \(answer)",
+                      systemImage: answer.isEmpty ? "xmark.circle" : "checkmark.circle.fill")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(answer.isEmpty ? palette.mutedForeground : palette.primary)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
+                        Button { model.answer(question, with: option, for: bot) } label: {
+                            HStack(spacing: Theme.Space.step) {
+                                Text(String(UnicodeScalar(65 + index).map(Character.init) ?? "•"))
+                                    .font(.system(size: Theme.scaled(10), weight: .semibold, design: .rounded))
+                                    .foregroundStyle(palette.mutedForeground)
+                                    .frame(width: 20, height: 20)
+                                    .background(palette.sidebar, in: .rect(cornerRadius: 5))
+                                Text(option)
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(palette.foreground)
+                                    .multilineTextAlignment(.leading)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, Theme.Space.step)
+                            .padding(.vertical, Theme.Space.snug)
+                            .contentShape(Rectangle())
+                            .background(hovered == index ? palette.foreground.opacity(0.06) : .clear)
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { hovered = $0 ? index : (hovered == index ? nil : hovered) }
+                        if index < question.options.count - 1 {
+                            Rectangle().fill(palette.border).frame(height: 1)
+                        }
+                    }
+                }
+                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(palette.border))
+                .disabled(busy)
+
+                TextField("", text: $custom, prompt: Text("Type your own answer"))
+                    .textFieldStyle(BupsyFieldStyle())
+                    .disabled(busy)
+                    .onSubmit {
+                        guard !custom.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                        model.answer(question, with: custom, for: bot)
+                    }
+
+                if busy {
+                    // The bot is still finishing its turn; an answer sent now would be dropped.
+                    Text("\(bot.name) is finishing up — answer in a moment.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                }
+            }
+        }
+        .padding(Theme.Space.step)
+        .background(palette.card.opacity(0.6), in: .rect(cornerRadius: Theme.Radius.card))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).strokeBorder(palette.border))
+    }
+}

@@ -28,6 +28,7 @@ final class OutboxWatcher {
     enum Request {
         case message(from: String, toName: String, text: String)
         case createBot(from: String, name: String, job: String)
+        case question(from: String, question: String, options: [String])
     }
 
     /// The roster `list_bots` reads, beside the outbox rather than in it — the outbox is drained
@@ -77,7 +78,12 @@ final class OutboxWatcher {
                   let from = payload["from"] as? String
             else { continue }
 
-            if payload["kind"] as? String == "create_bot" {
+            if payload["kind"] as? String == "question" {
+                guard let question = payload["question"] as? String, !question.isEmpty,
+                      let options = payload["options"] as? [String], (2...4).contains(options.count)
+                else { continue }
+                onRequest(.question(from: from, question: question, options: options))
+            } else if payload["kind"] as? String == "create_bot" {
                 guard let name = payload["name"] as? String, !name.isEmpty,
                       let job = payload["job"] as? String, !job.isEmpty else { continue }
                 onRequest(.createBot(from: from, name: name, job: job))
