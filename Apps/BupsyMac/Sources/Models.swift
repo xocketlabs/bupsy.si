@@ -86,6 +86,7 @@ struct Bot: Identifiable, Hashable, Sendable {
         self.avatarColour = record.avatarColour
         self.role = record.role
         self.onlyBupsyApps = record.onlyBupsyApps
+        self.toolAllowlist = Set((try? JSONDecoder().decode([String].self, from: Data(record.toolAllowlist.utf8))) ?? [])
     }
 
     func record(sortIndex: Int = 0) -> BotRecord {
@@ -96,7 +97,8 @@ struct Bot: Identifiable, Hashable, Sendable {
             avatarHue: avatarHue, sortIndex: sortIndex, folder: folder, pinned: pinned,
             hidden: hidden, lastReadAt: lastReadAt,
             avatarShape: avatarShape?.rawValue, avatarColour: avatarColour, role: role,
-            onlyBupsyApps: onlyBupsyApps)
+            onlyBupsyApps: onlyBupsyApps,
+            toolAllowlist: (try? String(data: JSONEncoder().encode(toolAllowlist.sorted()), encoding: .utf8)) ?? "[]")
     }
 }
 

@@ -335,6 +335,14 @@ public struct Store: Sendable {
             }
         }
 
+        // What a bot may do without asking, as tool names (or `mcp__server__` prefixes). It was
+        // only ever held in memory, so every "allow" a person set was gone on the next launch.
+        migrator.registerMigration("v12-tool-allowlist") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "toolAllowlist", .text).notNull().defaults(to: "[]")
+            }
+        }
+
         return migrator
     }
 
@@ -359,6 +367,14 @@ public struct Store: Sendable {
 
     public func botLinks() throws -> [BotLinkRecord] {
         try database.read { db in try BotLinkRecord.fetchAll(db) }
+    }
+
+    /// Forgets a decision about one bot messaging another, so the next message asks again.
+    public func deleteLink(from sender: String, to recipient: String) throws {
+        _ = try database.write { db in
+            try BotLinkRecord.filter(Column("fromBotID") == sender && Column("toBotID") == recipient)
+                .deleteAll(db)
+        }
     }
 
     public func save(_ link: BotLinkRecord) throws {

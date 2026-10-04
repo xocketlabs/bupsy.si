@@ -29,6 +29,14 @@ public enum ToolNames {
     ///
     /// In a proportional font `ls` renders as "Is" — a capital I — which is the one place in the
     /// app where a command most needs to be unambiguous. Measured in the attention inbox.
+    /// Whether "always allow" is offered for a tool.
+    ///
+    /// Not for shell commands: their risk is in the command, not the tool's name, and "always
+    /// allow Bash" would allow `rm -rf ~` as readily as `ls`. Those are asked each time.
+    public static func canAlwaysAllow(_ tool: String) -> Bool {
+        !isCommand(tool) && tool != "Bash"
+    }
+
     public static func isCommand(_ tool: String) -> Bool {
         ["Bash", "shell", "PowerShell"].contains(tool)
     }

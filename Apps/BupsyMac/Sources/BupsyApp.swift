@@ -239,6 +239,8 @@ struct RootView: View {
             floating { Page(trail: ["Machines"]) { MachinesSheet() } }
         case .connectors:
             floating { Page(trail: ["Apps"]) { ConnectorsSheet() } }
+        case .permissions:
+            floating { Page(trail: ["Permissions"]) { PermissionsPage() } }
         case .attention:
             floating { Page(trail: ["Waiting on you"]) { AttentionInbox() } }
         case .usage:

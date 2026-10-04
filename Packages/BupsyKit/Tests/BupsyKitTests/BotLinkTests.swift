@@ -165,3 +165,34 @@ struct EnginePlumbingPolicyTests {
         }
     }
 }
+
+@Suite("Always allow")
+struct AlwaysAllowTests {
+    @Test("an always-allowed tool runs without asking, even on a bot that asks about everything")
+    func askModeHonoursAllowlist() {
+        if case .ask = AutonomyPolicy.decide(tool: "Write", autonomy: .ask, allowlist: ["Write"]) {
+            Issue.record("Write still asked")
+        }
+        if case .allow = AutonomyPolicy.decide(tool: "Edit", autonomy: .ask, allowlist: ["Write"]) {
+            Issue.record("Edit was let through")
+        }
+    }
+
+    @Test("shell commands are never offered for always-allow")
+    func noAlwaysForShell() {
+        #expect(!ToolNames.canAlwaysAllow("Bash"))
+        #expect(ToolNames.canAlwaysAllow("Write"))
+    }
+
+    @Test("an allowlist survives a save and reload, and a link can be forgotten")
+    func persists() throws {
+        let store = try Store.inMemory()
+        let a = BotRecord(name: "A", engine: "claude", toolAllowlist: #"["Write"]"#)
+        let b = BotRecord(name: "B", engine: "claude")
+        try store.save(a); try store.save(b)
+        #expect(try store.bots().first { $0.name == "A" }?.toolAllowlist == #"["Write"]"#)
+        try store.save(BotLinkRecord(fromBotID: a.id, toBotID: b.id, allowed: true))
+        try store.deleteLink(from: a.id, to: b.id)
+        #expect(try store.botLinks().isEmpty)
+    }
+}
