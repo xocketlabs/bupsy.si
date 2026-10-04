@@ -155,6 +155,7 @@ struct BotPage: View {
                 .font(Theme.Typography.heading)
                 .foregroundStyle(palette.foreground)
             InlineLabelField(bot: bot)
+                .padding(.bottom, 2)
             if let job = bot.personaPrompt, !job.isEmpty {
                 Text(job)
                     .font(Theme.Typography.caption)
@@ -494,6 +495,9 @@ struct BotPage: View {
                             }
                         }
                     }
+                    // Starts at the latest message, like every chat app — scrolling there after
+                    // load lost the race with layout and stopped short.
+                    .defaultScrollAnchor(.bottom)
                     .coordinateSpace(name: "thread")
                     .onPreferenceChange(ThreadEndKey.self) { distance in
                         awayFromBottom = distance > 120
@@ -520,7 +524,10 @@ struct BotPage: View {
                     }
                     // Open where you left off: at the first unread message if there is one,
                     // otherwise at the end.
-                    .onAppear {
+                    // After a beat, not in onAppear: scrolled before the bubbles were laid out, it
+                    // stopped short and left the latest message half under the composer.
+                    .task(id: bot.id) {
+                        try? await Task.sleep(for: .milliseconds(60))
                         if firstUnreadIndex != nil {
                             proxy.scrollTo(NewDivider.anchor, anchor: .top)
                         } else if let last = thread.entries.last {
@@ -578,8 +585,9 @@ struct BotPage: View {
                 badge: objectives.isEmpty ? nil : "\(objectives.filter(\.enabled).count) active",
                 subtitle: "Things \(bot.name) keeps true, checked on a schedule"
             ) {
-                Button("New goal") { showsObjectives = true }
-                    .buttonStyle(QuietButton())
+                Button { showsObjectives = true } label: { Label("New", systemImage: "plus") }
+                    .buttonStyle(QuietButton(compact: true))
+                    .help("New goal")
             }
 
             if objectives.isEmpty {
@@ -633,8 +641,9 @@ struct BotPage: View {
                 badge: routines.isEmpty ? nil : "\(routines.filter(\.enabled).count)",
                 subtitle: "Jobs \(bot.name) does on a schedule"
             ) {
-                Button("New routine") { showsRoutines = true }
-                    .buttonStyle(QuietButton())
+                Button { showsRoutines = true } label: { Label("New", systemImage: "plus") }
+                    .buttonStyle(QuietButton(compact: true))
+                    .help("New routine")
             }
 
             if routines.isEmpty {
@@ -1102,9 +1111,15 @@ struct InlineLabelField: View {
                     if let role = bot.role {
                         RoleTag(text: role)
                     } else {
-                        Text("Add a label")
-                            .font(Theme.Typography.caption)
+                        // A small dashed pill, so it reads as a control rather than stray text
+                        // squeezed between the name and the job.
+                        Label("Add label", systemImage: "plus")
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(size: Theme.scaled(10), weight: .medium))
                             .foregroundStyle(palette.mutedForeground)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .overlay(Capsule().strokeBorder(palette.border, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
                     }
                 }
                 .buttonStyle(.plain)
