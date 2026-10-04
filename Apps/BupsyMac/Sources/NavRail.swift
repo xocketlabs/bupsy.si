@@ -57,10 +57,10 @@ struct NavRail: View {
         .padding(.bottom, Theme.Space.step)
         .frame(width: 292)
         .background(palette.sidebar)
-        .sheet(isPresented: $isAddingBot) { NewBotSheet() }
+        .sheet(isPresented: $isAddingBot) { BotCreatorSheet() }
         .sheet(item: $renamingFolder) { RenameFolderSheet(folder: $0.id) }
         .sheet(item: $filingBot) { NewFolderSheet(bot: $0) }
-        .sheet(item: $renamingBot) { RenameBotSheet(bot: $0) }
+        .sheet(item: $renamingBot) { BotCreatorSheet(editing: $0) }
         // On its own empty view: two sheets on one view and SwiftUI silently drops one.
         .background {
             Color.clear.sheet(item: Binding(get: { model.customModelBot },

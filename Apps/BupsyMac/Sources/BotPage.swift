@@ -64,7 +64,7 @@ struct BotPage: View {
         .background { Color.clear.sheet(isPresented: $showsRoutines) { NewRoutineSheet(bot: bot) } }
         .background { Color.clear.sheet(isPresented: $showsObjectives) { NewObjectiveSheet(bot: bot) } }
         .background { Color.clear.sheet(item: $editingRoutine) { NewRoutineSheet(bot: bot, editing: $0) } }
-        .background { Color.clear.sheet(item: $editingBot) { RenameBotSheet(bot: $0) } }
+        .background { Color.clear.sheet(item: $editingBot) { BotCreatorSheet(editing: $0) } }
         .onChange(of: model.tourDetails, initial: true) { _, new in
             if let new { tab = new; showsDetails = true } else { showsDetails = false }
         }
@@ -257,13 +257,12 @@ struct BotPage: View {
 
         if !windows.isEmpty || !counted.isEmpty {
             VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-                if !windows.isEmpty {
-                    SettingsGroup(title: "Your \(bot.engine.displayName) limits") {
-                        ForEach(windows.sorted(by: { $0.key < $1.key }), id: \.key) { name, window in
-                            LimitBar(name: Self.windowLabel(name), window: window,
-                                     showsDivider: name != windows.keys.sorted().first)
-                        }
-                    }
+                // The live figure if a run reported one this session, else the last saved run's.
+                let lastUsage = thread.latestUsage ?? runs.first.flatMap { run in
+                    run.inputTokens.map { Usage(inputTokens: $0, outputTokens: run.outputTokens) }
+                }
+                if lastUsage != nil || !windows.isEmpty {
+                    AgentLimitsCard(bot: bot, usage: lastUsage, limits: thread.latestLimits)
                 }
 
                 if !counted.isEmpty {
@@ -479,7 +478,8 @@ struct BotPage: View {
                             // the moment the person needs to understand that nothing will happen
                             // until they answer.
                             if thread.isRunning && !model.isWaitingForApproval(bot.id) {
-                                TypingIndicator(bot: bot)
+                                AgentThinking(bot: bot, thread: thread)
+                                    .id("thinking")
                             }
                         }
                         // Top padding clears the floating title pill, which overlays this.
@@ -544,10 +544,19 @@ struct BotPage: View {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
+                    // Keep the "what it's doing" line in view as it appears and changes.
+                    .onChange(of: thread.isRunning) { _, running in
+                        guard running else { return }
+                        withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo("thinking", anchor: .bottom) }
+                    }
                     .onChange(of: thread.entries.count) {
                         guard let last = thread.entries.last else { return }
                         withAnimation(.easeOut(duration: 0.18)) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
+                            if thread.isRunning && !model.isWaitingForApproval(bot.id) {
+                                proxy.scrollTo("thinking", anchor: .bottom)
+                            } else {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
                         }
                     }
                 }
