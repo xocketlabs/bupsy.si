@@ -97,6 +97,7 @@ struct ApprovalCard: View {
         // that reads the same for a file edit and a shell command.
         case nil: "Wants to \(ToolNames.action(approval.tool))"
         case .allowed: "You allowed this"
+        case .alwaysAllowed: "You always allow this"
         case .denied: "You declined this"
         case .expired: "Denied — nobody answered in time"
         }
@@ -105,7 +106,7 @@ struct ApprovalCard: View {
     private var icon: String {
         switch approval.decided {
         case nil: "hand.raised.fill"
-        case .allowed: "checkmark.circle.fill"
+        case .allowed, .alwaysAllowed: "checkmark.circle.fill"
         case .denied, .expired: "xmark.circle.fill"
         }
     }
@@ -115,7 +116,7 @@ struct ApprovalCard: View {
         // Pink is the palette's only saturated colour, and this is the one thing in a thread
         // that stops until you answer — so it gets it.
         case nil: palette.primary
-        case .allowed: palette.info
+        case .allowed, .alwaysAllowed: palette.info
         case .denied, .expired: palette.mutedForeground
         }
     }

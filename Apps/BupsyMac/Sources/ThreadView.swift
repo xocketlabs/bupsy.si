@@ -32,6 +32,22 @@ struct Bubble: View {
         content.onHover { hovering = $0 }
     }
 
+    /// Your message with each real @mention in bold, so who you addressed stands out — on the pink
+    /// bubble a bot's own colour would not read, so weight does the work.
+    private func mentionsHighlighted(_ text: String) -> AttributedString {
+        var result = AttributedString()
+        for piece in MentionSplitter.split(text, names: model.bots.map(\.name)) {
+            switch piece {
+            case .text(let run): result += AttributedString(run)
+            case .mention(let name):
+                var tag = AttributedString("@" + name)
+                tag.font = Theme.Typography.body.weight(.bold)
+                result += tag
+            }
+        }
+        return result
+    }
+
     /// The reply arrow, shown beside a message while the pointer is over it.
     ///
     /// Hover rather than always visible: on every message it would be furniture, and it is a thing
@@ -99,7 +115,7 @@ struct Bubble: View {
                         }
                         .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(parts.body)
+                    Text(mentionsHighlighted(parts.body))
                         .font(Theme.Typography.body)
                         .textSelection(.enabled)
                 }
