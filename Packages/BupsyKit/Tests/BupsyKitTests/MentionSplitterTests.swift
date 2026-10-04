@@ -33,3 +33,12 @@ struct BotRoleStoreTests {
         #expect(try store.bots().first?.role == "PA")
     }
 }
+
+@Suite("Mention chips in code")
+struct MentionInCodeTests {
+    @Test("a mention inside `code` stays plain code")
+    func codeIsLeftAlone() {
+        #expect(MentionSplitter.split("default to `@Builder for code` and @Scout", names: ["Builder", "Scout"])
+                == [.text("default to `@Builder for code` and "), .mention("Scout")])
+    }
+}

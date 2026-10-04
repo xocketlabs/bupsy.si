@@ -14,8 +14,12 @@ public enum MentionSplitter {
         var pieces: [Piece] = []
         var buffer = ""
         var index = text.startIndex
+        // Inside `code` a mention is an example, not a summons, and splitting it out broke the
+        // code span — stray backticks and words run together.
+        var inCode = false
         while index < text.endIndex {
-            if text[index] == "@" {
+            if text[index] == "`" { inCode.toggle() }
+            if text[index] == "@" && !inCode {
                 let after = text.index(after: index)
                 let match = ordered.first { name in
                     guard let end = text.index(after, offsetBy: name.count, limitedBy: text.endIndex),
