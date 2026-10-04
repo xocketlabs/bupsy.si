@@ -175,6 +175,8 @@ struct GroupPage: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .frame(minHeight: geometry.size.height, alignment: .bottom)
                 }
+                // Opens at the latest message, as one-to-one threads do.
+                .defaultScrollAnchor(.bottom)
                 .onChange(of: thread.messages.count) {
                     guard let last = thread.messages.last else { return }
                     withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(last.id, anchor: .bottom) }

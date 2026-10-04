@@ -77,7 +77,6 @@ struct Bubble: View {
             let parts = Reply.split(text)
             HStack(alignment: .center, spacing: Theme.Space.tight) {
                 Spacer(minLength: 72)
-                replyButton(author: "You", text: parts.body)
                 VStack(alignment: .leading, spacing: Theme.Space.tight) {
                     // What this was a reply to, inside the bubble, so the thread reads the way it
                     // was meant: this answer, about that message.
@@ -108,6 +107,14 @@ struct Bubble: View {
                 .padding(.vertical, Theme.Space.snug)
                 .background(palette.primary, in: .rect(cornerRadius: Theme.Radius.bubble))
                 .foregroundStyle(palette.onPrimary)
+                // Pinned to the bubble's own left edge. In the row they sat outside the bubble's
+                // 560pt maximum frame, so on a short message they floated mid-thread, far from
+                // the words they act on.
+                .overlay(alignment: .leading) {
+                    replyButton(author: "You", text: parts.body)
+                        .fixedSize()
+                        .alignmentGuide(.leading) { $0[.trailing] + Theme.Space.tight }
+                }
                 .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .trailing)
             }
 
@@ -510,7 +517,7 @@ struct Composer: View {
             }
             .buttonStyle(.plain)
             .help("Attach files — or drop them on the message box")
-            .padding(.bottom, 4)
+            .padding(.bottom, 5)
 
             TextField("Message \(bot.name)", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -536,15 +543,19 @@ struct Composer: View {
                 .borderBeam(hue: bot.avatarHue, active: isRunning, cornerRadius: Theme.Radius.base)
                 .onSubmit(onSend)
 
+            // A circle like the + beside the field, and visible even when there is nothing to
+            // send: its "off" colour used to match the window, so the button simply vanished.
             Button(action: isRunning ? onStop : onSend) {
                 Image(systemName: isRunning ? "stop.fill" : "arrow.up")
                     .font(.system(size: Theme.scaled(13), weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(sendEnabled ? palette.onPrimary : palette.mutedForeground)
                     .frame(width: 34, height: 34)
-                    .background(sendEnabled ? palette.primary : palette.secondary,
-                                in: .rect(cornerRadius: Theme.Radius.control))
+                    .background(sendEnabled ? palette.primary : palette.card, in: .circle)
+                    .overlay(Circle().strokeBorder(sendEnabled ? .clear : palette.border))
+                    .contentShape(.circle)
             }
             .buttonStyle(.plain)
+            .padding(.bottom, 5)
             .disabled(!sendEnabled)
             .keyboardShortcut(.return, modifiers: .command)
         }
