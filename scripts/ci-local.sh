@@ -40,11 +40,17 @@ swift test --package-path Packages/BupsyKit 2>&1 | tail -3
 if [ "${1:-}" != "--quick" ]; then
   step "The app builds"
   xcodegen generate >/dev/null
-  set -o pipefail
-  xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac -configuration Debug \
-    -destination 'platform=macOS' -derivedDataPath build/ci-local \
-    CODE_SIGNING_ALLOWED=NO build 2>&1 | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
-  [ "${PIPESTATUS[0]}" -eq 0 ] || fail "App build"
+  log=$(mktemp)
+  if ! xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac -configuration Debug \
+      -destination 'platform=macOS' -derivedDataPath build/ci-local \
+      CODE_SIGNING_ALLOWED=NO build >"$log" 2>&1; then
+    grep -E "error:" "$log" | head -20
+    rm -f "$log"
+    fail "App build"
+  fi
+  grep -E "warning: Go not found" "$log" || true
+  rm -f "$log"
+  echo "BUILD SUCCEEDED"
 fi
 
 printf '\n\033[1;32m✓ All checks passed\033[0m\n'

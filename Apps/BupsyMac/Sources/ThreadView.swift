@@ -18,6 +18,7 @@ struct DaySeparator: View {
 
 struct Bubble: View {
     @Environment(\.palette) private var palette
+    @Environment(AppModel.self) private var model
     let entry: TranscriptEntry
     let bot: Bot
     let showsAvatar: Bool
@@ -160,8 +161,40 @@ struct Bubble: View {
         // Tool calls are asides, not events. A bot running `ls` is not a message, and giving it
         // the weight of one buries the reply underneath its own working.
         case .tool(let name, let arguments, let result, let failed):
-            botAligned {
-                ToolAside(name: name, arguments: arguments, result: result, failed: failed)
+            switch BupsyToolLine(tool: name, argumentsJSON: arguments) {
+            case .hidden:
+                EmptyView()
+            case .messaged(let to, let text):
+                // What this bot sent another one, shown as a message with its address on top —
+                // the sender's side of "Message from", not a raw tool call.
+                VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                    HStack(spacing: 4) {
+                        Text("Messaged")
+                        if let recipient = model.bots.first(where: { $0.name.caseInsensitiveCompare(to) == .orderedSame }) {
+                            BotFace(bot: recipient, mood: .idle, size: Theme.scaled(14))
+                        }
+                        Text(to).fontWeight(.medium)
+                    }
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .padding(.leading, Theme.Size.bubbleAvatar + Theme.Space.tight)
+                    botAligned {
+                        FormattedReply(markdown: text)
+                            .padding(.horizontal, Theme.Space.step)
+                            .padding(.vertical, Theme.Space.snug)
+                            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
+                            .opacity(failed ? 0.5 : 1)
+                    }
+                }
+            case .note(let text):
+                Text(text)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(maxWidth: .infinity)
+            case .raw:
+                botAligned {
+                    ToolAside(name: name, arguments: arguments, result: result, failed: failed)
+                }
             }
 
         case .approval(let approval):
@@ -494,5 +527,35 @@ struct Composer: View {
 
     private var sendEnabled: Bool {
         isRunning || !draft.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+}
+
+/// How a tool call reads in the thread when it is one of bupsy's own, or engine plumbing.
+///
+/// A line like "used mcp__bupsy__message_bot" told the person nothing they could use. bupsy's tools
+/// have effects people recognise — a message sent, a bot asked for — so they read as those; the
+/// ones whose effect already shows as a card or a note are not repeated; and the engine's
+/// ToolSearch, which only loads tool definitions, is not shown at all.
+enum BupsyToolLine {
+    case hidden
+    case messaged(to: String, text: String)
+    case note(String)
+    case raw
+
+    init(tool: String, argumentsJSON: String) {
+        let arguments = (argumentsJSON.data(using: .utf8))
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        switch tool {
+        case "ToolSearch", "mcp__bupsy__ask_person", "mcp__bupsy__update_me":
+            self = .hidden
+        case "mcp__bupsy__message_bot":
+            self = .messaged(to: arguments["to"] as? String ?? "a bot", text: arguments["text"] as? String ?? "")
+        case "mcp__bupsy__create_bot":
+            self = .note("Asked you to create \(arguments["name"] as? String ?? "a bot")")
+        case "mcp__bupsy__list_bots":
+            self = .note("Looked at who else is on the roster")
+        default:
+            self = .raw
+        }
     }
 }
