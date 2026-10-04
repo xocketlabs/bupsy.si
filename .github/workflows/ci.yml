@@ -29,7 +29,9 @@ jobs:
   # a stale checked-in project silently omits new files.
   mac:
     name: Test BupsyKit and build the app
-    runs-on: macos-15
+    # MAC_RUNNER picks the machine: unset → GitHub's macos-15; set to ["self-hosted","bupsy-mac"]
+    # → the runner on our own Mac, which costs no Actions minutes.
+    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"macos-15"') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +47,7 @@ jobs:
         run: swift test --package-path Packages/BupsyKit --filter Conformance
 
       - name: Install xcodegen
-        run: brew install xcodegen
+        run: command -v xcodegen >/dev/null || brew install xcodegen
 
       - name: Build the app
         run: |
@@ -78,7 +80,8 @@ jobs:
   # failure from a test going red, and the log should say which happened without anyone opening it.
   core:
     name: Headless core (Go)
-    runs-on: ubuntu-latest
+    # Plain Go with no cgo, so it runs anywhere; on the Mac runner when that is set.
+    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -145,7 +148,7 @@ jobs:
 
   boundaries:
     name: Credential boundary
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v4
 

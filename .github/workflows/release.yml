@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"macos-15"') }}
     env:
       # Whether the Apple signing secrets exist. Signed and unsigned builds share every step but
       # these, so a release ships today and becomes notarized the day the secrets are added —
@@ -49,7 +49,7 @@ jobs:
           echo "Releasing $VERSION (draft: $DRAFT, signed: $HAS_SIGNING)"
 
       - name: Install xcodegen
-        run: brew install xcodegen
+        run: command -v xcodegen >/dev/null || brew install xcodegen
 
       # Tests gate the release. A build of broken code is worse than no build: it is the one
       # people actually install.
@@ -72,7 +72,11 @@ jobs:
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
             -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN"
-          security list-keychain -d user -s "$KEYCHAIN" login.keychain
+          # Added to the search list, not replacing it: on a self-hosted runner this is
+          # someone's own Mac, and replacing the list would drop their keychains. The original
+          # list is saved and put back by the clean-up step.
+          security list-keychains -d user | xargs > "$RUNNER_TEMP/keychains.orig"
+          security list-keychains -d user -s "$KEYCHAIN" $(cat "$RUNNER_TEMP/keychains.orig")
           rm -f "$RUNNER_TEMP/cert.p12"
 
       # package.sh picks its mode from which secrets are set: all four → signed and notarized,
@@ -178,4 +182,6 @@ jobs:
 
       - name: Clean up the keychain
         if: always() && env.HAS_SIGNING == 'true'
-        run: security delete-keychain "$RUNNER_TEMP/build.keychain" || true
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain" || true
+          [ -f "$RUNNER_TEMP/keychains.orig" ] && security list-keychains -d user -s $(cat "$RUNNER_TEMP/keychains.orig") || true
