@@ -63,20 +63,23 @@ public struct BotRecord: Codable, FetchableRecord, MutablePersistableRecord, Sen
     public var avatarColour: Int?
     /// A short label beside the name, or nil for none.
     public var role: String?
+    /// Kept to bupsy's apps, without those on the person's engine account.
+    public var onlyBupsyApps: Bool
 
     public init(id: String = UUID().uuidString, name: String, engine: String,
                 model: String? = nil, machineID: String? = nil, autonomy: String = "ask",
                 personaPrompt: String? = nil, workdir: String? = nil, avatarHue: Double = 0.5,
                 createdAt: Date = Date(), sortIndex: Int = 0, folder: String? = nil,
                 pinned: Bool = false, hidden: Bool = false, lastReadAt: Date? = nil,
-                avatarShape: String? = nil, avatarColour: Int? = nil, role: String? = nil) {
+                avatarShape: String? = nil, avatarColour: Int? = nil, role: String? = nil,
+                onlyBupsyApps: Bool = false) {
         self.id = id; self.name = name; self.engine = engine; self.model = model
         self.machineID = machineID; self.autonomy = autonomy; self.personaPrompt = personaPrompt
         self.workdir = workdir; self.avatarHue = avatarHue; self.createdAt = createdAt
         self.sortIndex = sortIndex; self.folder = folder; self.pinned = pinned
         self.hidden = hidden; self.lastReadAt = lastReadAt
         self.avatarShape = avatarShape; self.avatarColour = avatarColour
-        self.role = role
+        self.role = role; self.onlyBupsyApps = onlyBupsyApps
     }
 }
 

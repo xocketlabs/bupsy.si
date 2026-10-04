@@ -13,10 +13,13 @@ public struct RunRequest: Sendable {
     /// Settings file installing the approval hook, from `GateInstaller`. When absent the engine
     /// runs ungated, which is only correct for a probe.
     public var gateSettingsPath: String?
+    /// Use only the MCP servers in `mcpConfigPaths`, ignoring every other server the engine
+    /// would load — above all the apps connected to the person's own engine account.
+    public var onlyGivenApps: Bool
 
     public init(prompt: String, workingDirectory: URL? = nil, resume: ConversationID? = nil,
                 model: String? = nil, autonomy: Autonomy = .ask, mcpConfigPaths: [String] = [],
-                gateSettingsPath: String? = nil) {
+                gateSettingsPath: String? = nil, onlyGivenApps: Bool = false) {
         self.prompt = prompt
         self.workingDirectory = workingDirectory
         self.resume = resume
@@ -24,6 +27,7 @@ public struct RunRequest: Sendable {
         self.autonomy = autonomy
         self.mcpConfigPaths = mcpConfigPaths
         self.gateSettingsPath = gateSettingsPath
+        self.onlyGivenApps = onlyGivenApps
     }
 }
 

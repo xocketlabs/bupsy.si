@@ -777,7 +777,8 @@ final class AppModel {
                         roster: writeRoster(excluding: bot))
                 }
             )).flatMap { $0 }.map { [$0] } ?? [],
-            gateSettingsPath: gateSettings
+            gateSettingsPath: gateSettings,
+            onlyGivenApps: bot.onlyBupsyApps
         )
 
         // Hold the Mac awake for the duration, if this bot asks for it. An agent run killed at
@@ -1531,6 +1532,12 @@ final class AppModel {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         let trimmed = String((role ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(16))
         bots[index].role = trimmed.isEmpty ? nil : trimmed
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    func setOnlyBupsyApps(_ bot: Bot, _ only: Bool) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].onlyBupsyApps = only
         try? store?.save(bots[index].record(sortIndex: index))
     }
 

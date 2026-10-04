@@ -327,6 +327,14 @@ public struct Store: Sendable {
             try db.alter(table: "bots") { t in t.add(column: "role", .text) }
         }
 
+        // Whether a bot is kept to the apps added in bupsy, without the ones connected to the
+        // person's engine account. Off by default, so existing bots behave exactly as before.
+        migrator.registerMigration("v11-only-bupsy-apps") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "onlyBupsyApps", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 
