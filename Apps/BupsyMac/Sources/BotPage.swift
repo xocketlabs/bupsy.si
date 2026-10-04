@@ -154,6 +154,7 @@ struct BotPage: View {
             Text(bot.name)
                 .font(Theme.Typography.heading)
                 .foregroundStyle(palette.foreground)
+            InlineLabelField(bot: bot)
             if let job = bot.personaPrompt, !job.isEmpty {
                 Text(job)
                     .font(Theme.Typography.caption)
@@ -1069,4 +1070,53 @@ struct NewDivider: View {
 private struct ThreadEndKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// The bot's role label, edited where it is shown: click, type, Enter.
+struct InlineLabelField: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    let bot: Bot
+    @State private var editing = false
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Group {
+            if editing {
+                TextField("", text: $text, prompt: Text("PA, Finance, Research…"))
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.center)
+                    .font(Theme.Typography.caption)
+                    .frame(maxWidth: 160)
+                    .focused($focused)
+                    .onSubmit(commit)
+                    .onExitCommand { editing = false }
+                    .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+            } else {
+                Button {
+                    text = bot.role ?? ""
+                    editing = true
+                    focused = true
+                } label: {
+                    if let role = bot.role {
+                        RoleTag(text: role)
+                    } else {
+                        Text("Add a label")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("A word or two shown beside its name")
+            }
+        }
+        .onChange(of: bot.id) { editing = false }
+    }
+
+    private func commit() {
+        guard editing else { return }
+        editing = false
+        model.setRole(bot, text)
+    }
 }
