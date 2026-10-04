@@ -21,6 +21,9 @@ struct FormattedReply: View {
                         .foregroundStyle(palette.foreground)
                         .textSelection(.enabled)
                         .multilineTextAlignment(.leading)
+                        // Wrap, never truncate. Without this a reply of several short lines was
+                        // drawn one line each with "…", hiding most of what the bot said.
+                        .fixedSize(horizontal: false, vertical: true)
                 case .code(let language, let text):
                     CodeBlock(language: language, text: text)
                 case .bullets(let items):
