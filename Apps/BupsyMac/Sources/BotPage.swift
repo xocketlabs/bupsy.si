@@ -13,6 +13,9 @@ struct BotPage: View {
 
     @State private var draft = ""
     @State private var showsRoutines = false
+    /// The routine open in the panel's detail view, if any.
+    @State private var openRoutineID: String?
+    @State private var confirmsDelete = false
     @State private var showsObjectives = false
     @State private var showsDetails = false
     /// The message being replied to, shown above the composer until sent or dismissed.
@@ -112,9 +115,13 @@ struct BotPage: View {
                 VStack(alignment: .leading, spacing: Theme.Space.section) {
                     switch tab {
                     case .details:
-                        settings
-                        goals
-                        routineSection
+                        if let routine = routines.first(where: { $0.id == openRoutineID }) {
+                            routineDetail(routine)
+                        } else {
+                            settings
+                            goals
+                            routineSection
+                        }
                     case .activity:
                         usage
                         history
@@ -129,6 +136,8 @@ struct BotPage: View {
             }
         }
         .frame(width: 340)
+        // A routine open for one bot must not stay open, unrelated, on the next.
+        .onChange(of: bot.id) { openRoutineID = nil }
         // Clipped, because a card wider than the panel should truncate rather than draw over the
         // conversation beside it.
         .clipped()
@@ -648,11 +657,85 @@ struct BotPage: View {
                                 .foregroundStyle(palette.mutedForeground)
                             }
                         } trailing: {
-                            Button("Edit") { showsRoutines = true }
-                                .buttonStyle(QuietButton(compact: true))
+                            // On and off right here, without opening anything.
+                            Toggle("", isOn: Binding(
+                                get: { routine.enabled },
+                                set: { model.setRoutineEnabled(routine, $0) }))
+                                .labelsHidden().toggleStyle(.switch).controlSize(.small)
                         }
+                        .opacity(routine.enabled ? 1 : 0.6)
+                        .contentShape(Rectangle())
+                        .onTapGesture { openRoutineID = routine.id }
+                        .help("Open \(routine.name)")
                     }
                 }
+            }
+        }
+    }
+
+    /// One routine in full: what it tells the bot, when, and what you can do with it.
+    private func routineDetail(_ routine: Routine) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+            Button { openRoutineID = nil } label: {
+                Label("Routines", systemImage: "chevron.left")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+            }
+            .buttonStyle(.plain)
+
+            Text(routine.name)
+                .font(Theme.Typography.heading)
+                .foregroundStyle(palette.foreground)
+
+            VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                Text("Instruction").font(Theme.Typography.badge).foregroundStyle(palette.sidebarMuted)
+                Text(routine.prompt)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                Text("When it runs").font(Theme.Typography.badge).foregroundStyle(palette.sidebarMuted)
+                Label(Schedule.describe(routine.cron), systemImage: "clock")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                Text(routine.tier.label)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                if !routine.enabled {
+                    Text("Paused — it will not run until you resume it.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.primary)
+                }
+            }
+
+            HStack(spacing: Theme.Space.snug) {
+                Button(routine.enabled ? "Pause" : "Resume") {
+                    model.setRoutineEnabled(routine, !routine.enabled)
+                }
+                .buttonStyle(QuietButton(compact: true))
+                // Try it now rather than waiting for its slot — the quickest way to see what it does.
+                Button("Run now") { model.send(routine.prompt, to: bot) }
+                    .buttonStyle(QuietButton(compact: true))
+                    .disabled(model.isRunning(bot.id))
+                Button("Edit") { showsRoutines = true }
+                    .buttonStyle(QuietButton(compact: true))
+                Spacer(minLength: 0)
+                Button(role: .destructive) { confirmsDelete = true } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(palette.mutedForeground)
+                .help("Delete this routine")
+            }
+            .confirmationDialog("Delete “\(routine.name)”?", isPresented: $confirmsDelete) {
+                Button("Delete routine", role: .destructive) {
+                    openRoutineID = nil
+                    model.deleteRoutine(routine)
+                }
+            } message: {
+                Text("It stops running. What it already did stays in the thread.")
             }
         }
     }
