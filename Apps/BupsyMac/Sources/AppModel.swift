@@ -719,7 +719,7 @@ final class AppModel {
     func startRun(
         _ prompt: String, bot: Bot, thread: Thread, groupID: String?,
         onFinish: (@MainActor @Sendable (String) -> Void)?,
-        from sender: Bot? = nil, shown: String? = nil
+        from sender: Bot? = nil, shown: String? = nil, hidesPrompt: Bool = false
     ) -> Bool {
         // One run per bot at a time, wherever it is. A bot cannot answer in a group while it is
         // still working on something you asked it directly.
@@ -727,7 +727,10 @@ final class AppModel {
 
         // A run another bot started reads as that bot's message, showing what it actually wrote
         // (`shown`) rather than bupsy's framing around it — never as something the person said.
-        if let sender {
+        // A prompt bupsy wrote on the person's behalf — a new bot's "introduce yourself" — is not
+        // shown as something they said. The bot's reply is the first thing in the thread.
+        if hidesPrompt {
+        } else if let sender {
             thread.entries.append(TranscriptEntry(kind: .messageFrom(
                 botID: sender.id.rawValue, botName: sender.name, text: shown ?? prompt)))
         } else {
@@ -744,7 +747,8 @@ final class AppModel {
             groupID: groupID
         )
         try? store?.save(run)
-        if let sender {
+        if hidesPrompt {
+        } else if let sender {
             let joined = [sender.id.rawValue, sender.name, shown ?? prompt].joined(separator: "\u{1}")
             persist(.text(joined), run: run.id, seq: 0, asMessageFrom: true)
         } else {
@@ -1197,6 +1201,8 @@ final class AppModel {
                 self?.receiveCreation(from: from, name: name, job: job, role: role)
             case .question(let from, let question, let options):
                 self?.receiveQuestion(from: from, question: question, options: options)
+            case .updateMe(let from, let name, let role, let job):
+                self?.receiveUpdate(from: from, name: name, role: role, job: job)
             }
         }
         watcher.start()
@@ -1220,6 +1226,74 @@ final class AppModel {
             return
         }
         deliver(from: sender, to: recipient, text: text)
+    }
+
+    // MARK: - One-click bots, and bots setting themselves up
+
+    /// Makes a bot at once and lets it ask what it is for, instead of a form.
+    ///
+    /// The bot starts as "New bot", greets the person knowing who else is on the roster, and once
+    /// told its job sets its own name and role with update_me — the job itself still waits for
+    /// the person's yes. Returns the new bot's id so the caller can open it.
+    @discardableResult
+    func quickCreateBot(engine: EngineID = .claude) -> BotID? {
+        var name = "New bot"
+        var counter = 2
+        while isNameTaken(name) { name = "New bot \(counter)"; counter += 1 }
+        addBot(name: name, engine: engine)
+        guard let bot = bots.first(where: { $0.name == name }) else { return nil }
+
+        let others = bots.filter { $0.id != bot.id && !$0.hidden }.map { bot -> String in
+            bot.personaPrompt.map { "\(bot.name) (\($0))" } ?? bot.name
+        }
+        let roster = others.isEmpty ? "You are the first bot." : "The other bots are: \(others.joined(separator: "; "))."
+        _ = startRun(
+            "You have just been created in bupsy, the person's roster of AI bots. \(roster) "
+                + "Greet the person — not the other bots; they cannot see this — in two short "
+                + "sentences, and ask what job they want you for. If the "
+                + "roster already covers something, say so. Once they tell you, use the update_me "
+                + "tool to set a short name, a one- or two-word role tag, and your job.",
+            bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: nil, hidesPrompt: true)
+        return bot.id
+    }
+
+    /// A job a bot proposed for itself, waiting on the person.
+    struct PendingJobChange: Identifiable, Equatable {
+        let id = UUID()
+        let bot: Bot
+        let job: String
+    }
+
+    var pendingJobChanges: [PendingJobChange] = []
+
+    private func receiveUpdate(from senderID: String, name: String?, role: String?, job: String?) {
+        guard let bot = bots.first(where: { $0.id.rawValue == senderID }) else { return }
+        let thread = thread(for: bot.id)
+        if let name {
+            if isNameTaken(name, except: bot.id) {
+                thread.entries.append(TranscriptEntry(kind: .note("Couldn't rename to “\(name)” — another bot has that name.")))
+            } else if name != bot.name {
+                let old = bot.name
+                rename(bot, to: name)
+                thread.entries.append(TranscriptEntry(kind: .note("\(old) named itself \(name)")))
+            }
+        }
+        if let role, let current = bots.first(where: { $0.id == bot.id }), role != current.role {
+            setRole(current, role)
+            thread.entries.append(TranscriptEntry(kind: .note("Role set to \(role)")))
+        }
+        if let job, let current = bots.first(where: { $0.id == bot.id }), job != current.personaPrompt {
+            pendingJobChanges.removeAll { $0.bot.id == bot.id }
+            pendingJobChanges.append(PendingJobChange(bot: current, job: job))
+        }
+    }
+
+    func decideJobChange(_ change: PendingJobChange, allow: Bool) {
+        pendingJobChanges.removeAll { $0.id == change.id }
+        guard let current = bots.first(where: { $0.id == change.bot.id }) else { return }
+        if allow { setJob(current, change.job) }
+        thread(for: current.id).entries.append(TranscriptEntry(kind: .note(
+            allow ? "Job saved" : "You kept its previous job")))
     }
 
     // MARK: - Questions with set answers

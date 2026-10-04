@@ -98,6 +98,13 @@ struct RootView: View {
                             },
                             onCreate: {
                                 isStartingChat = false
+                                if let id = model.quickCreateBot() {
+                                    destination = .bot(id)
+                                    model.selectedBotID = id
+                                }
+                            },
+                            onCreateManually: {
+                                isStartingChat = false
                                 isAddingBot = true
                             },
                             onCreateGroup: {
@@ -202,6 +209,17 @@ struct RootView: View {
                     set: { _ in }
                 )) { creation in
                     CreationSheet(creation: creation).interactiveDismissDisabled()
+                }
+                .background {
+                    Color.clear.sheet(item: Binding(
+                        get: {
+                            model.pendingIntroductions.isEmpty && model.pendingCreations.isEmpty
+                                ? model.pendingJobChanges.first : nil
+                        },
+                        set: { _ in }
+                    )) { change in
+                        JobChangeSheet(change: change).interactiveDismissDisabled()
+                    }
                 }
             }
     }

@@ -151,6 +151,13 @@ struct Bubble: View {
         case .question(let question):
             botAligned { QuestionCard(question: question, bot: bot) }
 
+        case .note(let text):
+            Text(text)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 2)
+
         case .limits(let limits):
             botAligned { LimitsGauge(limits: limits) }
 

@@ -104,7 +104,7 @@ func handle(req request, outbox, sender string) response {
 		}
 
 	case "tools/list":
-		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool(), askPersonTool()}}
+		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool(), askPersonTool(), updateMeTool()}}
 
 	case "tools/call":
 		reply.Result = call(req.Params, outbox, sender)
@@ -213,6 +213,29 @@ func askPersonTool() map[string]any {
 	}
 }
 
+// updateMeTool describes a bot setting up its own name, role tag and job.
+//
+// A new bot starts as "New bot" and learns what it is for in conversation; this is how it then
+// becomes that. Name and role are labels and apply at once. The job is the bot's standing
+// instructions, so a change to it waits for the person — a bot must not quietly rewrite its own
+// orders.
+func updateMeTool() map[string]any {
+	return map[string]any{
+		"name": "update_me",
+		"description": "Set your own name, role tag and/or job in bupsy, once the person has " +
+			"told you what you are for. Name and role apply immediately; a new job is shown to " +
+			"the person to approve first. Only change what they asked for.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string", "description": "A short name for yourself."},
+				"role": map[string]any{"type": "string", "description": "A one- or two-word tag, e.g. \"Research\"."},
+				"job":  map[string]any{"type": "string", "description": "Your standing instructions, in a sentence or two."},
+			},
+		},
+	}
+}
+
 // listBotsTool describes reading the roster.
 func listBotsTool() map[string]any {
 	return map[string]any{
@@ -275,6 +298,25 @@ func call(params json.RawMessage, outbox, sender string) map[string]any {
 
 	case "list_bots":
 		return listBots()
+
+	case "update_me":
+		name, role, job := strings.TrimSpace(args.Name), strings.TrimSpace(args.Role), strings.TrimSpace(args.Job)
+		if name == "" && role == "" && job == "" {
+			return toolError("give at least one of name, role or job")
+		}
+		if len([]rune(name)) > 40 {
+			return toolError("keep the name under 40 characters")
+		}
+		if err := drop(outbox, map[string]any{
+			"kind": "update_me", "from": sender, "name": name, "role": role, "job": job,
+		}); err != nil {
+			return toolError("could not update: " + err.Error())
+		}
+		reply := "Done."
+		if job != "" {
+			reply = "Name and role (if given) are set. The new job is waiting for the person to approve — do not say it has changed."
+		}
+		return toolText(reply)
 
 	case "ask_person":
 		question := strings.TrimSpace(args.Question)
