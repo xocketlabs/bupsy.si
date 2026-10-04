@@ -38,9 +38,9 @@ public struct CodexAdapter: EngineAdapter {
     public var models: [ModelOption] {
         [
             ModelOption(id: nil, label: "Default", detail: "Whatever your CLI is set to"),
-            ModelOption(id: "gpt-5.6-codex", label: "GPT-5.6 Codex", detail: "Tuned for code"),
-            ModelOption(id: "gpt-5.6", label: "GPT-5.6", detail: "General purpose"),
-            ModelOption(id: "gpt-5-codex", label: "GPT-5 Codex", detail: "Previous generation"),
+            ModelOption(id: "gpt-5.6-codex", label: "GPT-5.6 Codex", detail: "Tuned for code", section: .version),
+            ModelOption(id: "gpt-5.6", label: "GPT-5.6", detail: "General purpose", section: .version),
+            ModelOption(id: "gpt-5-codex", label: "GPT-5 Codex", detail: "Previous generation", section: .version),
         ]
     }
 

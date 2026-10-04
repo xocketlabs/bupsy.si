@@ -184,15 +184,29 @@ struct ApprovalGateTests {
 
 @Suite("Model options")
 struct ModelOptionTests {
-    /// Aliases, not pinned identifiers. `claude --help` documents aliases that track the latest
-    /// model in each family; pinning `claude-opus-5` would quietly rot and strand users on an old
-    /// model with no indication why.
-    @Test("Claude offers aliases rather than versioned identifiers")
-    func claudeUsesAliases() {
-        let ids = ClaudeAdapter().models.compactMap(\.id)
-        #expect(ids.contains("opus"))
-        #expect(ids.contains("sonnet"))
-        #expect(ids.allSatisfy { !$0.contains("-5") }, "a pinned version will go stale")
+    /// Aliases first; exact versions only in their own section. Aliases track the newest model in
+    /// each family, so they stay the obvious choice — a pinned version is something someone picks
+    /// on purpose, never what they get by default.
+    @Test("Claude offers aliases first, and versions only in their own section")
+    func claudeAliasesFirst() {
+        let models = ClaudeAdapter().models
+        #expect(models.first?.id == nil)
+        #expect(models.filter { $0.section == .latest }.map(\.id) == ["opus", "sonnet", "haiku", "fable"])
+        let pinned = models.filter { $0.id?.hasPrefix("claude-") == true }
+        #expect(!pinned.isEmpty)
+        #expect(pinned.allSatisfy { $0.section == .version }, "a pinned version must not look like the default")
+        #expect(pinned.contains { $0.id == "claude-opus-5-5" })
+        let ids = models.compactMap(\.id)
+        #expect(Set(ids).count == ids.count)
+    }
+
+    @Test("An unknown model reads as 'update Claude Code', naming the model")
+    func unrecognisedModelIsExplained() {
+        let raw = #"[claude-code:unrecognized_model] {"model":"claude-opus-5-5","query_source":"sdk"}"#
+        let text = ClaudeAdapter.explainUnrecognisedModel(raw)
+        #expect(text?.contains("claude-opus-5-5") == true)
+        #expect(text?.contains("claude update") == true)
+        #expect(ClaudeAdapter.explainUnrecognisedModel("rate limited") == nil)
     }
 
     /// Not overriding a model the user configured themselves is the right default.

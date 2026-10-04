@@ -25,19 +25,44 @@ public struct ClaudeAdapter: EngineAdapter {
     /// A hook can hold the run open while a human decides, so `.ask` genuinely means "ask me".
     public var gateMechanism: GateMechanism { .blockingHook }
 
-    /// Aliases rather than pinned identifiers.
+    /// Aliases first, then exact versions.
     ///
-    /// `claude --help` documents aliases that track the latest model in each family, so a list of
-    /// them keeps working when new versions ship. Pinning `claude-opus-5` would quietly rot and
-    /// leave users on an old model with no indication why.
+    /// `claude --help` documents aliases that track the latest model in each family, so they keep
+    /// working when new versions ship and stay the default choice. Exact versions are listed too,
+    /// for when a bot must not change underneath someone — and anything newer than this list can
+    /// still be typed in as a custom model, so a release never waits on an update to bupsy.
+    ///
+    /// Which versions a CLI accepts depends on its own version: an older Claude Code rejects a
+    /// newer model with `unrecognized_model`, which `events(from:)` turns into "update Claude Code".
     public var models: [ModelOption] {
         [
             ModelOption(id: nil, label: "Default", detail: "Whatever your CLI is set to"),
-            ModelOption(id: "opus", label: "Opus", detail: "Most capable, uses your quota fastest"),
-            ModelOption(id: "sonnet", label: "Sonnet", detail: "Balanced — a good default"),
-            ModelOption(id: "haiku", label: "Haiku", detail: "Fastest, lightest on your quota"),
-            ModelOption(id: "fable", label: "Fable", detail: "Latest Fable model"),
+            ModelOption(id: "opus", label: "Opus", detail: "Newest Opus — most capable", section: .latest),
+            ModelOption(id: "sonnet", label: "Sonnet", detail: "Newest Sonnet — balanced", section: .latest),
+            ModelOption(id: "haiku", label: "Haiku", detail: "Newest Haiku — fastest", section: .latest),
+            ModelOption(id: "fable", label: "Fable", detail: "Newest Fable", section: .latest),
+            ModelOption(id: "claude-opus-5-5", label: "Opus 5.5", section: .version),
+            ModelOption(id: "claude-sonnet-5-5", label: "Sonnet 5.5", section: .version),
+            ModelOption(id: "claude-fable-5-1", label: "Fable 5.1", section: .version),
+            ModelOption(id: "claude-opus-5", label: "Opus 5", section: .version),
+            ModelOption(id: "claude-sonnet-5", label: "Sonnet 5", section: .version),
+            ModelOption(id: "claude-opus-4-5", label: "Opus 4.5", section: .version),
+            ModelOption(id: "claude-sonnet-4-5", label: "Sonnet 4.5", section: .version),
+            ModelOption(id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", section: .version),
         ]
+    }
+
+    /// What to say when a run fails because the CLI does not know the model.
+    ///
+    /// The raw text is `[claude-code:unrecognized_model] {"model":…}`, which reads like a crash.
+    /// It almost always means the CLI is older than the model, and the fix is one command.
+    static func explainUnrecognisedModel(_ message: String) -> String? {
+        guard message.contains("unrecognized_model") else { return nil }
+        let name = message.range(of: #""model":"([^"]+)""#, options: .regularExpression)
+            .map { String(message[$0]).replacingOccurrences(of: "\"model\":", with: "")
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"")) }
+        return "Your Claude Code doesn't know \(name ?? "this model") yet — it's probably older "
+            + "than the model. Update it with `claude update`, or pick another model."
     }
 
     public func loginCommand() -> LoginCommand {
@@ -214,7 +239,8 @@ public struct ClaudeAdapter: EngineAdapter {
                     .usage(usage),
                     .failed(EngineFailure(
                         kind: .unknown,
-                        message: json.string("result") ?? json.string("subtype") ?? "run failed"
+                        message: json.string("result").flatMap(Self.explainUnrecognisedModel)
+                            ?? json.string("result") ?? json.string("subtype") ?? "run failed"
                     )),
                 ]
             }

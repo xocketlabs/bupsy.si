@@ -8,6 +8,9 @@ import Observation
 @Observable
 final class AppModel {
     var bots: [Bot] = []
+    /// The bot whose custom-model sheet is open. Lives here because the menus that open it — the
+    /// sidebar's and the bot page's — are in different views, and the sheet is presented once.
+    var customModelBot: Bot?
     var selectedBotID: BotID?
     var engineStatus: [EngineID: AuthStatus] = [:]
     var routines: [Routine] = []
