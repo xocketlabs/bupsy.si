@@ -16,6 +16,11 @@ final class AppModel {
     var routines: [Routine] = []
     var machines: [MachineRecord] = []
     var connectors: [MCPServer] = []
+    /// Whether Executor is on this Mac. Nil until checked — the check asks a login shell, so it
+    /// runs off the main thread and the UI says "checking" rather than guessing.
+    var executorInstalled: Bool?
+    /// True between clicking Install and the installer finishing in Terminal.
+    var executorInstalling = false
     var objectives: [Objective] = []
     /// Set when a machine operation failed. Shown rather than logged — a machine that did not
     /// start is money not being spent, or work not being done, and either way the user should know.
@@ -106,6 +111,11 @@ final class AppModel {
     }
 
     func removeConnector(_ server: MCPServer) {
+        // Removing Executor is a decision, and it must stick: it is never switched back on behind
+        // the person's back. Adding it again from its card clears this.
+        if server.name == Executor.name {
+            UserDefaults.standard.set(true, forKey: Self.executorRemovedKey)
+        }
         connectors.removeAll { $0.id == server.id }
         // Leave no bot allowing a connector that no longer exists.
         for index in bots.indices {
@@ -113,6 +123,64 @@ final class AppModel {
             try? store?.save(bots[index].record(sortIndex: index))
         }
         saveConnectors()
+    }
+
+    // MARK: - Executor
+
+    private static let executorRemovedKey = "si.bupsy.executor.removed"
+
+    /// Looks for Executor and, if it is there and the person has not turned it down, switches it
+    /// on for every bot. Its tools still go through each bot's approval gate like any other.
+    func refreshExecutor() {
+        Task.detached(priority: .utility) {
+            let installed = Executor.isInstalled()
+            await MainActor.run { self.applyExecutorCheck(installed: installed) }
+        }
+    }
+
+    private func applyExecutorCheck(installed: Bool) {
+        executorInstalled = installed
+        if installed { executorInstalling = false }
+        if Executor.shouldAutoAdd(
+            installed: installed, existing: connectors,
+            removedByPerson: UserDefaults.standard.bool(forKey: Self.executorRemovedKey)) {
+            addConnector(Executor.server)
+        }
+    }
+
+    /// Turns Executor back on after the person removed it.
+    func addExecutor() {
+        UserDefaults.standard.removeObject(forKey: Self.executorRemovedKey)
+        addConnector(Executor.server)
+    }
+
+    /// Runs Executor's own installer in Terminal, where the person can watch it, then waits for
+    /// `executor` to appear and switches it on.
+    ///
+    /// A `.command` file rather than scripting Terminal: opening one needs no automation
+    /// permission, and what runs is a short readable script in a window the person controls.
+    func installExecutor() {
+        let script = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Install Executor.command")
+        let body = "#!/bin/zsh -l\nclear\necho 'Installing Executor (executor.sh) with its own installer…'\necho\n"
+            + Executor.installScript + "\n"
+        do {
+            try body.write(to: script, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+        } catch { return }
+        NSWorkspace.shared.open(script)
+        executorInstalling = true
+
+        // Checks every few seconds for ten minutes; npm installs are slow on a cold cache.
+        Task { [weak self] in
+            for _ in 0..<120 {
+                try? await Task.sleep(for: .seconds(5))
+                guard let self, self.executorInstalling else { return }
+                let found = await Task.detached { Executor.isInstalled() }.value
+                if found { self.applyExecutorCheck(installed: true); return }
+            }
+            self?.executorInstalling = false
+        }
     }
 
     /// The engine's last report for a connector, if any run has produced one. Nil means we have

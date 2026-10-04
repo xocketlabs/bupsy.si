@@ -24,6 +24,8 @@ struct ConnectorsSheet: View {
                         .buttonStyle(QuietButton())
                 }
 
+                ExecutorCard()
+
                 if !model.connectors.isEmpty {
                     VStack(spacing: Theme.Space.snug) {
                         ForEach(model.connectors) { server in
@@ -57,12 +59,89 @@ struct ConnectorsSheet: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .sheet(isPresented: $isAdding) { AddServerSheet() }
+        .onAppear { model.refreshExecutor() }
     }
 
     /// The catalogue minus what is already set up.
     private var unaddedSuggestions: [MCPSuggestions.Suggestion] {
         MCPSuggestions.all.filter { suggestion in
             !model.connectors.contains { $0.name == suggestion.server.name }
+        }
+    }
+}
+
+/// Executor, offered first: one connection that brings every tool the person set up in it.
+///
+/// Three states, each with one obvious action — install it, connect tools in it, or turn it back
+/// on. Once installed it is on for every bot without a click; its tools still ask first.
+struct ExecutorCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+
+    private var isOn: Bool { model.connectors.contains { $0.name == Executor.name && $0.enabled } }
+    private var isAdded: Bool { model.connectors.contains { $0.name == Executor.name } }
+
+    var body: some View {
+        CardRow {
+            IconTile(systemName: "point.3.connected.trianglepath.dotted")
+        } content: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("Executor")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
+                    if isOn {
+                        Text("On for every bot")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Color.green)
+                    }
+                }
+                Text(detail)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } trailing: {
+            action
+        }
+    }
+
+    private var detail: String {
+        switch model.executorInstalled {
+        case nil:
+            return "Checking whether Executor is on this Mac…"
+        case false?:
+            return model.executorInstalling
+                ? "Installing in Terminal. This switches on by itself when it finishes."
+                : "Connect Gmail, Notion, Linear or any API once, and every bot can use them. "
+                    + "Executor keeps the keys — bupsy never sees them. Free and open source."
+        case true?:
+            return isAdded
+                ? "Add tools in Executor and every bot can use them. Each bot still asks before using one."
+                : "Installed, but turned off for your bots."
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        switch model.executorInstalled {
+        case nil:
+            ProgressView().controlSize(.small)
+        case false?:
+            if model.executorInstalling {
+                ProgressView().controlSize(.small)
+            } else {
+                Button("Install") { model.installExecutor() }
+                    .buttonStyle(QuietButton(compact: true))
+                    .help("Runs Executor's own installer (npm install -g executor) in Terminal")
+            }
+        case true?:
+            if isAdded {
+                Button("Open Executor") { NSWorkspace.shared.open(Executor.webURL) }
+                    .buttonStyle(QuietButton(compact: true))
+            } else {
+                Button("Turn on") { model.addExecutor() }
+                    .buttonStyle(QuietButton(compact: true))
+            }
         }
     }
 }

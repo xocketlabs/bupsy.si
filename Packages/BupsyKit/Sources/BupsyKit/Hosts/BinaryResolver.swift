@@ -29,6 +29,42 @@ public enum BinaryResolver {
         "/sbin",
     ]
 
+    /// The PATH a spawned engine should get: the person's login-shell PATH, the common install
+    /// locations, then whatever this process already had — each once, in that order.
+    ///
+    /// Without it, a bupsy opened from Finder hands the engine launchd's bare
+    /// `/usr/bin:/bin:/usr/sbin:/sbin`. The engine itself is found (we resolve it to a full path),
+    /// but everything *it* starts is not: an MCP server run through `npx`, or a Node tool whose
+    /// first line is `#!/usr/bin/env node`, fails with "not found" for no reason anyone can see.
+    public static func searchPath(current: String?, login: String? = loginShellPath) -> String {
+        var seen = Set<String>()
+        let parts = [login, commonDirectories.joined(separator: ":"), current]
+            .compactMap { $0 }
+            .flatMap { $0.split(separator: ":").map(String.init) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+        return parts.joined(separator: ":")
+    }
+
+    /// The login shell's PATH, read once per launch. Nil if the shell could not be asked.
+    public static let loginShellPath: String? = {
+        #if os(Windows)
+        return nil
+        #else
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
+        process.arguments = ["-l", "-c", "printf %s \"$PATH\""]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let path = String(data: data, encoding: .utf8), !path.isEmpty else { return nil }
+        return path
+        #endif
+    }()
+
     /// - Parameter name: a bare binary name, or an absolute path the user chose in Settings.
     public static func resolve(_ name: String) throws -> URL {
         if name.hasPrefix("/") {
