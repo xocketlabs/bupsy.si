@@ -402,14 +402,7 @@ struct BotPage: View {
     }
 
     /// Trust levels in the words they mean to a person, not their internal names.
-    private func label(for level: Autonomy) -> String {
-        switch level {
-        case .ask: "Ask before everything"
-        case .allowlist: "Ask unless I've allowed it"
-        case .trusted: "Ask before anything leaves the machine"
-        case .auto: "Never ask"
-        }
-    }
+    private func label(for level: Autonomy) -> String { level.menuLabel }
 
     private var modelLabel: String? {
         guard bot.model != nil else { return nil }
@@ -1136,5 +1129,17 @@ struct InlineLabelField: View {
         guard editing else { return }
         editing = false
         model.setRole(bot, text)
+    }
+}
+
+extension Autonomy {
+    /// How a trust level reads in every menu that offers it.
+    var menuLabel: String {
+        switch self {
+        case .ask: "Ask before everything"
+        case .allowlist: "Ask unless I've allowed it"
+        case .trusted: "Ask before anything leaves the machine"
+        case .auto: "Never ask"
+        }
     }
 }

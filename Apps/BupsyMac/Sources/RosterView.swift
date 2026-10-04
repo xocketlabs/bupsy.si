@@ -51,6 +51,15 @@ struct BotMenu: View {
             }
         }
         Menu("Model") { ModelMenuItems(bot: bot) }
+        Menu("Trust") {
+            ForEach(Autonomy.allCases, id: \.self) { level in
+                Button {
+                    model.setAutonomy(bot, level)
+                } label: {
+                    Label(level.menuLabel, systemImage: bot.autonomy == level ? "checkmark" : "")
+                }
+            }
+        }
         Divider()
         Button("Duplicate") { model.duplicate(bot) }
         Button("Copy conversation") { model.copyTranscript(of: bot) }
