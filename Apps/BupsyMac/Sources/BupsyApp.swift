@@ -194,6 +194,16 @@ struct RootView: View {
                     // whole feature exists to prevent.
                     .interactiveDismissDisabled()
             }
+            // Its own invisible view, because two sheets on one view and SwiftUI drops one. Only
+            // once no introduction is waiting, so permission questions still come one at a time.
+            .background {
+                Color.clear.sheet(item: Binding(
+                    get: { model.pendingIntroductions.isEmpty ? model.pendingCreations.first : nil },
+                    set: { _ in }
+                )) { creation in
+                    CreationSheet(creation: creation).interactiveDismissDisabled()
+                }
+            }
     }
 
     @ViewBuilder

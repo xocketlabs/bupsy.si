@@ -267,6 +267,57 @@ struct IntroductionSheet: View {
     }
 }
 
+/// A bot asking for a new bot. Asked every time: each new bot is a standing thing on the
+/// person's own subscription, and they should see every one arrive.
+struct CreationSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    let creation: AppModel.PendingCreation
+
+    var body: some View {
+        SheetFrame(
+            title: "Let \(creation.from.name) create “\(creation.name)”?",
+            icon: "person.badge.plus",
+            subtitle: "A bot wants a new bot on your roster. It would run on your "
+                + "\(creation.from.engine.displayName) subscription, like the others.",
+            width: 460,
+            closable: false
+        ) {
+            HStack(spacing: Theme.Space.step) {
+                BotFace(bot: creation.from, mood: .idle, size: 40)
+                Image(systemName: "plus")
+                    .font(.system(size: Theme.scaled(11)))
+                    .foregroundStyle(palette.mutedForeground)
+                Text(creation.name)
+                    .font(Theme.Typography.title)
+                    .foregroundStyle(palette.foreground)
+                Spacer(minLength: 0)
+            }
+            Field(label: "Its job") {
+                Text(creation.job)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Theme.Space.step)
+                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control)
+                        .strokeBorder(palette.border))
+            }
+            Text("It starts fully gated, like every new bot, and \(creation.from.name) can "
+                 + "message it straight away. You can rename, change or delete it any time.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .fixedSize(horizontal: false, vertical: true)
+        } actions: {
+            Button("Don't create") { model.decideCreation(creation, allow: false) }
+                .buttonStyle(QuietButton())
+            Button("Create bot") { model.decideCreation(creation, allow: true) }
+                .buttonStyle(PrimaryButton())
+        }
+    }
+}
+
 /// The palette's text field, in AppKit.
 ///
 /// A SwiftUI `TextField` inside an overlay never received focus on macOS — neither set in

@@ -43,6 +43,15 @@ public enum AutonomyPolicy {
         autonomy: Autonomy,
         allowlist: Set<String> = []
     ) -> Outcome {
+        // bupsy's own tools decide for themselves, out of the model's reach: a new bot asks the
+        // person every time, first contact between two bots asks once, and the roster is names
+        // and jobs. Gating them here as well asked the same question twice. A user-added server
+        // cannot borrow the name — MCPConfig writes the built-in "bupsy" entry last.
+        if tool.hasPrefix(bupsyToolPrefix) { return .allow(rule: "bupsy asks about these itself") }
+        // The engine's own plumbing, not an action: ToolSearch only loads the definitions of tools
+        // the bot already has. Asking about it put a card before every first use of any app.
+        if engineInternalTools.contains(tool) { return .allow(rule: "engine plumbing, touches nothing") }
+
         switch autonomy {
         case .auto:
             return .allow(rule: "autonomy: auto")
@@ -64,6 +73,12 @@ public enum AutonomyPolicy {
             return .ask(reason: "This bot asks before every action.")
         }
     }
+
+    /// Engine-internal tools that read or change nothing outside the engine itself.
+    static let engineInternalTools: Set<String> = ["ToolSearch"]
+
+    /// The prefix of bupsy's own tools: message_bot, create_bot, list_bots.
+    static let bupsyToolPrefix = "mcp__bupsy__"
 
     /// Connector tools reach the user's real accounts, so they are never silently safe.
     static func isMCP(_ tool: String) -> Bool { tool.hasPrefix("mcp__") }
