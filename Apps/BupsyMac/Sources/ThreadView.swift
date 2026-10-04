@@ -25,6 +25,7 @@ struct Bubble: View {
     var onReply: ((_ author: String, _ text: String) -> Void)?
 
     @State private var hovering = false
+    @State private var copied = false
 
     var body: some View {
         content.onHover { hovering = $0 }
@@ -36,8 +37,27 @@ struct Bubble: View {
     /// you reach for occasionally. Takes up its space even when hidden, so bubbles do not shift
     /// sideways as the pointer moves down a thread.
     private func replyButton(author: String, text: String) -> some View {
-        Button { onReply?(author, text) } label: {
-            Image(systemName: "arrowshape.turn.up.left")
+        // Reply and copy, side by side: the two things people reach for on a single message.
+        HStack(spacing: 4) {
+            hoverAction("arrowshape.turn.up.left", help: "Reply to this message") {
+                onReply?(author, text)
+            }
+            .opacity(onReply != nil ? 1 : 0)
+            .disabled(onReply == nil)
+            hoverAction(copied ? "checkmark" : "doc.on.doc", help: "Copy this message") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                copied = true
+                Task { try? await Task.sleep(for: .seconds(1.2)); copied = false }
+            }
+        }
+        .opacity(hovering ? 1 : 0)
+        .disabled(!hovering)
+    }
+
+    private func hoverAction(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
                 .font(.system(size: Theme.scaled(11)))
                 .foregroundStyle(palette.mutedForeground)
                 .frame(width: 26, height: 26)
@@ -45,10 +65,9 @@ struct Bubble: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
-        .help("Reply to this message")
-        .opacity(hovering && onReply != nil ? 1 : 0)
-        .disabled(!hovering || onReply == nil)
+        .help(help)
     }
+
 
     @ViewBuilder
     private var content: some View {
