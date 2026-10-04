@@ -29,6 +29,8 @@ jobs:
   # a stale checked-in project silently omits new files.
   mac:
     name: Test BupsyKit and build the app
+    # A hung test must not hold the one self-hosted runner — and every PR behind it — for hours.
+    timeout-minutes: 20
     # MAC_RUNNER picks the machine: unset → GitHub's macos-15; set to ["self-hosted","bupsy-mac"]
     # → the runner on our own Mac, which costs no Actions minutes.
     runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"macos-15"') }}

@@ -56,9 +56,9 @@ public enum BinaryResolver {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
+        guard let waitForExit = try? process.launchForWaiting() else { return nil }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        waitForExit()
         guard process.terminationStatus == 0,
               let path = String(data: data, encoding: .utf8), !path.isEmpty else { return nil }
         return path
@@ -106,9 +106,9 @@ public enum BinaryResolver {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
-        try process.run()
+        let waitForExit = try process.launchForWaiting()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        waitForExit()
 
         // `where` can return several matches, one per line. The first is what the shell would run.
         guard process.terminationStatus == 0,
