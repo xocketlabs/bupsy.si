@@ -147,6 +147,9 @@ struct TranscriptEntry: Identifiable, Sendable {
         case tool(name: String, arguments: String, result: String?, failed: Bool)
         case approval(PendingApproval)
         case question(BotQuestion)
+        /// Something bupsy itself records in the thread — "Named itself Researcher". Never a
+        /// bot's words, so it is drawn as a quiet line, not a bubble.
+        case note(String)
         case limits(RateLimit)
         case failure(EngineFailure)
         case finished(Outcome)

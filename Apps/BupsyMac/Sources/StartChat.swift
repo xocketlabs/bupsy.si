@@ -16,6 +16,7 @@ struct StartChatPalette: View {
 
     let onPick: (BotID) -> Void
     let onCreate: () -> Void
+    var onCreateManually: () -> Void = {}
     var onCreateGroup: () -> Void = {}
     let onDismiss: () -> Void
 
@@ -99,6 +100,10 @@ struct StartChatPalette: View {
         if (needle.isEmpty || "create group chat".contains(needle)) && model.bots.count >= 2 {
             items.append(PaletteItem(kind: .createGroup))
         }
+        // The form is still there for anyone who would rather set everything up front.
+        if !needle.isEmpty && "set up a bot yourself".contains(needle) || needle.isEmpty {
+            items.append(PaletteItem(kind: .createManually))
+        }
         // Most recently active first. "Start a chat with…" is nearly always "pick up where I
         // left off", and creation order put the bot made first at the top forever.
         let ordered = model.bots.sorted { model.lastActivity(for: $0) > model.lastActivity(for: $1) }
@@ -121,6 +126,7 @@ struct StartChatPalette: View {
     private func choose(_ item: PaletteItem) {
         switch item.kind {
         case .create: onCreate()
+        case .createManually: onCreateManually()
         case .createGroup: onCreateGroup()
         case .bot(let bot): onPick(bot.id)
         }
@@ -130,6 +136,7 @@ struct StartChatPalette: View {
 struct PaletteItem: Identifiable {
     enum Kind {
         case create
+        case createManually
         case createGroup
         case bot(Bot)
     }
@@ -138,6 +145,7 @@ struct PaletteItem: Identifiable {
     var id: String {
         switch kind {
         case .create: "create"
+        case .createManually: "create-manually"
         case .createGroup: "create-group"
         case .bot(let bot): bot.id.rawValue
         }
@@ -161,6 +169,19 @@ private struct PaletteRow: View {
                         .frame(width: 24, height: 24)
                         .background(palette.secondary, in: .rect(cornerRadius: 6))
                     Text("Create new bot")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
+                    Text("it'll ask what it's for")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+
+                case .createManually:
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: Theme.scaled(11), weight: .medium))
+                        .foregroundStyle(palette.foreground)
+                        .frame(width: 24, height: 24)
+                        .background(palette.secondary, in: .rect(cornerRadius: 6))
+                    Text("Set up a bot yourself…")
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
 
@@ -314,6 +335,52 @@ struct CreationSheet: View {
             Button("Don't create") { model.decideCreation(creation, allow: false) }
                 .buttonStyle(QuietButton())
             Button("Create bot") { model.decideCreation(creation, allow: true) }
+                .buttonStyle(PrimaryButton())
+        }
+    }
+}
+
+/// A bot proposing its own job. Asked because the job is its standing instructions: a bot must
+/// not quietly rewrite its own orders, even ones the person just described to it.
+struct JobChangeSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    let change: AppModel.PendingJobChange
+
+    var body: some View {
+        SheetFrame(
+            title: "Save \(change.bot.name)'s job?",
+            icon: "text.badge.checkmark",
+            subtitle: "It wrote this from your conversation. It becomes the standing instructions "
+                + "for everything \(change.bot.name) does.",
+            width: 460,
+            closable: false
+        ) {
+            HStack(spacing: Theme.Space.step) {
+                BotFace(bot: change.bot, mood: .idle, size: 40)
+                Text(change.bot.name).font(Theme.Typography.title).foregroundStyle(palette.foreground)
+                Spacer(minLength: 0)
+            }
+            Field(label: "Its job") {
+                Text(change.job)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Theme.Space.step)
+                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(palette.border))
+            }
+            if let current = change.bot.personaPrompt {
+                Text("Replaces: \(current)")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } actions: {
+            Button("Keep current") { model.decideJobChange(change, allow: false) }
+                .buttonStyle(QuietButton())
+            Button("Save job") { model.decideJobChange(change, allow: true) }
                 .buttonStyle(PrimaryButton())
         }
     }

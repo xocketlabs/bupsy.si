@@ -102,3 +102,18 @@ func TestAskPersonNeedsTwoToFourOptions(t *testing.T) {
 		t.Fatal("nothing should be dropped")
 	}
 }
+
+func TestUpdateMeDrops(t *testing.T) {
+	outbox := t.TempDir()
+	r := callTool(t, outbox, "update_me", map[string]any{"name": "Researcher", "job": "Finds sources"})
+	if r["isError"] == true {
+		t.Fatalf("unexpected error: %v", r)
+	}
+	files := dropped(t, outbox)
+	if len(files) != 1 || files[0]["kind"] != "update_me" || files[0]["name"] != "Researcher" {
+		t.Fatalf("wrong drop: %v", files)
+	}
+	if r := callTool(t, t.TempDir(), "update_me", map[string]any{}); r["isError"] != true {
+		t.Fatal("empty update should be refused")
+	}
+}

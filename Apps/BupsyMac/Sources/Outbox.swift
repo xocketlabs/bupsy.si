@@ -29,6 +29,7 @@ final class OutboxWatcher {
         case message(from: String, toName: String, text: String)
         case createBot(from: String, name: String, job: String, role: String?)
         case question(from: String, question: String, options: [String])
+        case updateMe(from: String, name: String?, role: String?, job: String?)
     }
 
     /// The roster `list_bots` reads, beside the outbox rather than in it — the outbox is drained
@@ -78,7 +79,12 @@ final class OutboxWatcher {
                   let from = payload["from"] as? String
             else { continue }
 
-            if payload["kind"] as? String == "question" {
+            func field(_ key: String) -> String? {
+                (payload[key] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            }
+            if payload["kind"] as? String == "update_me" {
+                onRequest(.updateMe(from: from, name: field("name"), role: field("role"), job: field("job")))
+            } else if payload["kind"] as? String == "question" {
                 guard let question = payload["question"] as? String, !question.isEmpty,
                       let options = payload["options"] as? [String], (2...4).contains(options.count)
                 else { continue }
