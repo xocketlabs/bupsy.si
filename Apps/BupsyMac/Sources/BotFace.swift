@@ -542,32 +542,30 @@ struct ThinkingOrbs: View {
 ///
 /// Used on the composer while a bot is replying: it says "live" without a spinner competing for
 /// attention with the text arriving above it.
+/// A calm, breathing glow around the composer while a bot works.
+///
+/// It replaced a bright streak that orbited the border. On a wide, short box an angular sweep
+/// races round the corners and crawls along the long edges, and it took the bot's own hue, so on
+/// some bots it read as an orange flicker against a pink app. This pulses evenly all the way round,
+/// in the app's accent, with a soft halo — "working" without being looked at.
 struct BorderBeam: ViewModifier {
+    @Environment(\.palette) private var palette
     var hue: Double = 0.58
     var cornerRadius: CGFloat = 10
-    var lineWidth: CGFloat = 1.5
-    var period: Double = 2.6
+    var period: Double = 2.4
 
     func body(content: Content) -> some View {
         content.overlay {
             TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-                let progress = timeline.date.timeIntervalSinceReferenceDate
+                let phase = timeline.date.timeIntervalSinceReferenceDate
                     .truncatingRemainder(dividingBy: period) / period
+                // 0…1…0, eased, so it lingers at the ends of the breath.
+                let breath = 0.5 - 0.5 * cos(phase * 2 * .pi)
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(
-                        AngularGradient(
-                            stops: [
-                                .init(color: .clear, location: 0),
-                                .init(color: Color(hue: hue, saturation: 0.55, brightness: 1),
-                                      location: 0.06),
-                                .init(color: .clear, location: 0.16),
-                                .init(color: .clear, location: 1),
-                            ],
-                            center: .center,
-                            angle: .degrees(progress * 360)
-                        ),
-                        lineWidth: lineWidth)
+                    .strokeBorder(palette.primary.opacity(0.35 + 0.45 * breath), lineWidth: 1.5)
+                    .shadow(color: palette.primary.opacity(0.18 + 0.27 * breath), radius: 4 + 6 * breath)
             }
+            .allowsHitTesting(false)
         }
     }
 }

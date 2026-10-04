@@ -769,7 +769,7 @@ final class AppModel {
             host: bot.machineID.map { "cloud:\($0)" } ?? "local",
             groupID: groupID
         )
-        try? store?.save(run)
+        do { try store?.save(run) } catch { storageProblem = "Run not saved: \(error)" }
         if hidesPrompt {
         } else if let sender {
             let joined = [sender.id.rawValue, sender.name, shown ?? prompt].joined(separator: "\u{1}")
