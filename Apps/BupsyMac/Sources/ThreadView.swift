@@ -445,6 +445,19 @@ struct Composer: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Picks files and adds their paths to the message, the same as dropping them.
+    private func pickFiles() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = true
+        panel.message = "Choose files for \(bot.name) to look at"
+        panel.prompt = "Attach"
+        guard panel.runModal() == .OK else { return }
+        let paths = model.attach(panel.urls, to: bot)
+        guard !paths.isEmpty else { return }
+        draft = draft.isEmpty ? paths : draft + "\n" + paths
+    }
+
     /// What you are replying to, pinned above the field until you send or dismiss it.
     private func replyBar(_ target: ReplyTarget) -> some View {
         HStack(spacing: Theme.Space.snug) {
@@ -485,6 +498,20 @@ struct Composer: View {
 
     private var field: some View {
         HStack(alignment: .bottom, spacing: Theme.Space.snug) {
+            // The visible way in. Dropping files on the field always worked, but nothing said so.
+            Button(action: pickFiles) {
+                Image(systemName: "plus")
+                    .font(.system(size: Theme.scaled(13), weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(width: 34, height: 34)
+                    .background(palette.card, in: .circle)
+                    .overlay(Circle().strokeBorder(palette.border))
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .help("Attach files — or drop them on the message box")
+            .padding(.bottom, 4)
+
             TextField("Message \(bot.name)", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Theme.Typography.body)
