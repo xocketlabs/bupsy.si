@@ -729,7 +729,46 @@ final class AppModel {
         _ prompt: String, to bot: Bot,
         onFinish: (@MainActor @Sendable (String) -> Void)?
     ) {
+        // Busy: keep it rather than drop it. It shows in the thread now and goes to the bot, with
+        // anything else typed meanwhile, the moment the current run ends.
+        if running[bot.id] != nil {
+            let thread = thread(for: bot.id)
+            thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
+            queued[bot.id, default: []].append(prompt)
+            if queuedNote[bot.id] == nil {
+                let note = TranscriptEntry(kind: .note("Queued — \(bot.name) will read this when it's done."))
+                queuedNote[bot.id] = note.id
+                thread.entries.append(note)
+            }
+            return
+        }
         startRun(prompt, bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: onFinish)
+    }
+
+    /// Messages typed while a bot was busy, waiting to go to it together.
+    private var queued: [BotID: [String]] = [:]
+    private var queuedNote: [BotID: UUID] = [:]
+    /// Work waiting for a bot that was busy elsewhere — a group turn, say. Run in order as it frees.
+    private var waitingForBot: [BotID: [@MainActor () -> Void]] = [:]
+
+    func queuedCount(for bot: Bot) -> Int { queued[bot.id]?.count ?? 0 }
+
+    /// Called when a bot's run ends: queued messages first, then anything else that waited for it.
+    private func botBecameFree(_ bot: Bot) {
+        guard running[bot.id] == nil else { return }
+        if let messages = queued.removeValue(forKey: bot.id), let prompt = QueuedMessages.prompt(messages) {
+            let thread = thread(for: bot.id)
+            if let note = queuedNote.removeValue(forKey: bot.id) {
+                thread.entries.removeAll { $0.id == note }
+            }
+            _ = startRun(prompt, bot: bot, thread: thread, groupID: nil, onFinish: nil, alreadyShown: true)
+            return
+        }
+        if var pending = waitingForBot[bot.id], !pending.isEmpty {
+            let next = pending.removeFirst()
+            waitingForBot[bot.id] = pending.isEmpty ? nil : pending
+            next()
+        }
     }
 
     /// Runs a bot once, in a given thread.
@@ -742,7 +781,8 @@ final class AppModel {
     func startRun(
         _ prompt: String, bot: Bot, thread: Thread, groupID: String?,
         onFinish: (@MainActor @Sendable (String) -> Void)?,
-        from sender: Bot? = nil, shown: String? = nil, hidesPrompt: Bool = false
+        from sender: Bot? = nil, shown: String? = nil, hidesPrompt: Bool = false,
+        alreadyShown: Bool = false
     ) -> Bool {
         // One run per bot at a time, wherever it is. A bot cannot answer in a group while it is
         // still working on something you asked it directly.
@@ -752,7 +792,7 @@ final class AppModel {
         // (`shown`) rather than bupsy's framing around it — never as something the person said.
         // A prompt bupsy wrote on the person's behalf — a new bot's "introduce yourself" — is not
         // shown as something they said. The bot's reply is the first thing in the thread.
-        if hidesPrompt {
+        if hidesPrompt || alreadyShown {
         } else if let sender {
             thread.entries.append(TranscriptEntry(kind: .messageFrom(
                 botID: sender.id.rawValue, botName: sender.name, text: shown ?? prompt)))
@@ -859,6 +899,8 @@ final class AppModel {
                         groupID: groupID))
                 }
                 onFinish?(reply)
+                // Next tick, so whatever onFinish started (a group hand-off) claims the bot first.
+                Task { @MainActor [weak self] in self?.botBecameFree(bot) }
             }
             do {
                 for try await output in try await host.spawn(adapter.invocation(for: request)) {
@@ -1218,11 +1260,16 @@ final class AppModel {
         }
 
         if !started {
-            // A bot runs one thing at a time. Busy elsewhere is said, not silently skipped.
+            // A bot runs one thing at a time. Busy elsewhere, it waits and answers here as soon as
+            // it is free — said in the thread, so silence never reads as being ignored.
+            thread.speaking = nil
             appendGroupMessage(GroupMessageRecord(
                 groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
-                text: "\(bot.name) is busy with something else — mention it again once it's free."),
+                text: "\(bot.name) is finishing something in another chat — it'll reply here next."),
                 to: group)
+            waitingForBot[bot.id, default: []].append { [weak self] in
+                self?.runTurns(in: group, queue: [next], taken: taken)
+            }
             runTurns(in: group, queue: rest, taken: taken)
         }
     }
