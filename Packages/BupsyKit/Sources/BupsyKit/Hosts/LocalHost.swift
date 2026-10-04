@@ -57,6 +57,7 @@ private final class ProcessBox: @unchecked Sendable {
     private let invocation: EngineInvocation
     private let lock = NSLock()
     private var finished = false
+    private let exitStatus = ExitStatus()
 
     init(executable: URL, invocation: EngineInvocation) {
         self.invocation = invocation
@@ -78,6 +79,9 @@ private final class ProcessBox: @unchecked Sendable {
         #endif
         environment.merge(invocation.environment) { _, new in new }
         process.environment = environment
+        // Set before the process starts, so an exit can never be missed.
+        let exitStatus = self.exitStatus
+        process.terminationHandler = { exitStatus.set($0.terminationStatus) }
     }
 
     func start() -> AsyncThrowingStream<HostOutput, Error> {
@@ -102,8 +106,12 @@ private final class ProcessBox: @unchecked Sendable {
                         }
                     }
 
-                    process.waitUntilExit()
-                    continuation.yield(.exit(code: process.terminationStatus))
+                    // Not waitUntilExit(): it spins the *current* run loop, and on a concurrency
+                    // pool thread there is none to deliver the exit — so it could wait forever
+                    // for a process that had already gone, leaving a bot "working" indefinitely.
+                    // It hung CI for an hour before this was found.
+                    let code = await exitStatus.wait()
+                    continuation.yield(.exit(code: code))
                     finish(continuation, throwing: nil)
                 } catch {
                     finish(continuation, throwing: HostError.launchFailed(error.localizedDescription))
@@ -138,5 +146,37 @@ private final class ProcessBox: @unchecked Sendable {
         lock.unlock()
         guard !alreadyFinished else { return }
         continuation.finish(throwing: error)
+    }
+}
+
+/// A process's exit status, delivered once by its termination handler and awaited by the reader.
+final class ExitStatus: @unchecked Sendable {
+    private let lock = NSLock()
+    private var status: Int32?
+    private var waiter: CheckedContinuation<Int32, Never>?
+
+    func set(_ value: Int32) {
+        lock.lock()
+        if let waiter {
+            self.waiter = nil
+            lock.unlock()
+            waiter.resume(returning: value)
+        } else {
+            status = value
+            lock.unlock()
+        }
+    }
+
+    func wait() async -> Int32 {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if let status {
+                lock.unlock()
+                continuation.resume(returning: status)
+            } else {
+                waiter = continuation
+                lock.unlock()
+            }
+        }
     }
 }

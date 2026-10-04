@@ -85,9 +85,9 @@ public enum LaunchAgent {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        try process.run()
+        let waitForExit = try process.launchForWaiting()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        waitForExit()
         let output = String(data: data, encoding: .utf8) ?? ""
         guard process.terminationStatus == 0 else {
             throw HostError.io("launchctl \(arguments.joined(separator: " ")): \(output)")
