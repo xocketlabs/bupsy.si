@@ -42,7 +42,7 @@ struct BotMenu: View {
         Button("Rename bot…", action: onRename)
         Button("Shuffle face") { model.shuffleFace(bot) }
         Menu("Engine") {
-            ForEach([EngineID.claude, .codex], id: \.self) { engine in
+            ForEach(EngineID.supported, id: \.self) { engine in
                 Button {
                     model.setEngine(bot, engine)
                 } label: {
@@ -51,6 +51,15 @@ struct BotMenu: View {
             }
         }
         Menu("Model") { ModelMenuItems(bot: bot) }
+        Menu("Trust") {
+            ForEach(Autonomy.allCases, id: \.self) { level in
+                Button {
+                    model.setAutonomy(bot, level)
+                } label: {
+                    Label(level.menuLabel, systemImage: bot.autonomy == level ? "checkmark" : "")
+                }
+            }
+        }
         Divider()
         Button("Duplicate") { model.duplicate(bot) }
         Button("Copy conversation") { model.copyTranscript(of: bot) }
@@ -96,7 +105,7 @@ struct NewBotSheet: View {
                             .foregroundStyle(palette.destructive)
                     }
                     Picker("", selection: $engine) {
-                        ForEach([EngineID.claude, .codex], id: \.self) {
+                        ForEach(EngineID.supported, id: \.self) {
                             Text($0.displayName).tag($0)
                         }
                     }

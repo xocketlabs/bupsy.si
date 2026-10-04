@@ -15,6 +15,7 @@ struct BotPage: View {
     @State private var showsRoutines = false
     /// The routine open in the panel's detail view, if any.
     @State private var openRoutineID: String?
+    @State private var editingRoutine: Routine?
     @State private var confirmsDelete = false
     @State private var showsObjectives = false
     @State private var showsDetails = false
@@ -56,8 +57,12 @@ struct BotPage: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .sheet(isPresented: $showsRoutines) { RoutinesSheet(bot: bot) }
-        .sheet(isPresented: $showsObjectives) { ObjectivesSheet(bot: bot) }
+        // Each sheet on its own view: two sheets on one view and SwiftUI silently shows only one.
+        // The panel already lists routines and goals, so "New" opens the form itself rather than
+        // a second list with its own New button.
+        .background { Color.clear.sheet(isPresented: $showsRoutines) { NewRoutineSheet(bot: bot) } }
+        .background { Color.clear.sheet(isPresented: $showsObjectives) { NewObjectiveSheet(bot: bot) } }
+        .background { Color.clear.sheet(item: $editingRoutine) { NewRoutineSheet(bot: bot, editing: $0) } }
     }
 
     // MARK: - Title
@@ -300,7 +305,7 @@ struct BotPage: View {
             SettingsGroup(title: "Runs with") {
                 SettingRow(label: "Engine", value: bot.engine.displayName,
                            icon: "cpu", showsDivider: false) {
-                    ForEach([EngineID.claude, .codex], id: \.self) { engine in
+                    ForEach(EngineID.supported, id: \.self) { engine in
                         Button {
                             model.setEngine(bot, engine)
                         } label: {
@@ -402,14 +407,7 @@ struct BotPage: View {
     }
 
     /// Trust levels in the words they mean to a person, not their internal names.
-    private func label(for level: Autonomy) -> String {
-        switch level {
-        case .ask: "Ask before everything"
-        case .allowlist: "Ask unless I've allowed it"
-        case .trusted: "Ask before anything leaves the machine"
-        case .auto: "Never ask"
-        }
-    }
+    private func label(for level: Autonomy) -> String { level.menuLabel }
 
     private var modelLabel: String? {
         guard bot.model != nil else { return nil }
@@ -661,13 +659,15 @@ struct BotPage: View {
                                 Text(routine.name)
                                     .font(Theme.Typography.body)
                                     .foregroundStyle(palette.foreground)
-                                HStack(spacing: Theme.Space.snug) {
+                                // Two short lines, not one long one: side by side in a 340pt
+                                // panel they wrapped into a three-line jumble.
+                                VStack(alignment: .leading, spacing: 1) {
                                     Text(Schedule.describe(routine.cron))
-                                    MetaDot()
-                                    Text(routine.tier.label)
+                                    Text(routine.tier.shortLabel)
                                 }
                                 .font(Theme.Typography.caption)
                                 .foregroundStyle(palette.mutedForeground)
+                                .lineLimit(1)
                             }
                         } trailing: {
                             // On and off right here, without opening anything.
@@ -732,7 +732,7 @@ struct BotPage: View {
                 Button("Run now") { model.send(routine.prompt, to: bot) }
                     .buttonStyle(QuietButton(compact: true))
                     .disabled(model.isRunning(bot.id))
-                Button("Edit") { showsRoutines = true }
+                Button("Edit") { editingRoutine = routine }
                     .buttonStyle(QuietButton(compact: true))
                 Spacer(minLength: 0)
                 Button(role: .destructive) { confirmsDelete = true } label: {
@@ -1136,5 +1136,28 @@ struct InlineLabelField: View {
         guard editing else { return }
         editing = false
         model.setRole(bot, text)
+    }
+}
+
+extension Autonomy {
+    /// How a trust level reads in every menu that offers it.
+    var menuLabel: String {
+        switch self {
+        case .ask: "Ask before everything"
+        case .allowlist: "Ask unless I've allowed it"
+        case .trusted: "Ask before anything leaves the machine"
+        case .auto: "Never ask"
+        }
+    }
+}
+
+extension Routine.Tier {
+    /// The same answer in fewer words, for a narrow row.
+    var shortLabel: String {
+        switch self {
+        case .appOpen: "While bupsy's open"
+        case .launchAgent: "Even when closed"
+        case .machine: "On a machine"
+        }
     }
 }

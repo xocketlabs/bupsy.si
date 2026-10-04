@@ -52,9 +52,12 @@ struct RootView: View {
     var body: some View {
         content
             .withPalette(colorScheme)
+            // Only the Start button finishes onboarding. Treating any dismissal as done marked it
+            // complete when SwiftUI tore the sheet down on its own — the window re-created, a
+            // second sheet — so a new user could lose the welcome without ever seeing it.
             .sheet(isPresented: Binding(
                 get: { model.needsOnboarding },
-                set: { if !$0 { model.completeOnboarding() } }
+                set: { _ in }
             )) {
                 OnboardingSheet()
             }
