@@ -1,0 +1,9 @@
+# Weekly checks so the actions CI runs on, and the Swift packages, don't quietly go stale.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: swift
+    directory: /Packages/BupsyKit
+    schedule: { interval: weekly }
