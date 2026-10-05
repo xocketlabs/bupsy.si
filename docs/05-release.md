@@ -98,3 +98,14 @@ and for an app holding agent credentials the oldest build has the known problems
 - [ ] Sweep every piece of copy for "open source" — it is source-available (docs/02-licence.md)
 - [ ] Decide whether the repository goes public at this release
 - [ ] Install the DMG on a Mac that has never seen the code, and make sure it opens
+
+## Release checklist
+
+1. `CHANGELOG.md`: move "Unreleased" under the new version, with the date.
+2. `project.yml`: set `MARKETING_VERSION`.
+3. `./scripts/ci-local.sh` passes, and CI is green on `main`.
+4. Run the tour (`--tour` with demo data) and look at every screen in light and dark.
+5. Draft first: Actions → Release → Run workflow, version, draft ✓. Download the DMG from the
+   draft, install it on a clean user account, and open it.
+6. Tag and push (`git tag v0.1.0 && git push --tags`) to publish, or publish the draft.
+7. Update `CHECKLIST.md` and the landing page if what ships changed.
