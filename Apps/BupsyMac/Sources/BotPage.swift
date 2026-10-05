@@ -18,6 +18,7 @@ struct BotPage: View {
     @State private var editingRoutine: Routine?
     @State private var confirmsDelete = false
     @State private var showsObjectives = false
+    @State private var showsNewWatch = false
     @State private var showsDetails = false
     @State private var editingBot: Bot?
     /// The message being replied to, shown above the composer until sent or dismissed.
@@ -65,6 +66,7 @@ struct BotPage: View {
         .background { Color.clear.sheet(isPresented: $showsObjectives) { NewObjectiveSheet(bot: bot) } }
         .background { Color.clear.sheet(item: $editingRoutine) { NewRoutineSheet(bot: bot, editing: $0) } }
         .background { Color.clear.sheet(item: $editingBot) { BotCreatorSheet(editing: $0) } }
+        .background { Color.clear.sheet(isPresented: $showsNewWatch) { NewFolderWatchSheet(bot: bot) } }
         .onChange(of: model.tourDetails, initial: true) { _, new in
             if let new { tab = new; showsDetails = true } else { showsDetails = false }
         }
@@ -138,6 +140,7 @@ struct BotPage: View {
                             settings
                             goals
                             routineSection
+                            watchSection
                         }
                     case .activity:
                         usage
@@ -704,6 +707,49 @@ struct BotPage: View {
         }
     }
 
+    /// Folders this bot watches: it runs when files in them change.
+    private var watchSection: some View {
+        let watches = model.folderWatches.filter { $0.botID == bot.id.rawValue }
+        return VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+            SectionHeader(icon: "folder.badge.gearshape", title: "Folder watches",
+                          badge: watches.isEmpty ? nil : "\(watches.filter(\.enabled).count)",
+                          subtitle: "Runs when files change in a folder") {
+                Button { showsNewWatch = true } label: { Label("New", systemImage: "plus") }
+                    .buttonStyle(QuietButton(compact: true))
+                    .help("New folder watch")
+            }
+            if watches.isEmpty {
+                EmptyRow(text: "No folder watches yet.") { showsNewWatch = true }
+            } else {
+                VStack(spacing: Theme.Space.snug) {
+                    ForEach(watches) { watch in
+                        CardRow {
+                            IconTile(systemName: "folder")
+                        } content: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(watch.name).font(Theme.Typography.body).foregroundStyle(palette.foreground)
+                                Text(watch.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                                    .font(Theme.Typography.caption).foregroundStyle(palette.mutedForeground)
+                                    .lineLimit(1).truncationMode(.head)
+                            }
+                        } trailing: {
+                            Toggle("", isOn: Binding(get: { watch.enabled },
+                                                     set: { model.setFolderWatchEnabled(watch, $0) }))
+                                .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        }
+                        .opacity(watch.enabled ? 1 : 0.6)
+                        .contextMenu {
+                            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: watch.path)]) }
+                            Button("Delete watch", role: .destructive) { model.deleteFolderWatch(watch) }
+                        }
+                    }
+                }
+                Text("Runs while bupsy is open. Changes \(bot.name) makes itself don't set it off again.")
+                    .font(Theme.Typography.caption).foregroundStyle(palette.mutedForeground)
+            }
+        }
+    }
+
     /// One routine in full: what it tells the bot, when, and what you can do with it.
     private func routineDetail(_ routine: Routine) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.gutter) {
@@ -1177,5 +1223,63 @@ extension Routine.Tier {
         case .launchAgent: "Even when closed"
         case .machine: "On a machine"
         }
+    }
+}
+
+/// Pick a folder and say what the bot should do when files in it change.
+struct NewFolderWatchSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.palette) private var palette
+    let bot: Bot
+    @State private var path = ""
+    @State private var name = ""
+    @State private var prompt = ""
+
+    var body: some View {
+        SheetFrame(title: "New folder watch", icon: "folder.badge.gearshape",
+                   subtitle: "\(bot.name) runs when files in this folder change.") {
+            Field(label: "Folder") {
+                HStack(spacing: Theme.Space.snug) {
+                    Text(path.isEmpty ? "No folder chosen" : path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(path.isEmpty ? palette.mutedForeground : palette.foreground)
+                        .lineLimit(1).truncationMode(.head)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Choose…", action: choose).buttonStyle(QuietButton(compact: true))
+                }
+            }
+            Field(label: "Name") {
+                TextField("", text: $name, prompt: Text("New downloads"))
+                    .textFieldStyle(BupsyFieldStyle())
+            }
+            Field(label: "What should \(bot.name) do?",
+                  hint: "It also gets the list of files that changed.") {
+                TextField("", text: $prompt, prompt: Text("Rename new screenshots by what's in them and file them by month."),
+                          axis: .vertical)
+                    .textFieldStyle(BupsyFieldStyle())
+                    .lineLimit(3...5)
+            }
+        } actions: {
+            Button("Cancel") { dismiss() }.buttonStyle(QuietButton())
+            Button("Create") {
+                model.addFolderWatch(to: bot,
+                                     name: name.trimmingCharacters(in: .whitespaces).isEmpty
+                                        ? URL(fileURLWithPath: path).lastPathComponent : name.trimmingCharacters(in: .whitespaces),
+                                     prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines), path: path)
+                dismiss()
+            }
+            .buttonStyle(PrimaryButton())
+            .keyboardShortcut(.defaultAction)
+            .disabled(path.isEmpty || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+    }
+
+    private func choose() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Watch"
+        if panel.runModal() == .OK, let url = panel.url { path = url.path }
     }
 }

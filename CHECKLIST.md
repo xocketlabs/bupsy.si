@@ -1,187 +1,104 @@
 # Where bupsy is
 
-Plain-language status. Updated with every change — if a box is ticked, it works and has tests.
+Plain-language status, by milestone from [PLAN.md](PLAN.md#9-milestones). Update it in the same PR
+as the change: a ticked box means it works, has tests where it can, and was checked on screen.
 
-**Today:** everything on this list works from source. The only thing standing between you and a
-downloadable app is an Apple Developer certificate.
+✅ done · 🟡 written but not proven, or partly done · ⬜ not started
 
----
-
-## Done
-
-### The engine
-- [x] Runs **Claude Code** on your Mac, under your own sign-in
-- [x] Runs **Codex** too — proves the design isn't locked to one vendor
-- [x] Replies stream in live, word by word
-- [x] Shows what a bot is doing (commands it ran, files it touched)
-- [x] Knows the difference between *signed in* and *actually able to run*
-- [x] Shows how much of your subscription you've used
-
-### The app
-- [x] Native Mac app, opens in under a second
-- [x] Sidebar of bots you click between
-- [x] Chat with any bot
-- [x] Add a new bot
-- [x] Remembers everything when you quit and reopen
-- [x] Transcripts **can't be edited**, even by us
-
-### Safety
-- [x] Bots ask before running commands — you tap Allow or Deny
-- [x] If nobody answers, it says **no** (never yes)
-- [x] Four trust levels, from "ask me everything" to "just do it"
-- [x] Every decision is written down permanently
-- [x] A stop button that halts everything
-- [x] Bots can keep your Mac awake while working, so long jobs don't die
-
-### Doing real work
-- [x] **Give a bot a folder** — it can finally see and work on your files
-- [x] **Notifications** — told when a routine finishes or a bot needs you
-- [x] **Code renders as code** — monospace, scrollable, with a copy button
-- [x] **Menu bar** — see who's working, approve, stop, all without the window
-- [x] **Recent runs** — what a bot did while you were away
-- [x] Drop a file on the composer to hand it over
-- [x] Duplicate a bot, copy a conversation, ⌘-click a path to reveal it
-
-### Per-bot settings — right-click any bot
-- [x] **Swap engine** — Claude ↔ Codex, keeping each engine's own thread
-- [x] **Pick a model** — Opus, Sonnet, Haiku, Fable, or the Codex ones
-- [x] Trust level
-- [x] Which machine it uses
-- [x] Whether it keeps your Mac awake
-
-### Standing goals
-- [x] A goal plus how to tell it's met — the bot judges each check
-- [x] Asks you rather than guessing
-- [x] Remembers what it learns, in plain text you can edit
-- [x] Everything waiting on you in one tray
-
-### Apps
-- [x] Your MCP servers, run on your machine — not integrations we wrote
-- [x] Tokens go in your own shell, never through us
-- [x] Real connection status, not a guess
-- [x] Allow a whole app per bot, so new tools in it don't need re-approving
-
-### Machines
-- [x] Your key, your account, your bill — bupsy has no cloud of its own
-- [x] Key lives in the Mac's Keychain, never leaves this Mac
-- [x] Cost shown before you create anything
-- [x] Deleting a machine doesn't delete its bots
-
-### Routines
-- [x] Create one: pick a bot, write the job, choose when
-- [x] Runs with the app closed — launchd starts it
-- [x] A job missed while your Mac slept runs once when it wakes
-- [x] Away a fortnight? One catch-up run, not fourteen
-- [x] Every option says honestly what it will and won't do
-
-### Underneath, no buttons yet
-- [x] Cloud machines — create, start, stop, run things on them
-- [x] Installing a schedule inside a cloud machine
-- [x] A second copy of the engine-handling code, in Go, that runs on Linux and Windows
-- [x] One shared set of tests both copies have to pass, so they can't quietly disagree
-- [x] The approval gate in both copies, with its "deny if nobody answers" proven by running it
+**Today (Oct 2026):** M0–M3 done in code; M4–M7 largely done. Launch is blocked only on things
+outside the code: an Apple Developer account (signed releases), a boat.dev key (cloud machines),
+and a Neon database (waitlist signups).
 
 ---
 
-## Next, in order
+## M0 — Spikes
 
-### 1. Make a routine ✅ **done**
-- [x] Button to create one: pick a bot, write the job, choose when
-- [x] See your routines and turn them off
-- [x] Choose where it runs, and see honestly what that means
-- [x] App starts itself to run them, even when closed
+- ✅ Parse Claude Code's live stream from Swift
+- ✅ The approval gate really blocks a command (hook-based, fails closed)
+- ✅ Codex through the same adapter (and its sandbox-based enforcement)
+- ✅ Latency and real cost measured
+- ✅ The Go core, and the shared conformance tests both cores pass
+- 🟡 A subscription survives a cloud-machine snapshot — **needs a boat.dev key**
+- 🟡 A schedule on a cloud machine survives stop/resume — **needs a boat.dev key**
 
-### 2. Add a cloud machine ← **mostly done**
-- [x] Paste your own boat key, kept in the Mac's Keychain
-- [x] Create a machine and name it
-- [x] Start and stop it
-- [x] Assign bots to it — right-click a bot
-- [x] See what it's costing you, before you create it
-- [ ] Sign a bot's engine in *on that machine* — needs a terminal window
-- [ ] Watch its screen
-- [ ] **Needs your boat key to prove it works against the real service**
+## M1 — Walking skeleton
 
-### 3. Make it look good ✅ **rebuilt in the Agndex dashboard shell**
-- [x] Nav rail with labelled groups — Bots, Setup — on the darkest surface
-- [x] Working surface floats as a rounded panel inset inside it
-- [x] Topbar with breadcrumbs
-- [x] Page header, meta chips, section headers with badges, card rows with icon tiles
-- [x] The chips *are* the controls — engine, model, machine and trust change from the page
-- [x] Conversation scrolls in its own box, so goals and routines stay reachable in a long thread
-- [x] "Needs you" appears in the rail only when something is actually waiting
-- [x] Approvals can be settled from the tray, without going to the bot first
-- [x] ⌘1–9 to switch bots, ⌘N for a new one
-- [x] Machines, Apps and the tray are pages with the same chrome, not sheets in disguise
-- [x] Colours ported exactly from watermelon.sh's Agndex dashboard (oklch → sRGB, not eyeballed)
-- [x] Sidebar darker than content, cards lifted above it — depth without borders or shadows
-- [x] Everything on a 44pt control height and an 8/12/16/24/40 spacing scale
-- [x] Pink used for one thing only: something needs you
-- [x] Conversation list — faces, what they last said, when
-- [x] Proper chat bubbles, day separators, typing indicator
-- [x] Tool calls read as quiet asides, not cards competing with the reply
-- [x] Click a bot's name for everything about it — like tapping a contact
-- [x] Approvals are the one thing in a thread you can't miss
-- [x] Animated faces that blink and show who's busy or stuck
-- [x] First-run walkthrough
+- ✅ Native Mac app; a bot runs Claude Code and its reply streams in live
+- ✅ Everything stored (SQLite, append-only events) and restored on reopen
+- ✅ CI builds a DMG; CI runs on our own Mac runner (no GitHub minutes)
+- 🟡 Signed and notarized — **needs an Apple Developer account**
 
-### 4. Connect your apps ✅ **done**
-- [x] Add any MCP server — GitHub, Slack, Notion, Files suggested, anything else by hand
-- [x] Choose which bot can use which app, without being asked each time
-- [x] See which apps actually connected, reported by the engine itself
-- [x] bupsy never stores an app's password or token
+## M2 — The chat app
 
-### 5. Standing goals ✅ **done**
-- [x] "Keep my inbox at zero" — ongoing, not a one-off job
-- [x] Checks on a schedule and does nothing when all is well
-- [x] Bots learn as they go, and you can read and correct what they learned
-- [x] One place showing everything waiting on you, with a count in the toolbar
-- [x] Never claims a goal is handled when it isn't sure
+- ✅ Roster: faces, roles, jobs, folders, pins, hide, search
+- ✅ Per bot: engine (Claude Code / Codex), model (aliases, exact versions, custom ID)
+- ✅ History and resume, markdown, code blocks, attachments (+ or drop), reply to a message, copy
+- ✅ Usage per bot, and the limits card (context window + plan limits with reset times)
+- ✅ Codex as a second engine
+- 🟡 Cloud machines: create / start / stop / assign — written, **not run against boat.dev yet**
+- ⬜ Sign an engine in *on* a cloud machine; watch its screen and files
 
-### 6. Ship it ← **written, waiting on your Apple account**
-- [x] Build, sign, notarize and package script — runs locally and in CI
-- [x] One-command release: push a tag, get a DMG on GitHub
-- [x] Step-by-step release guide
-- [x] Licence set to Xocket Labs Inc., a Delaware corporation
-- [ ] **Needs your Apple Developer account ($99/yr)** — docs/05-release.md
-- [ ] Auto-updates — deliberately off until there's somewhere to host the feed
-- [x] Website — `site/index.html`, ready for any static host
+## M3 — Trust · first shippable build
 
----
+- ✅ Approval cards: Allow · Deny · Always allow (never for shell commands)
+- ✅ Four trust levels; Permissions page to review and remove standing decisions
+- ✅ Append-only audit log; Stop; "nobody answered" means no
+- ✅ Bot-to-bot messaging asks the first time in each direction
 
-## Worth knowing
+## M4 — Always-on
 
-Writing the engine-handling code a second time (in Go, so it runs on Linux and Windows) turned up
-**two real bugs in the Mac app** that 146 passing tests had missed:
+- ✅ Routines on a schedule, including with bupsy closed (launchd); missed runs catch up once
+- ✅ File-change triggers — a bot runs when files in a folder change
+- ✅ Attention tray, notifications, menu bar, keep-awake while working
+- ✅ Go core for Linux/Windows; installing a schedule on a cloud machine
+- 🟡 Work with the lid closed — needs a cloud machine (**boat.dev key**)
+- ⬜ Email triggers — today: a routine that checks mail through Executor
+- — Webhook triggers: left out on purpose; 1.0 has zero inbound network surface
 
-1. Every Codex run was being reported as a crash. A harmless message Codex prints on *every* run
-   was being read as a sign it had hung. There was even a test for it — which passed, because it
-   checked the wrong thing confidently.
-2. Codex refuses to run in a folder that isn't a git repository, and the app was throwing away the
-   explanation. So a bot pointed at an ordinary folder just failed, silently, with nothing to show
-   the user why.
+## M5 — Objectives
 
-Both are fixed, and both are now pinned by the shared tests so they can't come back.
+- ✅ Standing goals with a done-condition, checked on a schedule
+- ✅ Asks rather than guesses; what it learns is plain text you can edit
+- ✅ Multiple-choice questions from a bot
+- — Grok engine: dropped from 1.0; Claude Code and Codex only
+
+## M6 — Reach
+
+- ✅ Any MCP server as an app; per-bot allowlists; live connection status
+- ✅ Executor: one-click install, setup guide, on for every bot
+- ✅ Group chats with a lead, @mentions, hand-offs (capped at six replies)
+- ✅ Bots message bots, create bots, and act on messages from other bots (looped pairs capped)
+- ✅ A busy bot replies in a group when it is free; messages typed while a bot works are queued
+- ⬜ Channels (Slack / Telegram) — after 1.0
+- ⬜ Computer use — after 1.0
+
+## M7 — Polish & 1.0
+
+- ✅ Onboarding; light / dark / auto; logo and icon; bot creator; thinking indicator
+- ✅ Spotlight-style search and new; design notes in [docs/06-design.md](docs/06-design.md)
+- ✅ Landing page live at bupsy.pages.dev (white, waitlist form)
+- ✅ Release pipeline: tag → DMG on GitHub; CHANGELOG, issue templates, release checklist
+- 🟡 Waitlist signups — **needs Neon `DATABASE_URL`**
+- 🟡 Signed, notarized, auto-updating releases — **needs an Apple Developer account**
+- ⬜ Freestyle as a second cloud host — after 1.0
+- ⬜ Custom domain, launch video, announcement
 
 ---
 
 ## Waiting on you
 
-| What | Why it matters |
+| What | Unlocks |
 |---|---|
-| **Click Send once** | I can't test the app's own buttons — needs a permission that's yours to give |
-| **A boat.dev key** | Turns the cloud machine code from written to working |
-| **A lawyer on the Use Grant** | Not blocking, but worth an hour before the first public build |
-| **Apple Developer account** ($99/yr) | Blocks a downloadable app, and the wake helper |
-| **Which ChatGPT plan has Codex?** | Yours signs in but can't run a model |
-
----
+| **Apple Developer account** ($99/yr) | Signed DMG that opens with a double-click; auto-updates |
+| **boat.dev key** | Cloud machines, lid-closed work, M0's open spikes |
+| **Neon `DATABASE_URL`** | Waitlist signups — `wrangler pages secret put DATABASE_URL --project-name bupsy` |
+| **Connect tools in Executor** | Gmail, Notion, Linear… for every bot |
 
 ## Decided against, on purpose
 
-- **Phone app** — not in version 1. Keeps the Mac app with zero network surface.
-- **Voice** — later. Neither competitor leads with it.
-- **A Windows or Linux *app*** — Mac first. The engine-handling underneath it now runs
-  everywhere, which is the hard half, but there is no second app and won't be before 1.0.
-- **Waking your Mac for free** — impossible without root. Needs the opt-in helper, or a cloud machine.
+- **Phone app** and **voice** — not in 1.0
+- **Windows / Linux app** — Mac first; the Go core already runs there
+- **Webhooks** — would need an inbound port; 1.0 has none
+- **Grok engine** — Claude Code and Codex cover 1.0
 
-See [docs/03-decisions.md](docs/03-decisions.md) for why, and [PLAN.md](PLAN.md) for the long version.
+See [docs/03-decisions.md](docs/03-decisions.md) for why.
