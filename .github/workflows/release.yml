@@ -164,7 +164,7 @@ jobs:
       # RELEASE_TOKEN secret with access to it) to publish to a separate public repository
       # instead — the way to offer public downloads while the source stays private.
       - name: Publish the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           repository: ${{ vars.RELEASE_REPO || github.repository }}
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
