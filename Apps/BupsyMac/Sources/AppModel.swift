@@ -107,6 +107,7 @@ final class AppModel {
         machines = (try? self.store?.machines()) ?? []
         connectors = Self.loadConnectors()
         objectives = (try? self.store?.objectives()) ?? []
+        folderWatches = (try? self.store?.folderWatches()) ?? []
         syncLaunchAgent()
     }
 
@@ -399,6 +400,58 @@ final class AppModel {
             machines[index] = machine
         }
         try? store?.save(machine)
+    }
+
+    // MARK: - Folder watches
+
+    var folderWatches: [FolderWatch] = []
+    private var watchers: [String: FolderWatcher] = [:]
+    /// When each bot last finished a run — changes it made itself should not set it off again.
+    private var lastRunEnded: [BotID: Date] = [:]
+
+    func startFolderWatches() {
+        for watch in folderWatches { syncWatcher(watch) }
+    }
+
+    func addFolderWatch(to bot: Bot, name: String, prompt: String, path: String) {
+        let watch = FolderWatch(botID: bot.id.rawValue, name: name, prompt: prompt, path: path)
+        folderWatches.append(watch)
+        try? store?.save(watch)
+        syncWatcher(watch)
+    }
+
+    func setFolderWatchEnabled(_ watch: FolderWatch, _ enabled: Bool) {
+        guard let index = folderWatches.firstIndex(where: { $0.id == watch.id }) else { return }
+        folderWatches[index].enabled = enabled
+        try? store?.save(folderWatches[index])
+        syncWatcher(folderWatches[index])
+    }
+
+    func deleteFolderWatch(_ watch: FolderWatch) {
+        watchers.removeValue(forKey: watch.id)?.stop()
+        folderWatches.removeAll { $0.id == watch.id }
+        try? store?.deleteTrigger(id: watch.id)
+    }
+
+    private func syncWatcher(_ watch: FolderWatch) {
+        watchers.removeValue(forKey: watch.id)?.stop()
+        guard watch.enabled, FileManager.default.fileExists(atPath: watch.path) else { return }
+        watchers[watch.id] = FolderWatcher(path: watch.path) { [weak self] changed in
+            self?.folderChanged(watch.id, changed)
+        }
+    }
+
+    private func folderChanged(_ id: String, _ changed: [String]) {
+        guard let watch = folderWatches.first(where: { $0.id == id }), watch.enabled,
+              let bot = bots.first(where: { $0.id.rawValue == watch.botID }) else { return }
+        // A bot editing files in the folder it watches would otherwise trigger itself forever:
+        // nothing fires while it works, or for a few seconds after.
+        if running[bot.id] != nil { return }
+        if let ended = lastRunEnded[bot.id], Date().timeIntervalSince(ended) < 8 { return }
+        send(watch.prompt(for: changed), to: bot) { [weak self] reply in
+            self?.notifier.routineFinished(bot: bot.name, routine: watch.name,
+                                           summary: reply.split(separator: "\n").first.map(String.init))
+        }
     }
 
     // MARK: - Routines
@@ -922,6 +975,7 @@ final class AppModel {
                         providerConversationID: id.rawValue, lastEventAt: Date(),
                         groupID: groupID))
                 }
+                lastRunEnded[bot.id] = Date()
                 onFinish?(reply)
                 // Next tick, so whatever onFinish started (a group hand-off) claims the bot first.
                 Task { @MainActor [weak self] in self?.botBecameFree(bot) }
@@ -1991,6 +2045,7 @@ final class AppModel {
     }
 
     func deleteBot(_ bot: Bot) {
+        for watch in folderWatches where watch.botID == bot.id.rawValue { deleteFolderWatch(watch) }
         bots.removeAll { $0.id == bot.id }
         threads[bot.id] = nil
         try? store?.deleteBot(id: bot.id.rawValue)

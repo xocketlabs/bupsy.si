@@ -22,6 +22,7 @@ struct BupsyApp: App {
                     if TourMode.isOn { Task { await TourMode.run(model: model) } }
                     #endif
                     model.startOutbox()
+                    model.startFolderWatches()
                     model.refreshExecutor()
                     await model.refreshEngineStatus()
                 }
