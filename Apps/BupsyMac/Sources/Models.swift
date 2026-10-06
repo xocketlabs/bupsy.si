@@ -241,6 +241,18 @@ final class Thread {
 
     var lastActivity: Date? { entries.last?.at }
 
+    /// Closes tool steps whose result will never come, because the run they were in has ended.
+    /// Left open, a step keeps its spinner, and ticks along during the next run as if it were
+    /// part of it. `stopped` marks them as cut short rather than done.
+    func settleOpenTools(stopped: Bool) {
+        for index in entries.indices {
+            guard case .tool(let name, let arguments, .none, false) = entries[index].kind else { continue }
+            entries[index].kind = .tool(name: name, arguments: arguments,
+                                        result: stopped ? "Stopped before it finished" : "",
+                                        failed: stopped)
+        }
+    }
+
     /// Folds a canonical event into the transcript.
     ///
     /// Consecutive text events are merged into the preceding bubble so streaming reads as one
@@ -299,6 +311,7 @@ final class Thread {
             latestUsage = usage
 
         case .done(let outcome):
+            settleOpenTools(stopped: false)
             if let id = outcome.conversationID { conversationID = id }
             entries.append(TranscriptEntry(kind: .finished(outcome)))
 

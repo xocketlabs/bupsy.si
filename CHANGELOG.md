@@ -39,6 +39,9 @@ PR as the change; the release moves it under a version.
 - Sections stay when their last bot leaves, and can be made empty. Delete a section from its menu;
   its bots move to Unassigned.
 - What you type to a bot or a group is kept when you switch away and come back.
+- Stop means stop: a bot stopped mid-reply in a group no longer posts the half-written reply or
+  hands on to the next bot, and a goal check you stop is not read as an answer. Steps it was in
+  the middle of show as stopped instead of spinning.
 - Apps that need a key set in your shell (LINEAR_API_KEY and the like) now find it in `~/.zshrc`
   too, and the Apps page no longer stalls while it looks.
 
