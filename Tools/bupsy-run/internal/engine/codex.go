@@ -57,6 +57,13 @@ func (c Codex) Command(req Request) (string, []string) {
 	if req.WorkingDir != "" {
 		args = append(args, "-C", req.WorkingDir)
 	}
+	if startsLikeOption(req.Prompt) {
+		// The prompt is positional, so one starting with "-" would be read as a flag — and
+		// "--dangerously-bypass-approvals-and-sandbox" is a flag. "--" ends option parsing, which
+		// codex's parser honours. Only for such prompts, so ordinary ones keep the argv the
+		// conformance cases pin and the Swift core generates.
+		args = append(args, "--")
+	}
 	args = append(args, req.Prompt)
 
 	// MCP servers are registered out of band with `codex mcp`, not per invocation, so

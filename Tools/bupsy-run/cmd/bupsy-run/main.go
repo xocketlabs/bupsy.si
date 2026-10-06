@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/xocketlabs/bupsy.si/tools/bupsy-run/internal/engine"
@@ -30,7 +31,8 @@ func main() {
 	dir := flag.String("dir", "", "working directory for the run")
 	model := flag.String("model", "", "model to request; empty means the CLI's own default")
 	resume := flag.String("resume", "", "conversation to continue")
-	autonomy := flag.String("autonomy", "ask", "trust level: ask, write, auto")
+	autonomy := flag.String("autonomy", engine.AutonomyAsk,
+		"trust level: "+strings.Join(engine.Autonomies, ", "))
 	binary := flag.String("binary", "", "path to the engine binary, if it is not on PATH")
 	flag.Parse()
 
@@ -42,6 +44,10 @@ func main() {
 
 	adapter, err := adapterFor(*engineID, *binary)
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "bupsy-run:", err)
+		os.Exit(2)
+	}
+	if err := checkAutonomy(*engineID, *autonomy); err != nil {
 		fmt.Fprintln(os.Stderr, "bupsy-run:", err)
 		os.Exit(2)
 	}
@@ -101,4 +107,27 @@ func adapterFor(id, binary string) (engine.Adapter, error) {
 	default:
 		return nil, errors.New("unknown engine " + id + " (want claude or codex)")
 	}
+}
+
+// checkAutonomy decides whether this run can actually be held to the trust level asked for, and
+// refuses it when it cannot. Failing closed is the point: a run that starts is a run the person
+// believes is gated.
+//
+// Codex enforces every level itself, through the sandbox chosen before it starts, so any level on
+// the ladder is fine. Claude is different: below auto, its only enforcement is the approval hook,
+// and that hook waits for a person to answer in the app (internal/gate). bupsy-run has no app and
+// nobody to answer, so installing the hook would hold every tool call for minutes and then deny it,
+// and NOT installing it — what this command used to do — ran Claude with whatever the user's own
+// settings allow, ignoring the level entirely. Neither is what was asked for, so it says so.
+func checkAutonomy(engineID, autonomy string) error {
+	if err := engine.CheckAutonomy(autonomy); err != nil {
+		return err
+	}
+	if engineID == "claude" && autonomy != engine.AutonomyAuto {
+		return fmt.Errorf("claude enforces --autonomy %s through an approval hook that waits for "+
+			"a person in the bupsy app, and bupsy-run has no one to ask. Refusing rather than "+
+			"running ungated: pass --autonomy auto to run without approvals knowingly, or use "+
+			"--engine codex, whose sandbox enforces %s on its own", autonomy, autonomy)
+	}
+	return nil
 }

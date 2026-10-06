@@ -27,7 +27,18 @@ func (c Claude) binary() string {
 }
 
 func (c Claude) Command(req Request) (string, []string) {
-	args := []string{"-p", req.Prompt, "--output-format", "stream-json", "--verbose"}
+	// `-p` is a plain switch and the prompt is a positional argument, so a prompt that starts
+	// with "-" is read as an option: "--dangerously-skip-permissions" typed as a prompt would
+	// become the flag. Such a prompt goes last, after "--", which ends option parsing.
+	//
+	// Only then, so that every other prompt keeps the argv the conformance cases pin and the Swift
+	// core generates; moving all prompts behind "--" is a change both cores make together.
+	dashed := startsLikeOption(req.Prompt)
+	args := []string{"-p"}
+	if !dashed {
+		args = append(args, req.Prompt)
+	}
+	args = append(args, "--output-format", "stream-json", "--verbose")
 	if req.Resume != "" {
 		args = append(args, "--resume", req.Resume)
 	}
@@ -45,7 +56,15 @@ func (c Claude) Command(req Request) (string, []string) {
 	}
 	// No --permission-mode on purpose: widening permissions is not the same as gating them, and
 	// the gate is the hook.
+	if dashed {
+		args = append(args, "--", req.Prompt)
+	}
 	return c.binary(), args
+}
+
+// startsLikeOption reports whether an argument would be parsed as a flag if passed bare.
+func startsLikeOption(arg string) bool {
+	return strings.HasPrefix(arg, "-")
 }
 
 func (c Claude) NormaliseStderr(raw string) []Event {

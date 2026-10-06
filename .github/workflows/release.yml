@@ -32,17 +32,33 @@ jobs:
       HAS_SIGNING: ${{ secrets.CERTIFICATE_P12 != '' }}
       HAS_SPARKLE: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The typed-in version arrives through the environment, never spliced into the script:
+      # `${{ }}` is pasted in as shell source before bash runs, so a "version" containing quotes or
+      # $(...) would have been executed on the release machine with the signing secrets nearby.
+      # It is then held to plain x.y.z, because it names files, a tag and a release, and
+      # package.sh and appcast.sh take it as given.
       - name: Work out the version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_DRAFT: ${{ inputs.draft }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
-            DRAFT="${{ inputs.draft }}"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
+            DRAFT="$INPUT_DRAFT"
           else
             VERSION="${GITHUB_REF_NAME#v}"
             DRAFT=false
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must look like 1.2.3, got: $VERSION"
+            exit 1
+          fi
+          if [ "$DRAFT" != true ] && [ "$DRAFT" != false ]; then
+            echo "::error::draft must be true or false, got: $DRAFT"
+            exit 1
           fi
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
           echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
@@ -53,8 +69,11 @@ jobs:
 
       # Tests gate the release. A build of broken code is worse than no build: it is the one
       # people actually install.
+      #
+      # --force-resolved-versions builds exactly what Package.resolved pins, so a release never
+      # picks up a dependency version no commit ever reviewed.
       - name: Test
-        run: swift test --package-path Packages/BupsyKit
+        run: swift test --package-path Packages/BupsyKit --force-resolved-versions
 
       # A keychain created for this run and deleted after it, so the certificate never lingers on
       # a shared runner.
@@ -75,8 +94,17 @@ jobs:
           # Added to the search list, not replacing it: on a self-hosted runner this is
           # someone's own Mac, and replacing the list would drop their keychains. The original
           # list is saved and put back by the clean-up step.
-          security list-keychains -d user | xargs > "$RUNNER_TEMP/keychains.orig"
-          security list-keychains -d user -s "$KEYCHAIN" $(cat "$RUNNER_TEMP/keychains.orig")
+          #
+          # Saved one path per line and read back into an array, never word-split: a keychain
+          # path with a space in it ("~/Library/Keychains/Work Stuff.keychain-db") would otherwise
+          # become two bogus entries and the person's real keychain would drop off the list.
+          security list-keychains -d user \
+            | sed -e 's/^[[:space:]]*"//' -e 's/"[[:space:]]*$//' > "$RUNNER_TEMP/keychains.orig"
+          ORIGINAL=()
+          while IFS= read -r path; do
+            if [ -n "$path" ]; then ORIGINAL+=("$path"); fi
+          done < "$RUNNER_TEMP/keychains.orig"
+          security list-keychains -d user -s "$KEYCHAIN" ${ORIGINAL[@]+"${ORIGINAL[@]}"}
           rm -f "$RUNNER_TEMP/cert.p12"
 
       # package.sh picks its mode from which secrets are set: all four → signed and notarized,
@@ -87,7 +115,30 @@ jobs:
           TEAM_ID: ${{ secrets.TEAM_ID }}
           NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
           NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-        run: ./scripts/package.sh "${{ steps.version.outputs.value }}"
+          VERSION: ${{ steps.version.outputs.value }}
+        run: ./scripts/package.sh "$VERSION"
+
+      # The app build only warns and carries on when Go is missing (project.yml's post-build
+      # script exits 0), because a developer without Go should still be able to build the app.
+      # A release is different: without bupsy-mcp, bots cannot message, list or create other bots,
+      # and nothing in the app says why. So the release checks for it and refuses to ship without.
+      - name: Check bupsy-mcp is in the app
+        run: |
+          set -euo pipefail
+          MCP="build/dd/Build/Products/Release/Bupsy.app/Contents/MacOS/bupsy-mcp"
+          if [ ! -x "$MCP" ]; then
+            echo "::error::$MCP is missing. Install Go on the release machine and run again."
+            exit 1
+          fi
+          # Built universal like the app; a one-architecture binary would fail on half of Macs.
+          ARCHS=$(lipo -archs "$MCP")
+          for arch in arm64 x86_64; do
+            case " $ARCHS " in
+              *" $arch "*) ;;
+              *) echo "::error::bupsy-mcp lacks $arch (has: $ARCHS)"; exit 1 ;;
+            esac
+          done
+          echo "bupsy-mcp present ($ARCHS)"
 
       # Sparkle will not install an update whose EdDSA signature does not verify, so this step is
       # what makes the update channel safe rather than merely convenient. Only meaningful for a
@@ -97,19 +148,28 @@ jobs:
         if: env.HAS_SIGNING == 'true' && env.HAS_SPARKLE == 'true'
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
+          # pipefail, because the signature comes out of a pipe: without it a sign_update that
+          # crashed would leave sed's success as the result, and an empty signature would go into
+          # the appcast — an update every installed copy then refuses, with nothing failing here.
+          set -euo pipefail
           SPARKLE_BIN=$(find build -name sign_update -type f 2>/dev/null | head -1)
           if [ -z "$SPARKLE_BIN" ]; then
             echo "::warning::sign_update not found — skipping the appcast"
             exit 0
           fi
-          echo "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle_key"
-          SIG=$("$SPARKLE_BIN" "build/Bupsy-${{ steps.version.outputs.value }}.dmg" \
+          # Readable only by us, and gone however this step ends.
+          trap 'rm -f "$RUNNER_TEMP/sparkle_key"' EXIT
+          (umask 077; printf '%s\n' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle_key")
+          SIG=$("$SPARKLE_BIN" "build/Bupsy-$VERSION.dmg" \
                  -f "$RUNNER_TEMP/sparkle_key" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
-          rm -f "$RUNNER_TEMP/sparkle_key"
+          if [ -z "$SIG" ]; then
+            echo "::error::sign_update produced no signature, so there is no appcast to publish."
+            exit 1
+          fi
           echo "signature=$SIG" >> "$GITHUB_OUTPUT"
-          ./scripts/appcast.sh "${{ steps.version.outputs.value }}" "$SIG" \
-            "build/Bupsy-${{ steps.version.outputs.value }}.dmg" > build/appcast.xml
+          ./scripts/appcast.sh "$VERSION" "$SIG" "build/Bupsy-$VERSION.dmg" > build/appcast.xml
 
       # The notes say which kind of build this is, because the install steps differ. An unsigned
       # build that does not say so leaves people meeting Gatekeeper with no idea what to do.
@@ -164,7 +224,7 @@ jobs:
       # RELEASE_TOKEN secret with access to it) to publish to a separate public repository
       # instead — the way to offer public downloads while the source stays private.
       - name: Publish the release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           repository: ${{ vars.RELEASE_REPO || github.repository }}
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
@@ -184,4 +244,12 @@ jobs:
         if: always() && env.HAS_SIGNING == 'true'
         run: |
           security delete-keychain "$RUNNER_TEMP/build.keychain" || true
-          [ -f "$RUNNER_TEMP/keychains.orig" ] && security list-keychains -d user -s $(cat "$RUNNER_TEMP/keychains.orig") || true
+          # Read back the same way it was saved: one path per line, into an array, so a path with
+          # a space survives the round trip.
+          if [ -s "$RUNNER_TEMP/keychains.orig" ]; then
+            ORIGINAL=()
+            while IFS= read -r path; do
+              if [ -n "$path" ]; then ORIGINAL+=("$path"); fi
+            done < "$RUNNER_TEMP/keychains.orig"
+            security list-keychains -d user -s ${ORIGINAL[@]+"${ORIGINAL[@]}"} || true
+          fi
