@@ -138,7 +138,10 @@ private enum RootSheet: Identifiable {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.palette) private var palette
+    /// Worked out here from the scheme rather than read from the environment: this view is the
+    /// one that publishes the palette (`withPalette` below), so the environment it reads still
+    /// holds the dark default, which made the app tint dark pink in light mode.
+    private var palette: Palette.Scheme { Palette.scheme(for: colorScheme) }
     @State private var destination: NavRail.Destination?
     @State private var isStartingChat = false
     @State private var paletteSearchFirst = false

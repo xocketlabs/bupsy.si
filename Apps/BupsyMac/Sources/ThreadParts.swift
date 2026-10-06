@@ -10,7 +10,7 @@ enum ThreadLayout {
     static let avatarGap: CGFloat = 12
     static var gutter: CGFloat { avatar + avatarGap }
     /// max-w-4xl, the column the transcript and the composer share.
-    static let columnMaxWidth: CGFloat = 896
+    static let columnMaxWidth: CGFloat = Theme.Size.contentMaxWidth
     /// Cards in a thread stop here so a wide window does not stretch a decision into a banner.
     static let cardMaxWidth: CGFloat = 640
     /// One size for what was said and what you are typing, so a message does not shrink the
@@ -157,7 +157,9 @@ final class ToolCallMemo {
     }
 }
 
-/// A small status pill for the topbar: tone-washed, optionally led by a dot.
+/// A small status pill for the topbar. A thin wrapper over `Badge`: a palette colour maps onto
+/// the badge tone it matches (so `palette.primary` is the ink-text "Needs you" badge); nil is the
+/// neutral grey.
 struct ThreadStatusBadge: View {
     @Environment(\.palette) private var palette
     let text: String
@@ -165,59 +167,37 @@ struct ThreadStatusBadge: View {
     var dot = false
 
     var body: some View {
-        let colour = tone ?? palette.mutedForeground
-        HStack(spacing: 6) {
-            if dot {
-                Circle().fill(colour).frame(width: 6, height: 6)
-            }
-            Text(text)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(colour)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 28)
-        .background(colour.opacity(0.12), in: .rect(cornerRadius: Theme.Radius.control))
+        Badge(text: text, tone: BadgeTone.matching(tone, in: palette), dot: dot)
     }
 }
 
-/// The buttons a thread uses, at the design's 36pt in-card size.
+/// The buttons a thread uses, at the design's 36pt in-card size. A thin wrapper over
+/// `BupsyButtonStyle`; new code should use that directly.
 struct ThreadButtonStyle: ButtonStyle {
     enum Kind { case primary, secondary, ghost, ghostDestructive }
 
-    @Environment(\.palette) private var palette
-    @Environment(\.isEnabled) private var isEnabled
     var kind: Kind = .secondary
     var height: CGFloat = 36
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.Typography.body)
-            .fontWeight(kind == .primary ? .medium : .regular)
-            .foregroundStyle(foreground)
-            .padding(.horizontal, kind == .ghost || kind == .ghostDestructive ? 10 : 14)
-            .frame(height: height)
-            .background(background(pressed: configuration.isPressed),
-                        in: .rect(cornerRadius: Theme.Radius.control))
-            .shadow(color: kind == .primary && isEnabled ? palette.primary.opacity(0.35) : .clear,
-                    radius: 2, y: 1)
-            .opacity(isEnabled ? 1 : 0.5)
-            .contentShape(.rect)
+        BupsyButtonStyle(kind: buttonKind, size: buttonSize).makeBody(configuration: configuration)
     }
 
-    private var foreground: Color {
+    private var buttonKind: BupsyButtonStyle.Kind {
         switch kind {
-        case .primary: .white
-        case .secondary, .ghost: palette.foreground
-        case .ghostDestructive: palette.destructiveText
+        case .primary: .primary
+        case .secondary: .secondary
+        case .ghost: .ghost
+        case .ghostDestructive: .ghostDestructive
         }
     }
 
-    private func background(pressed: Bool) -> Color {
-        switch kind {
-        case .primary: palette.primary.opacity(pressed ? 0.85 : 1)
-        case .secondary: pressed ? palette.cardHover : palette.card
-        case .ghost, .ghostDestructive: pressed ? palette.cardHover : .clear
+    private var buttonSize: BupsyButtonStyle.Size {
+        switch height {
+        case Theme.Size.controlLg: .lg
+        case Theme.Size.controlMd: .md
+        case Theme.Size.controlSm: .sm
+        default: .custom(height)
         }
     }
 }

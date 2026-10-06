@@ -1246,22 +1246,13 @@ struct Rule: View {
     var body: some View { Rectangle().fill(palette.border).frame(height: 1) }
 }
 
+/// The quiet secondary action beside a primary one. A thin wrapper over
+/// `BupsyButtonStyle(kind: .secondary)`: 44pt, or the 36pt in-card size when compact.
 struct QuietButton: ButtonStyle {
-    @Environment(\.palette) private var palette
     var compact = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.Typography.body)
-            .foregroundStyle(palette.foreground)
-            .padding(.horizontal, compact ? 10 : Theme.Space.gutter)
-            .frame(height: compact ? 32 : Theme.Size.control)
-            .background(configuration.isPressed ? palette.cardHover : palette.secondary,
-                        in: .rect(cornerRadius: Theme.Radius.control))
-            .overlay {
-                RoundedRectangle(cornerRadius: Theme.Radius.control)
-                    .strokeBorder(palette.border)
-            }
+        BupsyButtonStyle(kind: .secondary, size: compact ? .md : .lg).makeBody(configuration: configuration)
     }
 }
 

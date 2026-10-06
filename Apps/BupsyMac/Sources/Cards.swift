@@ -245,34 +245,27 @@ struct LimitsGauge: View {
 
     var body: some View {
         if let tightest = limits.tightest {
-            let percent = Int(tightest.window.utilization * 100)
+            let utilization = tightest.window.utilization
+            let colour = LimitScale.fill(utilization, palette)
             HStack(spacing: 5) {
                 Circle()
-                    .trim(from: 0, to: max(0.02, tightest.window.utilization))
-                    .stroke(colour(percent), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .trim(from: 0, to: max(0.02, min(utilization, 1)))
+                    .stroke(colour, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .frame(width: 12, height: 12)
-                Text("\(percent)%")
+                Text("\(LimitScale.percent(utilization))%")
                     .font(Theme.Typography.badge.monospacedDigit())
-                    .foregroundStyle(colour(percent))
+                    .foregroundStyle(colour)
             }
             .help(tooltip)
-        }
-    }
-
-    private func colour(_ percent: Int) -> Color {
-        switch percent {
-        case ..<60: palette.mutedForeground
-        case ..<85: palette.primary
-        default: palette.destructive
         }
     }
 
     private var tooltip: String {
         var lines = ["Your subscription usage, as the engine reports it:"]
         for (name, window) in limits.windows.sorted(by: { $0.key < $1.key }) {
-            var line = "  \(name.replacingOccurrences(of: "_", with: " ")): "
-                + "\(Int(window.utilization * 100))%"
+            var line = "  \(LimitScale.label(name)): "
+                + "\(LimitScale.percent(window.utilization))%"
             if let resets = window.resetsAt {
                 line += ", resets \(resets.formatted(date: .omitted, time: .shortened))"
             }

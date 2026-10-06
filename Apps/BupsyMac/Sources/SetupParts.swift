@@ -11,13 +11,13 @@ struct SetupPageScroll<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 40) {
+            VStack(alignment: .leading, spacing: Theme.Space.page) {
                 content
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, Theme.Space.pageSide)
             .padding(.top, Theme.Space.section)
             .padding(.bottom, Theme.Space.page)
-            .frame(maxWidth: 896, alignment: .leading)
+            .frame(maxWidth: Theme.Size.contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
     }
@@ -34,11 +34,11 @@ struct SetupPageHeader<Trailing: View>: View {
         HStack(alignment: .bottom, spacing: Theme.Space.gutter) {
             VStack(alignment: .leading, spacing: Theme.Space.snug) {
                 Text(title)
-                    .font(.system(size: Theme.scaled(22), weight: .semibold))
+                    .font(Theme.Typography.title)
                     .tracking(-0.4)
                     .foregroundStyle(palette.foreground)
                 Text(description)
-                    .font(.system(size: Theme.scaled(14)))
+                    .font(Theme.Typography.lead)
                     .foregroundStyle(palette.mutedForeground)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -59,41 +59,31 @@ enum SetupTone {
     case success, warning, destructive, info, neutral
 
     func colour(_ palette: Palette.Scheme) -> Color {
+        badgeTone.text(palette)
+    }
+
+    /// The `Badge` tone this maps to.
+    var badgeTone: BadgeTone {
         switch self {
-        case .success: palette.success
-        case .warning: palette.warning
-        case .destructive: palette.destructiveText
-        case .info: palette.infoText
-        case .neutral: palette.mutedForeground
+        case .success: .success
+        case .warning: .warning
+        case .destructive: .destructive
+        case .info: .info
+        case .neutral: .neutral
         }
     }
 }
 
-/// A small status pill: "Connected", "Needs LINEAR_API_KEY", "Failed to start".
+/// A small status pill: "Connected", "Needs LINEAR_API_KEY", "Failed to start". A thin wrapper
+/// over `Badge`.
 struct SetupBadge: View {
-    @Environment(\.palette) private var palette
     let text: String
     var tone: SetupTone = .neutral
     /// A live dot in front, for states that are actively on (connected, running).
     var dot = false
 
     var body: some View {
-        HStack(spacing: 5) {
-            if dot {
-                Circle()
-                    .fill(tone.colour(palette))
-                    .frame(width: 5, height: 5)
-            }
-            Text(text)
-                .lineLimit(1)
-        }
-        .font(Theme.Typography.caption)
-        .foregroundStyle(tone.colour(palette))
-        .padding(.horizontal, Theme.Space.snug)
-        .frame(height: 24)
-        .background(tone.colour(palette).opacity(tone == .neutral ? 0.1 : 0.13),
-                    in: .rect(cornerRadius: Theme.Radius.control))
-        .fixedSize()
+        Badge(text: text, tone: tone.badgeTone, dot: dot)
     }
 }
 
@@ -107,14 +97,14 @@ struct SetupSectionHeader: View {
     var description: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             HStack(spacing: Theme.Space.snug) {
                 Image(systemName: icon)
                     .font(.system(size: Theme.scaled(13), weight: .medium))
                     .foregroundStyle(palette.foreground)
                     .frame(width: 18)
                 Text(title)
-                    .font(.system(size: Theme.scaled(15), weight: .medium))
+                    .font(Theme.Typography.heading)
                     .foregroundStyle(palette.foreground)
                 if let badge { SetupBadge(text: badge, tone: badgeTone) }
             }
@@ -184,7 +174,7 @@ struct SetupListRow<Leading: View, Trailing: View>: View {
         .padding(.leading, Theme.Space.step)
         .padding(.trailing, Theme.Space.gutter)
         .background(hovering ? palette.cardHover : palette.card,
-                    in: .rect(cornerRadius: 14, style: .continuous))
+                    in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
     }
@@ -241,9 +231,9 @@ struct SetupPanel<Content: View>: View {
                 .padding(Theme.Space.gutter)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(colorScheme == .dark ? palette.card : palette.background,
-                            in: .rect(cornerRadius: 12, style: .continuous))
+                            in: .rect(cornerRadius: innerRadius, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: innerRadius, style: .continuous)
                         .strokeBorder(palette.border)
                 }
             if let footer {
@@ -251,14 +241,17 @@ struct SetupPanel<Content: View>: View {
                     .font(Theme.Typography.label)
                     .foregroundStyle(palette.mutedForeground)
                     .padding(.horizontal, Theme.Space.step)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, Theme.Space.compact)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(2)
+        .padding(Theme.Space.hairline)
         .background(colorScheme == .dark ? palette.sidebar : palette.card,
-                    in: .rect(cornerRadius: 14, style: .continuous))
+                    in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
     }
+
+    /// Concentric with the lip: the outer radius less the lip's width.
+    private var innerRadius: CGFloat { Theme.Radius.xl - Theme.Space.hairline }
 }
 
 /// A short "nothing here" line with a still bot beside it, for an empty section inside a page
@@ -281,7 +274,7 @@ struct SetupEmptyNote: View {
             Spacer(minLength: 0)
         }
         .padding(Theme.Space.gutter)
-        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
     }
 }
 
