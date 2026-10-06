@@ -1,4 +1,4 @@
-module github.com/vanshpatelx/bupsy.si/tools/bupsy-run
+module github.com/xocketlabs/bupsy.si/tools/bupsy-run
 
 go 1.24
 
