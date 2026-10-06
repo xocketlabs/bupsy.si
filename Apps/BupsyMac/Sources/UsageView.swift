@@ -12,42 +12,74 @@ struct UsageSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @State private var period = UsagePeriod.month
+    /// What the database said for `period`, loaded in `.task(id:)` rather than queried on every
+    /// redraw of `body`.
+    @State private var loaded: [BotUsage] = []
+    /// False until the first load lands, so "Nothing yet" never flashes before the numbers.
+    @State private var hasLoaded = false
+
+    /// The rows on screen: usage for bots that still exist. The totals are summed from these
+    /// same rows, so the tiles always add up to the list under them.
+    private var shown: [ShownUsage] {
+        loaded.compactMap { usage in
+            model.bots.first(where: { $0.id.rawValue == usage.botID })
+                .map { ShownUsage(bot: $0, usage: usage) }
+        }
+    }
+
+    /// One bot's row: the bot and what it used.
+    private struct ShownUsage: Identifiable {
+        let bot: Bot
+        let usage: BotUsage
+        var id: String { usage.botID }
+    }
 
     var body: some View {
-        let rows = model.usage(since: period.start)
+        let shown = self.shown
+        let rows = shown.map(\.usage)
 
-        SetupPageScroll {
-            SetupPageHeader(title: "Usage", description: "What your bots spent of your plan") {
-                UsagePeriodPicker(period: $period)
-            }
+        // Its own topbar rather than one from `Page` in the panel switch: the breadcrumb
+        // carries the period, which only this view knows.
+        Page(trail: ["Usage", period.label]) {
+            SetupPageScroll {
+                SetupPageHeader(title: "Usage", description: "What your bots spent of your plan") {
+                    UsagePeriodPicker(period: $period)
+                }
 
-            if rows.isEmpty {
-                EmptyState(
-                    title: period == .all ? "Nothing yet" : "Nothing \(period.phrase)",
-                    message: "Usage shows up here after a bot's first run.")
-                    .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
-            } else {
-                totals(rows)
+                if !hasLoaded {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, minHeight: 120)
+                } else if rows.isEmpty {
+                    EmptyState(
+                        title: period == .all ? "Nothing yet" : "Nothing \(period.phrase)",
+                        message: "Usage shows up here after a bot's first run.")
+                        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+                } else {
+                    totals(rows)
 
-                VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-                    SetupSectionHeader(
-                        icon: "face.smiling",
-                        title: "By bot",
-                        description: "Bars share one scale, so you can compare bots at a glance")
-                    VStack(spacing: Theme.Space.step) {
-                        ForEach(rows, id: \.botID) { usage in
-                            if let bot = model.bots.first(where: { $0.id.rawValue == usage.botID }) {
-                                UsageRow(bot: bot, usage: usage,
-                                         share: share(of: usage, in: rows),
-                                         working: model.isRunning(bot.id))
+                    VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                        SetupSectionHeader(
+                            icon: "face.smiling",
+                            title: "By bot",
+                            description: "Bars share one scale, so you can compare bots at a glance")
+                        VStack(spacing: Theme.Space.step) {
+                            ForEach(shown) { item in
+                                UsageRow(bot: item.bot, usage: item.usage,
+                                         share: share(of: item.usage, in: rows),
+                                         working: model.isRunning(item.bot.id))
                             }
                         }
                     }
                 }
-            }
 
-            SetupFootnote(text: "Dollar figures are the API price, shown for scale. You pay your "
-                          + "plan, not this. Codex runs show no dollar figure.")
+                SetupFootnote(text: "Dollar figures are the API price, shown for scale. You pay your "
+                              + "plan, not this. Codex runs show no dollar figure.")
+            }
+        }
+        .task(id: period) {
+            loaded = model.usage(since: period.start)
+            hasLoaded = true
         }
     }
 

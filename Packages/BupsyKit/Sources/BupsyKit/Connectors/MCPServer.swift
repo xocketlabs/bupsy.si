@@ -49,6 +49,104 @@ public struct MCPServer: Sendable, Equatable, Identifiable, Codable {
 
     /// The prefix every tool from this server carries, which is what per-bot allowlists match on.
     public var toolPrefix: String { "mcp__\(name)__" }
+
+    /// How a server's name reads in a sentence: "GitHub" for `github`, "Files" for `filesystem`.
+    ///
+    /// The common ones take their title from the suggestions, and a few brands keep their own
+    /// capitals. Anything else has its words capitalised (`my-tools` reads "My Tools"), which
+    /// is a guess, but a better one than `.capitalized`, which turned "github" into "Github".
+    public static func displayName(of serverName: String) -> String {
+        if let suggestion = MCPSuggestions.all.first(where: { $0.server.name == serverName }) {
+            return suggestion.title
+        }
+        let brands = ["github": "GitHub", "gitlab": "GitLab", "executor": "Executor",
+                      "linear": "Linear", "gmail": "Gmail", "postgres": "Postgres"]
+        if let brand = brands[serverName.lowercased()] { return brand }
+        let words = serverName
+            .split(whereSeparator: { $0 == "-" || $0 == "_" || $0 == " " })
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+        return words.isEmpty ? serverName : words.joined(separator: " ")
+    }
+
+    /// Splits an arguments line the way a shell would, so a path with a space survives.
+    ///
+    /// Whitespace separates arguments except inside quotes. Single quotes keep everything
+    /// literally; double quotes keep everything except `\"` and `\\`; outside quotes a backslash
+    /// escapes the next character (`My\ Folder`). An unclosed quote runs to the end of the line
+    /// rather than failing, and `""` is kept as an empty argument. No expansion of any kind:
+    /// `$HOME` or `~` reach the server as typed.
+    public static func splitArguments(_ line: String) -> [String] {
+        var result: [String] = []
+        var current = ""
+        var hasToken = false
+        var inSingle = false
+        var inDouble = false
+        var escaping = false
+
+        for character in line {
+            if escaping {
+                if inDouble, character != "\"", character != "\\" { current.append("\\") }
+                current.append(character)
+                escaping = false
+                hasToken = true
+                continue
+            }
+            if inSingle {
+                if character == "'" { inSingle = false } else { current.append(character) }
+                continue
+            }
+            if inDouble {
+                if character == "\"" {
+                    inDouble = false
+                } else if character == "\\" {
+                    escaping = true
+                } else {
+                    current.append(character)
+                }
+                continue
+            }
+            switch character {
+            case "'":
+                inSingle = true
+                hasToken = true
+            case "\"":
+                inDouble = true
+                hasToken = true
+            case "\\":
+                escaping = true
+                hasToken = true
+            default:
+                if character.isWhitespace {
+                    if hasToken {
+                        result.append(current)
+                        current = ""
+                        hasToken = false
+                    }
+                } else {
+                    current.append(character)
+                    hasToken = true
+                }
+            }
+        }
+        if escaping { current.append("\\") }
+        if hasToken { result.append(current) }
+        return result
+    }
+
+    /// The reverse of `splitArguments`: one line that splits back into exactly these arguments.
+    /// Used to show a saved server's arguments for editing.
+    public static func joinArguments(_ args: [String]) -> String {
+        args.map { argument in
+            if argument.isEmpty { return "\"\"" }
+            let plain = argument.allSatisfy { character in
+                !character.isWhitespace && character != "'" && character != "\""
+                    && character != "\\"
+            }
+            if plain { return argument }
+            return "'" + argument.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }
+        .joined(separator: " ")
+    }
 }
 
 /// Starting points, not a maintained catalog.

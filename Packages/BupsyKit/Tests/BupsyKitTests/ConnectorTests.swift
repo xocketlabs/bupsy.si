@@ -73,6 +73,36 @@ struct ConnectorTests {
     func toolPrefix() {
         #expect(MCPServer(name: "github", command: "x").toolPrefix == "mcp__github__")
     }
+
+    /// Splitting on spaces broke any path with a space in it, which on a Mac is most of them.
+    @Test("arguments split the way a shell would")
+    func splitsArgumentsLikeAShell() {
+        #expect(MCPServer.splitArguments(#"-y @acme/server "/Users/me/My Folder""#)
+            == ["-y", "@acme/server", "/Users/me/My Folder"])
+        #expect(MCPServer.splitArguments(#"/Users/me/My\ Folder --flag"#)
+            == ["/Users/me/My Folder", "--flag"])
+        #expect(MCPServer.splitArguments("--name 'two words'") == ["--name", "two words"])
+        #expect(MCPServer.splitArguments("\"a \\\"b\\\"\"") == ["a \"b\""])
+        #expect(MCPServer.splitArguments("  a   b  ") == ["a", "b"])
+        #expect(MCPServer.splitArguments("\"\" x") == ["", "x"])
+        #expect(MCPServer.splitArguments("$HOME ~") == ["$HOME", "~"], "no expansion")
+        #expect(MCPServer.splitArguments("") == [])
+    }
+
+    @Test("server names read the way the product spells them")
+    func displayNames() {
+        #expect(MCPServer.displayName(of: "github") == "GitHub")
+        #expect(MCPServer.displayName(of: "filesystem") == "Files")
+        #expect(MCPServer.displayName(of: "executor") == "Executor")
+        #expect(MCPServer.displayName(of: "my-tools") == "My Tools")
+    }
+
+    @Test("joined arguments split back into the same list")
+    func joinRoundTrips() {
+        let args = ["-y", "a b", "it's", "", "q\"\\", "plain"]
+        #expect(MCPServer.splitArguments(MCPServer.joinArguments(args)) == args)
+        #expect(MCPServer.joinArguments(["-y", "pkg"]) == "-y pkg")
+    }
 }
 
 @Suite("Allowlist matching")

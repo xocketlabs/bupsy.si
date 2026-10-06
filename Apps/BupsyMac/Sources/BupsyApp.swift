@@ -421,15 +421,20 @@ struct RootView: View {
                 floating { NothingSelected() }
             }
         case .machines:
-            floating { Page(trail: ["Machines"]) { MachinesSheet() } }
+            floating {
+                Page(trail: ["Machines"]) { MachinesSheet() } actions: { NewMachineButton() }
+            }
         case .connectors:
-            floating { Page(trail: ["Apps"]) { ConnectorsSheet() } }
+            floating {
+                Page(trail: ["Apps"]) { ConnectorsSheet() } actions: { AddServerButton() }
+            }
         case .permissions:
             floating { Page(trail: ["Permissions"]) { PermissionsPage() } }
         case .attention:
             floating { Page(trail: ["Waiting on you"]) { AttentionInbox() } }
         case .usage:
-            floating { Page(trail: ["Usage"]) { UsageSheet() } }
+            // Draws its own topbar, so the breadcrumb can carry the period it is showing.
+            floating { UsageSheet() }
         case .team:
             floating { TeamView(onOpen: { openBot($0) }) }
         case .groups:
@@ -489,15 +494,32 @@ private struct PaletteBackground: View {
 
 /// A page under the topbar. Everything in the panel wears the same chrome, so moving between a
 /// bot and the machines list does not feel like crossing into a different application.
-struct Page<Content: View>: View {
+///
+/// `actions` sit at the right of the topbar, where the boards put a page's primary action
+/// ("Add a server", "New machine"). Pages without one leave it out.
+struct Page<Content: View, Actions: View>: View {
     let trail: [String]
-    @ViewBuilder var content: Content
+    let content: Content
+    let actions: Actions
+
+    init(trail: [String], @ViewBuilder content: () -> Content,
+         @ViewBuilder actions: () -> Actions) {
+        self.trail = trail
+        self.content = content()
+        self.actions = actions()
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            Topbar(trail: trail) { EmptyView() }
+            Topbar(trail: trail) { actions }
             content
         }
+    }
+}
+
+extension Page where Actions == EmptyView {
+    init(trail: [String], @ViewBuilder content: () -> Content) {
+        self.init(trail: trail, content: content) { EmptyView() }
     }
 }
 

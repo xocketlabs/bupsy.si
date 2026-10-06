@@ -10,8 +10,8 @@ extension AppModel {
     }
 
     /// Runs a routine now, through the same path the scheduler takes for a due routine:
-    /// `send(_:to:onFinish:)` with the routine's instruction, and a "finished" notification when
-    /// the run ends (which, like every notification, stays quiet while bupsy is the active app).
+    /// `sendTriggered` with the routine's instruction and id, and a "finished" notification when
+    /// the run ends (which, like every notification, stays quiet while Bupsy is the active app).
     ///
     /// One deliberate difference from `runDueRoutines`: `lastFiredAt` is left alone. That field
     /// records which scheduled slot was filled; a run by hand fills none, so the next scheduled
@@ -24,19 +24,17 @@ extension AppModel {
         // A fresh Notifier rather than AppModel's own, which is private to AppModel.swift. It is
         // stateless apart from caching whether permission was granted, so the result is the same.
         let notifier = Notifier()
-        send(routine.prompt, to: bot) { reply in
+        sendTriggered(routine.prompt, to: bot, triggerID: routine.id) { reply in
             notifier.routineFinished(
                 bot: botName, routine: name,
                 summary: reply.split(separator: "\n").first.map(String.init), botID: botID)
         }
     }
 
-    /// This routine's runs, newest first.
+    /// This routine's runs, newest first, from the bot's recent runs.
     ///
-    /// Runs carry no routine id (a run's `triggerID` is never set for routines, and RunSummary
-    /// does not expose it), so a run counts as this routine's when the message it started with
-    /// is the routine's instruction. Scheduled runs send exactly that, plus a "running late"
-    /// note when late; "Run now" sends it unchanged. Only the bot's recent runs are searched.
+    /// Runs are tagged with the routine's id when they start. Runs from before that have no tag,
+    /// and count as this routine's when the message they started with is its instruction.
     func runs(of routine: Routine) -> [RunSummary] {
         guard let bot = self.bot(for: routine) else { return [] }
         return RoutineRunStats.attributed(recentRuns(for: bot), to: routine)
@@ -68,12 +66,20 @@ struct RoutineRunStats {
         latest = runs.first
     }
 
-    /// Runs that began with the routine's instruction. See `AppModel.runs(of:)`.
+    /// "of 7 scheduled" beside the week's runs. nil when the schedule can't be read, or when more
+    /// runs happened than were scheduled (some were by hand), where "5 of 3" reads as nonsense.
+    var scheduledNote: String? {
+        guard let scheduled = scheduledThisWeek, scheduled > 0, runsThisWeek <= scheduled else { return nil }
+        return "of \(scheduled) scheduled"
+    }
+
+    /// This routine's runs: tagged with its id, or, for runs from before tagging, untagged and
+    /// starting with its instruction. A run tagged with anything else is never counted here.
     static func attributed(_ runs: [RunSummary], to routine: Routine) -> [RunSummary] {
         let instruction = routine.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !instruction.isEmpty else { return [] }
         return runs.filter { run in
-            guard let prompt = run.prompt else { return false }
+            if let trigger = run.triggerID { return trigger == routine.id }
+            guard !instruction.isEmpty, let prompt = run.prompt else { return false }
             return prompt.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(instruction)
         }
     }

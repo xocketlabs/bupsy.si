@@ -482,7 +482,8 @@ public struct Store: Sendable {
                     reply: reply.flatMap(Self.text(in:)),
                     toolCalls: tools,
                     inputTokens: run.inputTokens,
-                    outputTokens: run.outputTokens)
+                    outputTokens: run.outputTokens,
+                    triggerID: run.triggerID)
             }
         }
     }

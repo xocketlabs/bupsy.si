@@ -158,7 +158,7 @@ struct TierPromiseTests {
 
     @Test("every tier states its limit in words the UI can show")
     func everyTierStatesItsLimit() {
-        #expect(Routine.Tier.appOpen.promise.contains("only while bupsy is open"))
+        #expect(Routine.Tier.appOpen.promise.contains("only while Bupsy is open"))
         #expect(Routine.Tier.launchAgent.promise.contains("on wake"))
         #expect(Routine.Tier.machine.promise.contains("asleep, or off"))
     }
@@ -218,5 +218,60 @@ struct RoutineStorageTests {
 
         try store.deleteBot(id: bot.id)
         #expect(try store.routines().isEmpty)
+    }
+}
+
+@Suite("Schedules in words")
+struct CronWordsTests {
+    @Test("simple schedules read as words")
+    func describesSimpleSchedules() {
+        #expect(CronWords.describe("0 2 * * *") == "Every day at 2am")
+        #expect(CronWords.describe("30 14 * * 1-5") == "Weekdays at 2:30pm")
+        #expect(CronWords.describe("5 9 * * 1") == "Mondays at 9:05am")
+        #expect(CronWords.describe("0 9 * * 1,3,5") == "Mondays, Wednesdays and Fridays at 9am")
+        #expect(CronWords.describe("0 10 * * 0,6") == "Weekends at 10am")
+        #expect(CronWords.describe("0 0 * * *") == "Every day at 12am")
+        #expect(CronWords.describe("0 12 * * *") == "Every day at 12pm")
+        #expect(CronWords.describe("0 9,17 * * *") == "Every day at 9am and 5pm")
+        #expect(CronWords.describe("0 9,13,17 * * *") == "Every day at 9am, 1pm and 5pm")
+    }
+
+    @Test("intervals read as words")
+    func describesIntervals() {
+        #expect(CronWords.describe("0 * * * *") == "Every hour")
+        #expect(CronWords.describe("15 * * * 1-5") == "Every hour at 15 minutes past on weekdays")
+        #expect(CronWords.describe("0,15,30,45 * * * *") == "Every 15 minutes")
+        #expect(CronWords.describe("0 0,4,8,12,16,20 * * *") == "Every 4 hours")
+        #expect(CronWords.describe("0 9-18 * * 1-5") == "Every hour from 9am to 6pm on weekdays")
+    }
+
+    /// Words that are nearly right are worse than the cron as written.
+    @Test("anything else is left to the caller")
+    func leavesTheRest() {
+        #expect(CronWords.describe("0 12 1 * *") == nil)
+        #expect(CronWords.describe("0 9 * 6 *") == nil)
+        #expect(CronWords.describe("0,30 9,10 * * *") == nil)
+        #expect(CronWords.describe("0 1,3,5,7,9 * * *") == nil)
+        #expect(CronWords.describe("nonsense") == nil)
+    }
+
+    @Test("a custom time builds a cron that reads back the same")
+    func customTime() {
+        let nightly = CronWords.Time(hour: 2, minute: 0)
+        #expect(CronWords.cron(for: nightly) == "0 2 * * *")
+        #expect(CronWords.time(of: "0 2 * * *") == nightly)
+
+        let weekdays = CronWords.Time(hour: 9, minute: 30, weekdays: Set(1...5))
+        #expect(CronWords.cron(for: weekdays) == "30 9 * * 1-5")
+        #expect(CronWords.time(of: "30 9 * * 1-5") == weekdays)
+
+        let some = CronWords.Time(hour: 18, minute: 5, weekdays: [5, 1])
+        #expect(CronWords.cron(for: some) == "5 18 * * 1,5")
+        #expect(CronWords.describe(CronWords.cron(for: some)) == "Mondays and Fridays at 6:05pm")
+
+        // All seven days is every day.
+        #expect(CronWords.cron(for: CronWords.Time(hour: 7, minute: 0, weekdays: Set(0...6))) == "0 7 * * *")
+        // Twice a day is not one time, so it is not opened in the editor.
+        #expect(CronWords.time(of: "0 9,17 * * *") == nil)
     }
 }

@@ -219,6 +219,9 @@ public struct RunSummary: Sendable, Identifiable, Equatable {
     /// different fact from zero and is shown differently.
     public let inputTokens: Int?
     public let outputTokens: Int?
+    /// What started the run when it was not a message: a routine, a goal check or a folder
+    /// watch, by id. nil for a message, and for every run recorded before runs were tagged.
+    public let triggerID: String?
 
     public var duration: TimeInterval? {
         endedAt.map { $0.timeIntervalSince(startedAt) }
@@ -228,11 +231,12 @@ public struct RunSummary: Sendable, Identifiable, Equatable {
 
     public init(id: String, startedAt: Date, endedAt: Date?, status: String, host: String,
                 prompt: String?, reply: String?, toolCalls: Int,
-                inputTokens: Int? = nil, outputTokens: Int? = nil) {
+                inputTokens: Int? = nil, outputTokens: Int? = nil, triggerID: String? = nil) {
         self.id = id; self.startedAt = startedAt; self.endedAt = endedAt
         self.status = status; self.host = host
         self.prompt = prompt; self.reply = reply; self.toolCalls = toolCalls
         self.inputTokens = inputTokens; self.outputTokens = outputTokens
+        self.triggerID = triggerID
     }
 }
 

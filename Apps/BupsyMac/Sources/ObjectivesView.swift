@@ -72,9 +72,15 @@ struct ObjectiveRow: View {
                         .font(Theme.Typography.body)
                         .fontWeight(.medium)
                         .foregroundStyle(palette.foreground)
-                    Text("Met when: \(objective.doneWhen)")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.mutedForeground)
+                        .lineLimit(3)
+                        .help(objective.goal)
+                    // A goal saved with no stop condition checks against itself; saying so twice
+                    // adds nothing.
+                    if !objective.doneWhen.isEmpty && objective.doneWhen != objective.goal {
+                        Text("Met when: \(objective.doneWhen)")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                    }
                     HStack(spacing: Theme.Space.tight) {
                         if let outcome = objective.lastOutcome {
                             Text(outcome.label)
@@ -148,9 +154,25 @@ struct ObjectiveMenu: View {
         self.onDelete = onDelete
     }
 
+    private var checking: Bool { model.isChecking(objective) }
+
     var body: some View {
+        HStack(spacing: Theme.Space.tight) {
+            // The check runs on its own and can take a while; this is what says it started.
+            if checking {
+                ProgressView()
+                    .controlSize(.small)
+                    .help("Checking now")
+                    .accessibilityLabel("Checking \(objective.goal)")
+            }
+            menu
+        }
+    }
+
+    private var menu: some View {
         Menu {
-            Button("Check now") { model.checkObjective(objective) }
+            Button(checking ? "Checking…" : "Check now") { model.checkObjective(objective) }
+                .disabled(checking)
             Button(showsNotes ? "Hide what it's learned" : "Edit what it's learned") {
                 showsNotes.toggle()
             }
@@ -221,119 +243,18 @@ extension View {
     }
 }
 
+/// The new-routine sheet opened on its Standing goal tab. Kept by this name, and with its old
+/// arguments, for the places that ask for a new goal; the form itself lives in NewRoutineSheet so
+/// there is one copy of it.
 struct NewObjectiveSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.palette) private var palette
-    @Environment(\.dismiss) private var dismiss
     let bot: Bot
-    /// Set when this sheet is the "Standing goal" tab of the new-routine sheet: picking the
-    /// Routine tab hands back to it. nil when it was opened on its own, and then it has no tabs.
-    let onSwitchToRoutine: (() -> Void)?
-    /// Set when this is one tab of the new-routine sheet: any other tab picked is handed back.
-    /// Takes over from `onSwitchToRoutine` when both are given.
-    let onSwitchKind: ((RoutineSheetKind) -> Void)?
-
-    @State private var goal = ""
-    @State private var doneWhen = ""
-    @State private var preset = Schedule.objectivePresets[0]
-    @State private var tier = Routine.Tier.launchAgent
-    /// Always "Standing goal" here; choosing Routine hands back and resets it.
-    @State private var kindTab = RoutineSheetKind.goal
 
     init(bot: Bot, onSwitchToRoutine: (() -> Void)? = nil,
          onSwitchKind: ((RoutineSheetKind) -> Void)? = nil) {
         self.bot = bot
-        self.onSwitchToRoutine = onSwitchToRoutine
-        self.onSwitchKind = onSwitchKind
     }
 
     var body: some View {
-        SheetFrame(
-            title: "New standing goal",
-            icon: "target",
-            subtitle: "Something \(bot.name) keeps true. It checks on a schedule and acts only "
-                + "when it is not.",
-            width: 540,
-            tone: .info,
-            primaryVerb: "save"
-        ) {
-            if onSwitchToRoutine != nil || onSwitchKind != nil {
-                RoutineKindPicker(selection: $kindTab)
-            }
-
-            Field(label: "What should stay true?") {
-                TextField("", text: $goal, prompt: Text("My inbox has nothing older than a day"))
-                    .textFieldStyle(BupsyFieldStyle())
-            }
-
-            // A vague goal with a sharp done-when still works. The reverse does not.
-            Field(label: "How will \(bot.name) know it's met?",
-                  hint: "Be specific. It's what the bot measures against.") {
-                TextField("", text: $doneWhen,
-                          prompt: Text("No unread mail older than 24 hours remains"))
-                    .textFieldStyle(BupsyFieldStyle())
-            }
-
-            Field(label: "Check") {
-                Picker("", selection: $preset) {
-                    ForEach(Schedule.objectivePresets, id: \.cron) { Text($0.label).tag($0) }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            Field(label: "Runs", hint: tier.promise) {
-                Picker("", selection: $tier) {
-                    ForEach(availableTiers, id: \.self) { Text($0.shortLabel).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-            }
-        } actions: {
-            Button("Cancel") { dismiss() }
-                .buttonStyle(QuietButton())
-            Button("Save goal") {
-                model.addObjective(
-                    to: bot,
-                    goal: goal.trimmingCharacters(in: .whitespaces),
-                    doneWhen: doneWhen.trimmingCharacters(in: .whitespaces),
-                    cron: preset.cron, tier: tier)
-                dismiss()
-            }
-            .buttonStyle(PrimaryButton())
-            .keyboardShortcut(.defaultAction)
-            .disabled(goal.trimmingCharacters(in: .whitespaces).isEmpty
-                      || doneWhen.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        .onChange(of: bot.id) {
-            if !availableTiers.contains(tier) { tier = .launchAgent }
-        }
-        .onChange(of: kindTab) {
-            guard kindTab != .goal else { return }
-            let picked = kindTab
-            kindTab = .goal
-            if let onSwitchKind {
-                onSwitchKind(picked)
-            } else if picked == .routine {
-                onSwitchToRoutine?()
-            }
-        }
+        NewRoutineSheet(bot: bot, kind: .goal)
     }
-
-    private var availableTiers: [Routine.Tier] {
-        bot.machineID == nil ? [.appOpen, .launchAgent] : Routine.Tier.allCases
-    }
-}
-
-extension Schedule {
-    /// Objectives check more often than routines run: most checks should find nothing to do and
-    /// cost almost nothing, so frequent checking is the normal case rather than an extravagance.
-    static let objectivePresets: [Preset] = [
-        Preset(label: "Hourly on weekdays, 9am–6pm", cron: "0 9-18 * * 1-5"),
-        Preset(label: "Every hour", cron: "0 * * * *"),
-        Preset(label: "Three times a day", cron: "0 9,13,17 * * *"),
-        Preset(label: "Once a day at 9am", cron: "0 9 * * *"),
-        Preset(label: "Weekdays at 9am", cron: "0 9 * * 1-5"),
-    ]
 }

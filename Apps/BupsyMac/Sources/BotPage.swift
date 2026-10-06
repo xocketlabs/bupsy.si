@@ -37,6 +37,8 @@ struct BotPage: View {
     /// Set to ask before deleting. Owned by the page, never by a menu, which is gone on click.
     @State private var deletingObjective: Objective?
     @State private var deletingWatch: FolderWatch?
+    /// The folder watch open in its edit sheet, if any.
+    @State private var editingWatch: FolderWatch?
 
     private var thread: Thread { model.thread(for: bot.id) }
     private var routines: [Routine] { model.routines.filter { $0.botID == bot.id.rawValue } }
@@ -78,6 +80,7 @@ struct BotPage: View {
         .background { Color.clear.sheet(item: $editingBot) { BotCreatorSheet(editing: $0) } }
         // The folder watch form is the new-routine sheet opened on its Folder watch tab.
         .background { Color.clear.sheet(isPresented: $showsNewWatch) { NewRoutineSheet(bot: bot, kind: .folderWatch) } }
+        .background { Color.clear.sheet(item: $editingWatch) { NewFolderWatchSheet(bot: bot, editing: $0) } }
         .background {
             Color.clear.confirmsObjectiveDeletion($deletingObjective) { model.deleteObjective($0) }
         }
@@ -894,6 +897,8 @@ struct BotPage: View {
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
                         .lineLimit(1)
+                        // Cut to one line here; the whole goal on hover.
+                        .help(objective.goal)
                     HStack(spacing: Theme.Space.snug) {
                         outcomeBadge(objective)
                             .help(checkedLabel(objective))
@@ -999,30 +1004,93 @@ struct BotPage: View {
             } else {
                 VStack(spacing: Theme.Space.snug) {
                     ForEach(watches) { watch in
-                        CardRow {
-                            IconTile(systemName: "folder")
-                        } content: {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(watch.name).font(Theme.Typography.body).foregroundStyle(palette.foreground)
-                                Text(watch.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                                    .font(Theme.Typography.caption).foregroundStyle(palette.mutedForeground)
-                                    .lineLimit(1).truncationMode(.head)
-                            }
-                        } trailing: {
-                            Toggle("", isOn: Binding(get: { watch.enabled },
-                                                     set: { model.setFolderWatchEnabled(watch, $0) }))
-                                .labelsHidden().toggleStyle(.switch).controlSize(.small)
-                        }
-                        .opacity(watch.enabled ? 1 : 0.6)
-                        .contextMenu {
-                            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: watch.path)]) }
-                            Button("Delete watch…", role: .destructive) { deletingWatch = watch }
-                        }
+                        watchRow(watch)
                     }
                 }
                 Text("Runs while Bupsy is open. Changes \(bot.name) makes itself don't set it off again.")
                     .font(Theme.Typography.caption).foregroundStyle(palette.mutedForeground)
             }
+        }
+    }
+
+    /// One folder watch: opens its edit sheet, with on and off and a visible "..." menu. A folder
+    /// that has gone says so, with a way to point the watch at it again.
+    private func watchRow(_ watch: FolderWatch) -> some View {
+        let missing = !FileManager.default.fileExists(atPath: watch.path)
+        return CardRow {
+            IconTile(systemName: missing ? "questionmark.folder" : "folder")
+        } content: {
+            Button { editingWatch = watch } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(watch.name)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
+                        .lineLimit(1)
+                    if missing {
+                        Text("Folder not found")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.warning)
+                            .lineLimit(1)
+                    } else {
+                        Text(watch.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help(missing ? "\(watch.path) isn't there any more. Choose the folder again to keep watching."
+                  : "Edit \(watch.name)")
+            .accessibilityHint("Opens the folder watch")
+        } trailing: {
+            HStack(spacing: Theme.Space.tight) {
+                if missing {
+                    Button("Choose…") { chooseFolder(for: watch) }
+                        .buttonStyle(QuietButton(compact: true))
+                        .help("Choose the folder to watch")
+                } else {
+                    Toggle("Watch \(watch.name)", isOn: Binding(
+                        get: { watch.enabled },
+                        set: { model.setFolderWatchEnabled(watch, $0) }))
+                        .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                }
+                Menu {
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: watch.path)])
+                    }
+                    .disabled(missing)
+                    Button("Edit…") { editingWatch = watch }
+                    Divider()
+                    Button("Delete watch…", role: .destructive) { deletingWatch = watch }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: Theme.scaled(13), weight: .semibold))
+                        .foregroundStyle(palette.mutedForeground)
+                        .frame(width: 28, height: 28)
+                        .contentShape(.rect)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Folder watch options")
+                .accessibilityLabel("Options for \(watch.name)")
+            }
+        }
+        .opacity(watch.enabled || missing ? 1 : 0.6)
+    }
+
+    /// Points a watch whose folder has gone at a folder that is there.
+    private func chooseFolder(for watch: FolderWatch) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Watch"
+        if panel.runModal() == .OK, let url = panel.url {
+            model.moveFolderWatch(watch, to: url.path)
         }
     }
 
@@ -1455,97 +1523,26 @@ extension Routine.Tier {
     /// The same answer in fewer words, for a narrow row.
     var shortLabel: String {
         switch self {
-        case .appOpen: "While Bupsy's open"
+        case .appOpen: "While open"
         case .launchAgent: "Even when closed"
         case .machine: "On a machine"
         }
     }
 }
 
-/// Pick a folder and say what the bot should do when files in it change.
+/// The new-routine sheet on its Folder watch tab, or, given a watch, that watch's edit form.
+/// The form itself lives in NewRoutineSheet so there is one copy of it.
 struct NewFolderWatchSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.palette) private var palette
     let bot: Bot
-    /// Set when this is the Folder watch tab of the new-routine sheet: picking another tab hands
-    /// the choice back to it. nil when opened on its own, and then it has no tabs.
-    let onSwitchKind: ((RoutineSheetKind) -> Void)?
-    @State private var path = ""
-    @State private var name = ""
-    @State private var prompt = ""
-    /// Always "Folder watch" here; another tab is handed back and this resets.
-    @State private var kindTab = RoutineSheetKind.folderWatch
+    let editing: FolderWatch?
 
-    init(bot: Bot, onSwitchKind: ((RoutineSheetKind) -> Void)? = nil) {
+    init(bot: Bot, editing: FolderWatch? = nil, onSwitchKind: ((RoutineSheetKind) -> Void)? = nil) {
         self.bot = bot
-        self.onSwitchKind = onSwitchKind
+        self.editing = editing
     }
 
     var body: some View {
-        SheetFrame(title: onSwitchKind == nil ? "New folder watch" : "New routine",
-                   icon: onSwitchKind == nil ? "folder.badge.gearshape" : "clock.fill",
-                   subtitle: "\(bot.name) runs when files in this folder change.",
-                   width: onSwitchKind == nil ? 420 : 540,
-                   tone: onSwitchKind == nil ? .primary : .info,
-                   primaryVerb: "create") {
-            if onSwitchKind != nil {
-                RoutineKindPicker(selection: $kindTab)
-            }
-            Field(label: "Folder") {
-                HStack(spacing: Theme.Space.snug) {
-                    Text(path.isEmpty ? "No folder chosen" : path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(path.isEmpty ? palette.mutedForeground : palette.foreground)
-                        .lineLimit(1).truncationMode(.head)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Choose…", action: choose).buttonStyle(QuietButton(compact: true))
-                }
-            }
-            Field(label: "Name") {
-                TextField("", text: $name, prompt: Text("New downloads"))
-                    .textFieldStyle(BupsyFieldStyle())
-            }
-            Field(label: "What should \(bot.name) do?",
-                  hint: "It also gets the list of files that changed.") {
-                TextField("", text: $prompt, prompt: Text("Rename new screenshots by what's in them and file them by month."),
-                          axis: .vertical)
-                    .textFieldStyle(BupsyFieldStyle())
-                    .lineLimit(3...5)
-            }
-            if onSwitchKind != nil {
-                Text("Runs while Bupsy is open. Changes \(bot.name) makes itself don't set it off again.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        } actions: {
-            Button("Cancel") { dismiss() }.buttonStyle(QuietButton())
-            Button("Create") {
-                model.addFolderWatch(to: bot,
-                                     name: name.trimmingCharacters(in: .whitespaces).isEmpty
-                                        ? URL(fileURLWithPath: path).lastPathComponent : name.trimmingCharacters(in: .whitespaces),
-                                     prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines), path: path)
-                dismiss()
-            }
-            .buttonStyle(PrimaryButton())
-            .keyboardShortcut(.defaultAction)
-            .disabled(path.isEmpty || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        .onChange(of: kindTab) {
-            guard kindTab != .folderWatch else { return }
-            let picked = kindTab
-            kindTab = .folderWatch
-            onSwitchKind?(picked)
-        }
-    }
-
-    private func choose() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.prompt = "Watch"
-        if panel.runModal() == .OK, let url = panel.url { path = url.path }
+        NewRoutineSheet(bot: bot, kind: .folderWatch, editingWatch: editing)
     }
 }
 

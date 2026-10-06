@@ -31,6 +31,9 @@ struct RoutineDetailView: View {
 
     private var isBusy: Bool { model.isRunning(bot.id) }
 
+    /// The page's width on the board: wider than other pages, for the two panels side by side.
+    private static let maxWidth: CGFloat = 896
+
     var body: some View {
         let runs = model.runs(of: routine)
         let stats = RoutineRunStats(runs: runs, cron: routine.cron)
@@ -38,23 +41,32 @@ struct RoutineDetailView: View {
         let panels = stacked
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.gutter))
             : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Space.gutter))
+        // Schedule to "what it does" is 1 to 1.5, as on the board.
+        let scheduleWidth = max(0, (contentWidth - Theme.Space.gutter) * 0.4)
 
         VStack(spacing: 0) {
             topbar
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.section) {
-                    header
-                    if !routine.enabled { pausedBanner }
+                VStack(alignment: .leading, spacing: 32) {
+                    VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                        header
+                        if !routine.enabled { pausedBanner }
+                    }
                     statTiles(stats)
                     panels {
-                        schedulePanel
-                            .frame(minWidth: stacked ? nil : 220, maxWidth: stacked ? .infinity : 340)
+                        if stacked {
+                            schedulePanel
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            schedulePanel
+                                .frame(width: scheduleWidth)
+                        }
                         whatItDoesPanel
                             .frame(maxWidth: .infinity)
                     }
                     lastRuns(runs)
                 }
-                .frame(maxWidth: Theme.Size.contentMaxWidth, alignment: .leading)
+                .frame(maxWidth: Self.maxWidth, alignment: .leading)
                 .background {
                     GeometryReader { proxy in
                         Color.clear
@@ -62,9 +74,9 @@ struct RoutineDetailView: View {
                             .onChange(of: proxy.size.width) { _, width in contentWidth = width }
                     }
                 }
-                .padding(.horizontal, Theme.Space.section + Theme.Space.snug)
-                .padding(.top, Theme.Space.snug)
-                .padding(.bottom, Theme.Space.section)
+                .padding(.horizontal, 32)
+                .padding(.top, Theme.Space.section)
+                .padding(.bottom, Theme.Space.page)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -102,13 +114,24 @@ struct RoutineDetailView: View {
                 Label("Back", systemImage: "chevron.left")
             }
             .buttonStyle(ThreadButtonStyle(kind: .ghost, height: Theme.Size.control))
-            .help("Back to \(bot.name)")
+            .keyboardShortcut(.cancelAction)
+            .help("Back to \(bot.name) (Esc)")
 
-            Button { confirmsDelete = true } label: {
-                Image(systemName: "trash")
+            // Delete is rare and can't be undone, so it waits in a menu rather than beside Run now.
+            Menu {
+                Button("Delete routine…", role: .destructive) { confirmsDelete = true }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: Theme.scaled(13), weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(width: 32, height: 32)
+                    .contentShape(.rect)
             }
-            .buttonStyle(ThreadButtonStyle(kind: .ghostDestructive, height: Theme.Size.control))
-            .help("Delete this routine")
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("More for this routine")
+            .accessibilityLabel("More for \(routine.name)")
 
             Button("Edit") { editing = routine }
                 .buttonStyle(ThreadButtonStyle(kind: .secondary, height: Theme.Size.control))
@@ -183,7 +206,7 @@ struct RoutineDetailView: View {
             RoutineStatTile(
                 icon: "play.fill", label: "Runs this week",
                 value: "\(stats.runsThisWeek)",
-                note: stats.scheduledThisWeek.map { $0 == 1 ? "of 1 scheduled" : "of \($0) scheduled" })
+                note: stats.scheduledNote)
             RoutineStatTile(
                 icon: "clock.fill", label: "Average time",
                 value: stats.averageDuration.map { RoutineRunStats.durationLabel($0) } ?? "None yet",
@@ -266,7 +289,7 @@ struct RoutineDetailView: View {
         }
         guard let nextRun else { return "Working out the next run" }
         var text = "Next run \(RoutineRunStats.nextLabel(nextRun))"
-        if routine.tier == .appOpen { text += ", if bupsy is open" }
+        if routine.tier == .appOpen { text += ", if Bupsy is open" }
         return text
     }
 
@@ -292,14 +315,24 @@ struct RoutineDetailView: View {
 
     @ViewBuilder
     private func lastRuns(_ runs: [RunSummary]) -> some View {
+        // The newest run, while the bot is still on it, is shown live at the top rather than as
+        // a row that only says "Running".
+        let live: RunSummary? = runs.first.flatMap { $0.endedAt == nil && isBusy ? $0 : nil }
+        let shown = Array(runs.filter { $0.id != live?.id }.prefix(12))
+        // The most recent failure says why and offers the obvious fix, wherever it is in the list.
+        let failedID = shown.first { $0.status == "failed" }?.id
+
         VStack(alignment: .leading, spacing: Theme.Space.step) {
             SectionHeader(
                 icon: "clock.fill",
                 title: "Last runs",
                 badge: nil,
-                subtitle: "Runs that started with this instruction, from \(bot.name)'s recent "
-                    + "history, newest first"
+                subtitle: "What happened each run, newest first"
             ) { EmptyView() }
+
+            if let live {
+                liveRow(live)
+            }
 
             if runs.isEmpty {
                 HStack(spacing: Theme.Space.step) {
@@ -314,16 +347,41 @@ struct RoutineDetailView: View {
                 .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
             } else {
                 VStack(spacing: Theme.Space.snug) {
-                    ForEach(Array(runs.prefix(12).enumerated()), id: \.element.id) { index, run in
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, run in
                         runRow(run)
-                        // The newest run, when it failed, says why and offers the obvious fix.
-                        if index == 0 && run.status == "failed" {
-                            failureCallout(run)
+                        if run.id == failedID {
+                            failureCallout(run, isLatest: index == 0 && live == nil)
                         }
                     }
                 }
             }
         }
+    }
+
+    /// The run under way: what the bot is doing now, and for how long.
+    private func liveRow(_ run: RunSummary) -> some View {
+        HStack(spacing: Theme.Space.step) {
+            BotFace(bot: bot, mood: .working, size: 32)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.liveStatus(for: bot))
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                    .lineLimit(1)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text("Started \(RoutineRunStats.whenLabel(run.startedAt)), running for "
+                         + RoutineRunStats.durationLabel(max(0, context.date.timeIntervalSince(run.startedAt))))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: Theme.Space.snug)
+            RoutineStatusPill(text: "Running", tone: palette.infoText)
+        }
+        .padding(Theme.Space.step)
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
+        .accessibilityElement(children: .combine)
     }
 
     private var emptyRunsText: String {
@@ -365,11 +423,11 @@ struct RoutineDetailView: View {
         }
     }
 
-    private func failureCallout(_ run: RunSummary) -> some View {
+    private func failureCallout(_ run: RunSummary, isLatest: Bool) -> some View {
         HStack(alignment: .top, spacing: Theme.Space.step) {
             BotFace(bot: bot, mood: .failed, size: 36)
             VStack(alignment: .leading, spacing: 3) {
-                Text("The last run failed")
+                Text(isLatest ? "The last run failed" : "This run failed")
                     .font(Theme.Typography.body)
                     .fontWeight(.medium)
                     .foregroundStyle(palette.foreground)

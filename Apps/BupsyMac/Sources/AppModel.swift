@@ -177,6 +177,33 @@ final class AppModel {
         saveConnectors()
     }
 
+    /// Whether another server already uses this name. Names key the engine's config, so two
+    /// servers with one name would silently become one.
+    func connectorNameTaken(_ name: String, except id: String? = nil) -> Bool {
+        connectors.contains { $0.name == name && $0.id != id }
+    }
+
+    /// Saves an edited server in place of the one with the same id.
+    ///
+    /// Always-allow rules match on the name, so they are kept when the name is unchanged and
+    /// taken back when it changes: a rule for the old name would otherwise point at nothing, and
+    /// quietly carrying it over would allow a server the person never allowed.
+    func updateConnector(_ server: MCPServer) {
+        guard let index = connectors.firstIndex(where: { $0.id == server.id }),
+              !connectorNameTaken(server.name, except: server.id)
+        else { return }
+        let previous = connectors[index]
+        connectors[index] = server
+        if previous.name != server.name {
+            for botIndex in bots.indices
+            where bots[botIndex].toolAllowlist.contains(previous.toolPrefix) {
+                bots[botIndex].toolAllowlist.remove(previous.toolPrefix)
+                try? store?.save(bots[botIndex].record(sortIndex: botIndex))
+            }
+        }
+        saveConnectors()
+    }
+
     func removeConnector(_ server: MCPServer) {
         // Removing Executor is a decision, and it must stick: it is never switched back on behind
         // the person's back. Adding it again from its card clears this.
@@ -286,15 +313,66 @@ final class AppModel {
         needsOnboarding = false
     }
 
-    var hasComputeKey: Bool { keychain.has(.boatAPIKey) }
+    /// Bumped whenever the key is saved or removed. The Keychain is not observable, so views that
+    /// read `hasComputeKey` or `computeKeySuffix` depend on this to redraw.
+    private var computeKeyRevision = 0
+
+    /// Where the last four characters of the key are kept, to show it masked. Only those four:
+    /// the full key never leaves the Keychain.
+    private static let computeKeySuffixKey = "si.bupsy.boat.keySuffix"
+
+    var hasComputeKey: Bool {
+        _ = computeKeyRevision
+        return keychain.has(.boatAPIKey)
+    }
+
+    /// The key's last four characters, for "bd_live_••••3f9a". Nil for a key saved before these
+    /// were kept, or when there is no key.
+    var computeKeySuffix: String? {
+        _ = computeKeyRevision
+        return AppHome.defaults.string(forKey: Self.computeKeySuffixKey)
+    }
+
+    /// Machines with a start or stop in flight, by record id, so their rows can show it.
+    private(set) var machinesInFlight: Set<String> = []
 
     func setComputeKey(_ key: String) {
         do {
             try keychain.set(key, for: .boatAPIKey)
+            AppHome.defaults.set(String(key.suffix(4)), forKey: Self.computeKeySuffixKey)
             machineProblem = nil
         } catch {
             machineProblem = error.localizedDescription
         }
+        computeKeyRevision += 1
+    }
+
+    /// Checks a key with boat.dev before saving it, using the cheapest call there is (listing
+    /// machines, which creates and bills nothing). Returns what went wrong, or nil once saved.
+    /// A key boat refuses is never saved, so "Connected" always means a key that worked.
+    func validateAndSaveComputeKey(_ key: String) async -> String? {
+        machineProblem = nil
+        do {
+            try await BoatAPI(apiKey: key).checkKey()
+        } catch let error as BoatError where error.isAuthFailure {
+            return "boat.dev didn\u{2019}t accept that key. Check it and try again."
+        } catch {
+            return "Couldn\u{2019}t reach boat.dev to check the key. \(error.localizedDescription)"
+        }
+        setComputeKey(key)
+        return machineProblem
+    }
+
+    /// Forgets the key. Machines stay listed, and stay on boat.dev, until a key is added again.
+    func removeComputeKey() {
+        do {
+            try keychain.remove(.boatAPIKey)
+            AppHome.defaults.removeObject(forKey: Self.computeKeySuffixKey)
+            machineProblem = nil
+        } catch {
+            machineProblem = error.localizedDescription
+        }
+        computeKeyRevision += 1
     }
 
     private func api() -> BoatAPI? {
@@ -302,6 +380,7 @@ final class AppModel {
     }
 
     func createMachine(name: String, size: MachineSize, alwaysOn: Bool) {
+        machineProblem = nil
         guard let api = api() else {
             machineProblem = "Add your boat.dev key first."
             return
@@ -327,6 +406,7 @@ final class AppModel {
                 updated.state = sandbox.state ?? "running"
                 updated.lastActiveAt = Date()
                 self.replace(updated)
+                self.machineProblem = nil
             } catch {
                 var failed = record
                 failed.state = "failed"
@@ -336,13 +416,54 @@ final class AppModel {
         }
     }
 
+    /// Tries again to create a machine whose create failed, keeping its name, size and
+    /// availability. Its record stays the same, so nothing on the page jumps around.
+    func retryMachine(_ machine: MachineRecord) {
+        machineProblem = nil
+        guard machine.providerID == nil, !machinesInFlight.contains(machine.id) else { return }
+        guard let api = api() else {
+            machineProblem = "Add your boat.dev key first."
+            return
+        }
+        let size = MachineSize(rawValue: machine.size) ?? .small
+        var creating = machine
+        creating.state = "creating"
+        replace(creating)
+        machinesInFlight.insert(machine.id)
+
+        Task { [creating] in
+            defer { self.machinesInFlight.remove(creating.id) }
+            do {
+                let options = creating.ttlSeconds == nil
+                    ? CreateOptions.alwaysOn(size: size)
+                    : CreateOptions(size: size, ttlSeconds: creating.ttlSeconds)
+                let sandbox = try await api.create(options)
+                var updated = creating
+                updated.providerID = sandbox.id
+                updated.state = sandbox.state ?? "running"
+                updated.lastActiveAt = Date()
+                self.replace(updated)
+                self.machineProblem = nil
+            } catch {
+                var failed = creating
+                failed.state = "failed"
+                self.replace(failed)
+                self.machineProblem = error.localizedDescription
+            }
+        }
+    }
+
     func toggleMachine(_ machine: MachineRecord) {
+        machineProblem = nil
+        guard !machinesInFlight.contains(machine.id) else { return }
         guard let api = api(), let providerID = machine.providerID else {
             machineProblem = "This machine was never created on boat.dev."
             return
         }
         let wantsRunning = machine.state != "running"
+        machinesInFlight.insert(machine.id)
         Task {
+            defer { self.machinesInFlight.remove(machine.id) }
             do {
                 let sandbox = wantsRunning
                     ? try await api.resume(providerID)
@@ -351,6 +472,7 @@ final class AppModel {
                 updated.state = sandbox.state ?? (wantsRunning ? "running" : "archived")
                 updated.lastActiveAt = Date()
                 self.replace(updated)
+                self.machineProblem = nil
             } catch {
                 self.machineProblem = error.localizedDescription
             }
@@ -365,6 +487,7 @@ final class AppModel {
     /// delete endpoint. A stopped machine stops using compute; removing it from the account
     /// entirely is done on boat.dev.
     func destroyMachine(_ machine: MachineRecord) async -> Bool {
+        machineProblem = nil
         if let providerID = machine.providerID {
             guard let api = api() else {
                 machineProblem = "Add your boat.dev key first, so \(machine.name) can be stopped there."
@@ -384,6 +507,7 @@ final class AppModel {
             }
         }
         forgetMachine(machine)
+        machineProblem = nil
         return true
     }
 
@@ -496,11 +620,33 @@ final class AppModel {
         for watch in folderWatches { syncWatcher(watch) }
     }
 
-    func addFolderWatch(to bot: Bot, name: String, prompt: String, path: String) {
-        let watch = FolderWatch(botID: bot.id.rawValue, name: name, prompt: prompt, path: path)
+    func addFolderWatch(to bot: Bot, name: String, prompt: String, path: String,
+                        fileTypes: [String] = []) {
+        let watch = FolderWatch(botID: bot.id.rawValue, name: name, prompt: prompt, path: path,
+                                fileTypes: fileTypes)
         folderWatches.append(watch)
         try? store?.save(watch)
         syncWatcher(watch)
+    }
+
+    /// Saves changes to a folder watch: its folder, what to do, which files, or its name. A new
+    /// folder starts being watched straight away, which is also how a missing one is fixed.
+    func updateFolderWatch(_ watch: FolderWatch, name: String, prompt: String, path: String,
+                           fileTypes: [String]) {
+        guard let index = folderWatches.firstIndex(where: { $0.id == watch.id }) else { return }
+        folderWatches[index].name = name
+        folderWatches[index].prompt = prompt
+        folderWatches[index].path = path
+        folderWatches[index].fileTypes = fileTypes
+        try? store?.save(folderWatches[index])
+        syncWatcher(folderWatches[index])
+    }
+
+    /// Points a watch at another folder, keeping everything else.
+    func moveFolderWatch(_ watch: FolderWatch, to path: String) {
+        guard let current = folderWatches.first(where: { $0.id == watch.id }) else { return }
+        updateFolderWatch(current, name: current.name, prompt: current.prompt, path: path,
+                          fileTypes: current.fileTypes)
     }
 
     func setFolderWatchEnabled(_ watch: FolderWatch, _ enabled: Bool) {
@@ -524,15 +670,69 @@ final class AppModel {
         }
     }
 
+    /// Changes that arrived while a watch's bot was busy, by watch id, with when the first one
+    /// came. Kept, not dropped, and handed over once the bot is free.
+    private var heldWatchChanges: [String: (paths: Set<String>, since: Date)] = [:]
+
     private func folderChanged(_ id: String, _ changed: [String]) {
         guard let watch = folderWatches.first(where: { $0.id == id }), watch.enabled,
               let bot = bots.first(where: { $0.id.rawValue == watch.botID }) else { return }
-        // A bot editing files in the folder it watches would otherwise trigger itself forever:
-        // nothing fires while it works, or for a few seconds after.
-        if running[bot.id] != nil { return }
+        let wanted = changed.filter { watch.matches($0) }
+        guard !wanted.isEmpty else { return }
+        // Busy: keep the changes and run once it is free. What the bot wrote itself in the
+        // meantime is taken out then, so it does not set itself off.
+        if running[bot.id] != nil {
+            if var held = heldWatchChanges[id] {
+                held.paths.formUnion(wanted)
+                heldWatchChanges[id] = held
+            } else {
+                heldWatchChanges[id] = (Set(wanted), Date())
+                waitingForBot[bot.id, default: []].append { [weak self] in
+                    self?.releaseHeldWatchChanges(id, bot: bot)
+                }
+            }
+            return
+        }
+        // Its own last writes land a few seconds after a run ends; those are not news.
         if let ended = lastRunEnded[bot.id], Date().timeIntervalSince(ended) < 8 { return }
-        send(watch.prompt(for: changed), to: bot) { [weak self] reply in
-            self?.notifier.routineFinished(bot: bot.name, routine: watch.name,
+        runFolderWatch(watch, bot: bot, changed: wanted)
+    }
+
+    /// Runs a watch for the changes held while its bot was busy, less the files the bot itself
+    /// wrote meanwhile (as far as its recorded tool calls say).
+    private func releaseHeldWatchChanges(_ id: String, bot: Bot) {
+        guard let held = heldWatchChanges.removeValue(forKey: id) else {
+            botBecameFree(bot)
+            return
+        }
+        if running[bot.id] != nil {
+            // Something else claimed the bot first. Wait again.
+            heldWatchChanges[id] = held
+            waitingForBot[bot.id, default: []].append { [weak self] in
+                self?.releaseHeldWatchChanges(id, bot: bot)
+            }
+            return
+        }
+        // Events reach the watcher a few seconds after the write, so look back a little further.
+        let since = held.since.addingTimeInterval(-60)
+        let ownWrites = Set(filesWritten(by: bot)
+            .filter { $0.at >= since }
+            .map { ($0.path as NSString).standardizingPath })
+        let remaining = held.paths.filter { !ownWrites.contains(($0 as NSString).standardizingPath) }
+        guard let watch = folderWatches.first(where: { $0.id == id }), watch.enabled,
+              !remaining.isEmpty, runFolderWatch(watch, bot: bot, changed: Array(remaining))
+        else {
+            // Nothing ran, so whatever waits behind this goes now.
+            botBecameFree(bot)
+            return
+        }
+    }
+
+    @discardableResult
+    private func runFolderWatch(_ watch: FolderWatch, bot: Bot, changed: [String]) -> Bool {
+        let name = watch.name
+        return sendTriggered(watch.prompt(for: changed), to: bot, triggerID: watch.id) { [weak self] reply in
+            self?.notifier.routineFinished(bot: bot.name, routine: name,
                                            summary: reply.split(separator: "\n").first.map(String.init),
                                            botID: bot.id)
         }
@@ -597,6 +797,8 @@ final class AppModel {
                 } else {
                     try LaunchAgent.install(intervals: intervals, appPath: appPath)
                 }
+                // Worked this time, so an earlier failure no longer describes anything.
+                await MainActor.run { [weak self] in self?.routineProblem = nil }
             } catch {
                 // Never swallowed: a routine that silently never fires is this feature's worst
                 // failure, so the reason reaches the user rather than a debug log.
@@ -633,7 +835,7 @@ final class AppModel {
                     + due.scheduledFor.formatted(date: .omitted, time: .shortened) + ".)"
                 : ""
             let name = due.routine.name
-            send(due.routine.prompt + note, to: bot) { [weak self] reply in
+            sendTriggered(due.routine.prompt + note, to: bot, triggerID: due.routine.id) { [weak self] reply in
                 // Unattended work that finishes silently may as well not have run.
                 self?.notifier.routineFinished(
                     bot: bot.name, routine: name,
@@ -698,7 +900,10 @@ final class AppModel {
             try? store?.save(objectives[index])
         }
 
-        send(ObjectiveCheck.prompt(for: objective), to: bot) { [weak self] reply in
+        checkingObjectives.insert(objective.id)
+        let started = sendTriggered(ObjectiveCheck.prompt(for: objective), to: bot,
+                                    triggerID: objective.id) { [weak self] reply in
+            self?.checkingObjectives.remove(objective.id)
             guard let self,
                   let index = self.objectives.firstIndex(where: { $0.id == objective.id })
             else { return }
@@ -713,7 +918,13 @@ final class AppModel {
                 adding: ObjectiveCheck.learnings(from: reply))
             try? self.store?.save(self.objectives[index])
         }
+        if !started { checkingObjectives.remove(objective.id) }
     }
+
+    /// Goals with a check under way or waiting for their bot, so "Check now" can say so.
+    var checkingObjectives: Set<String> = []
+
+    func isChecking(_ objective: Objective) -> Bool { checkingObjectives.contains(objective.id) }
 
     /// Objectives whose check time has passed, using the same scheduler as routines so late and
     /// collapsed runs behave identically.
@@ -990,6 +1201,30 @@ final class AppModel {
         startRun(prompt, bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: onFinish)
     }
 
+    /// A run something other than you started: a routine, a goal check or a folder watch.
+    ///
+    /// Tagged with the id of what started it, so that thing's history finds it. Never merged with
+    /// messages typed while the bot is busy: it waits its turn as a run of its own, after them,
+    /// and keeps its finish handler, so its notification still arrives. Returns false only when
+    /// it could neither start nor wait, so the caller can undo anything it marked as in flight.
+    @discardableResult
+    func sendTriggered(
+        _ prompt: String, to bot: Bot, triggerID: String,
+        onFinish: (@MainActor @Sendable (String) -> Void)?
+    ) -> Bool {
+        if running[bot.id] != nil {
+            waitingForBot[bot.id, default: []].append { [weak self] in
+                guard let self else { return }
+                let waited = self.sendTriggered(prompt, to: bot, triggerID: triggerID, onFinish: onFinish)
+                // Nothing started and nothing to wait for: let whatever is queued behind it go.
+                if !waited || self.running[bot.id] == nil { self.botBecameFree(bot) }
+            }
+            return true
+        }
+        return startRun(prompt, bot: bot, thread: thread(for: bot.id), groupID: nil,
+                        onFinish: onFinish, triggerID: triggerID)
+    }
+
     /// Messages typed while a bot was busy, waiting to go to it together.
     private var queued: [BotID: [String]] = [:]
     private var queuedNote: [BotID: UUID] = [:]
@@ -1028,7 +1263,8 @@ final class AppModel {
         _ prompt: String, bot: Bot, thread: Thread, groupID: String?,
         onFinish: (@MainActor @Sendable (String) -> Void)?,
         from sender: Bot? = nil, shown: String? = nil, hidesPrompt: Bool = false,
-        alreadyShown: Bool = false, separateMessages: [String]? = nil
+        alreadyShown: Bool = false, separateMessages: [String]? = nil,
+        triggerID: String? = nil
     ) -> Bool {
         // One run per bot at a time, wherever it is. A bot cannot answer in a group while it is
         // still working on something you asked it directly.
@@ -1053,6 +1289,8 @@ final class AppModel {
         var run = RunRecord(
             botID: bot.id.rawValue,
             conversationID: conversationID,
+            // The routine, goal or folder watch that started it, so its page finds it by id.
+            triggerID: triggerID,
             host: bot.machineID.map { "cloud:\($0)" } ?? "local",
             groupID: groupID
         )

@@ -127,6 +127,35 @@ struct BoatAPITests {
         #expect(abs(MachineSize.default.alwaysOnMonthlyUSD - 25.92) < 0.01)
         #expect(MachineSize.small.alwaysOnMonthlyUSD < 20, "small must fit boat's $20 minimum")
     }
+
+    @Test("idle estimate is a third of always-on at eight hours a day")
+    func idleCost() {
+        #expect(abs(MachineSize.small.idleMonthlyUSD - 4.32) < 0.01)
+        #expect(MachineSize.large.idleMonthlyUSD < MachineSize.large.alwaysOnMonthlyUSD)
+    }
+
+    @Test("checking a key lists machines and creates nothing")
+    func checkKeyLists() async throws {
+        MockProtocol.reply(200, #"{"ok":true,"sandboxes":[{"id":"sb_1","state":"running"},{"state":"x"}]}"#)
+        try await api().checkKey()
+        #expect(MockProtocol.lastRequest?.httpMethod == "GET")
+        #expect(MockProtocol.lastRequest?.url?.path.hasSuffix("/sandboxes") == true)
+
+        let list = try await api().list()
+        #expect(list.map(\.id) == ["sb_1"], "an entry without an id is skipped")
+    }
+
+    @Test("a refused key fails the check with boat's own message")
+    func checkKeyRefused() async throws {
+        MockProtocol.reply(401, #"{"ok":false,"code":"unauthorized","message":"bad key"}"#)
+        do {
+            try await api().checkKey()
+            Issue.record("a refused key must throw")
+        } catch let error as BoatError {
+            #expect(error.isAuthFailure)
+            #expect(error.message == "bad key")
+        }
+    }
 }
 
 @Suite("CloudHost", .serialized)
