@@ -31,6 +31,14 @@ struct NavRail: View {
     @State private var filingBot: Bot?
     @State private var renamingBot: Bot?
     @State private var renamingGroup: ChatGroup?
+    /// Set to ask before deleting. Owned here, not by the context menu, which is gone on click.
+    @State private var deletingBot: Bot?
+    @State private var deletingGroup: ChatGroup?
+    /// The engine the person picked "Sign out" for, until they confirm.
+    @State private var signingOut: EngineID?
+    /// True after a sign-in or sign-out was started from the You menu, so a failure is shown here
+    /// and not also over the main window when it was started from Settings.
+    @State private var awaitingAccount = false
     /// Sections folded shut, kept across launches. A JSON array of section keys, shared with the
     /// New section sheet's "Fold it in the sidebar by default". See `SidebarFolds`.
     @AppStorage(SidebarFolds.key, store: AppHome.defaults) private var foldedJSON = "[]"
@@ -103,6 +111,40 @@ struct NavRail: View {
         .sheet(item: $renamingGroup) { RenameGroupSheet(group: $0) }
         .background {
             Color.clear.sheet(isPresented: $showsShortcuts) { KeyboardShortcutsSheet() }
+        }
+        // Each on its own empty view, for the same reason as the sheets above.
+        .background {
+            Color.clear.confirmsBotDeletion($deletingBot) { bot in
+                model.deleteBot(bot)
+            }
+        }
+        .background {
+            Color.clear.confirmsGroupDeletion($deletingGroup) { group in
+                if destination == .group(group.id) {
+                    destination = .groups
+                }
+                model.deleteGroup(group)
+            }
+        }
+        .background {
+            Color.clear.confirmsSignOut($signingOut, onConfirm: { awaitingAccount = true })
+        }
+        .background {
+            Color.clear.alert(
+                "That didn't work",
+                isPresented: Binding(
+                    get: { awaitingAccount && model.accountProblem != nil },
+                    set: { shown in
+                        if !shown {
+                            awaitingAccount = false
+                            model.accountProblem = nil
+                        }
+                    })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(model.accountProblem ?? "")
+            }
         }
         // Help > Keyboard shortcuts (Cmd /) lives on the app; the sheet hangs here.
         .onReceive(NotificationCenter.default.publisher(for: .bupsyShowKeyboardShortcuts)) { _ in
@@ -298,11 +340,8 @@ struct NavRail: View {
                             Button("Rename group…") { renamingGroup = group }
                             Divider()
                             // The conversation only. Its bots are untouched.
-                            Button("Delete group", role: .destructive) {
-                                if destination == .group(group.id) {
-                                    destination = .groups
-                                }
-                                model.deleteGroup(group)
+                            Button("Delete group…", role: .destructive) {
+                                deletingGroup = group
                             }
                         }
                     }
@@ -403,7 +442,8 @@ struct NavRail: View {
             Divider()
             BotMenu(bot: bot,
                     onNewFolder: { filingBot = bot },
-                    onRename: { renamingBot = bot })
+                    onRename: { renamingBot = bot },
+                    onDelete: { deletingBot = bot })
         }
     }
 
@@ -543,13 +583,19 @@ struct NavRail: View {
             Rectangle().fill(palette.border).frame(height: 1).padding(.vertical, 4)
             ForEach(engines, id: \.self) { engine in
                 if model.isSignedIn(engine) {
-                    youMenuItem("rectangle.portrait.and.arrow.right", "Sign out of \(engine.displayName)",
+                    youMenuItem("rectangle.portrait.and.arrow.right", "Sign out of \(engine.displayName)…",
                                 help: "Opens Terminal and runs \(engine.displayName)'s own sign-out command") {
-                        model.openSignOut(for: engine)
+                        // After the popover has gone: a dialog asked for while it is still
+                        // closing is dropped, the same as the shortcuts sheet.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(250))
+                            signingOut = engine
+                        }
                     }
                 } else {
                     youMenuItem("person.crop.circle.badge.plus", "Sign in to \(engine.displayName)…",
                                 help: "Opens Terminal and runs \(engine.displayName)'s own sign-in") {
+                        awaitingAccount = true
                         model.openSignIn(for: engine)
                     }
                 }
@@ -1131,5 +1177,42 @@ enum SidebarFolds {
         guard keys.remove(old) != nil else { return }
         keys.insert(new)
         defaults.set(encode(keys), forKey: key)
+    }
+}
+
+// MARK: - Asking before signing out
+
+extension View {
+    /// Asks before signing an engine out. Shared by the You menu and Settings, so both say the
+    /// same thing: the CLI's sign-out is not Bupsy's, it reaches every other use of that command
+    /// on this Mac too.
+    func confirmsSignOut(_ engine: Binding<EngineID?>, onConfirm: @escaping () -> Void = {}) -> some View {
+        modifier(SignOutConfirmation(engine: engine, onConfirm: onConfirm))
+    }
+}
+
+private struct SignOutConfirmation: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Binding var engine: EngineID?
+    let onConfirm: () -> Void
+
+    init(engine: Binding<EngineID?>, onConfirm: @escaping () -> Void) {
+        self._engine = engine
+        self.onConfirm = onConfirm
+    }
+
+    func body(content: Content) -> some View {
+        content.confirmsDeletion(
+            of: $engine,
+            title: { "Sign out of \($0.displayName)?" },
+            button: "Sign out",
+            message: {
+                "This signs the \($0.rawValue) command out everywhere on this Mac, not just in Bupsy."
+            },
+            perform: { engine in
+                onConfirm()
+                // Fire and forget: a failure to open Terminal lands in `accountProblem`.
+                model.openSignOut(for: engine)
+            })
     }
 }

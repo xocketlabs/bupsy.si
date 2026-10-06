@@ -123,6 +123,51 @@ struct ApprovalGateTests {
         #expect(output.contains("nobody approved this in time"))
     }
 
+    /// A card left offering Allow after the script already denied is a lie the person acts on.
+    /// The script marks the request expired, and the gate reports it so the app can settle it.
+    @Test("reports a request the script gave up on")
+    func reportsExpiry() async throws {
+        let gate = try ApprovalGate.temporary()
+        _ = try GateInstaller.install(gateDirectory: gate.directory, timeoutSeconds: 1)
+        let expiries = await gate.expirations()
+        // Held for the whole test: the stream going away stops the gate's poll.
+        let requests = await gate.requests()
+        let raised = RaisedIDs()
+        let watcher = Task {
+            for await request in requests { await raised.add(request.id) }
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [gate.directory.appendingPathComponent("gate.sh").path]
+        let stdin = Pipe(), stdout = Pipe()
+        process.standardInput = stdin
+        process.standardOutput = stdout
+        try process.run()
+        try stdin.fileHandleForWriting.write(contentsOf: Data(#"{"tool_name":"Bash","tool_input":{"command":"ls"}}"#.utf8))
+        try stdin.fileHandleForWriting.close()
+        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        process.waitUntilExit()
+        #expect(output.contains("\"permissionDecision\":\"deny\""))
+
+        let timeout = Task {
+            try? await Task.sleep(for: .seconds(3))
+            await gate.stop()
+        }
+        var expiredID: String?
+        for await id in expiries {
+            expiredID = id
+            break
+        }
+        timeout.cancel()
+        await gate.stop()
+        watcher.cancel()
+
+        let ids = await raised.ids
+        #expect(expiredID != nil)
+        #expect(ids.contains(expiredID ?? "missing"))
+    }
+
     @Test("parses a request and renders the field that says what will happen")
     func parsesRequest() throws {
         let url = FileManager.default.temporaryDirectory
@@ -180,6 +225,12 @@ struct ApprovalGateTests {
         await gate.stop()
         return String(data: data, encoding: .utf8) ?? ""
     }
+}
+
+/// Collects the ids a test's watcher saw, across the watcher's task boundary.
+private actor RaisedIDs {
+    private(set) var ids: [String] = []
+    func add(_ id: String) { ids.append(id) }
 }
 
 @Suite("Model options")

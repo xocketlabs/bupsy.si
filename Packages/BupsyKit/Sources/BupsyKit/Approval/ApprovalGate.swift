@@ -39,12 +39,14 @@ public actor ApprovalGate {
     public nonisolated let directory: URL
     private var decisions: [String: GateVerdict] = [:]
     private var continuation: AsyncStream<GateRequest>.Continuation?
+    private var expiryContinuation: AsyncStream<String>.Continuation?
     private var seen: Set<String> = []
+    private var expiredSeen: Set<String> = []
     private var pollTask: Task<Void, Never>?
 
     public init(directory: URL) throws {
         self.directory = directory
-        for sub in ["pending", "decisions"] {
+        for sub in ["pending", "decisions", "expired"] {
             try FileManager.default.createDirectory(
                 at: directory.appendingPathComponent(sub), withIntermediateDirectories: true)
         }
@@ -66,11 +68,24 @@ public actor ApprovalGate {
         }
     }
 
+    /// Ids of requests the hook script gave up on and denied by itself, because nobody answered
+    /// before `GateInstaller.scriptTimeoutSeconds`. The app uses this to settle the card, so it
+    /// does not sit there offering Allow for a call that has already been refused.
+    ///
+    /// Read by the same poll loop as `requests()`, so call `requests()` too.
+    public func expirations() -> AsyncStream<String> {
+        AsyncStream { continuation in
+            self.expiryContinuation = continuation
+        }
+    }
+
     public func stop() {
         pollTask?.cancel()
         pollTask = nil
         continuation?.finish()
         continuation = nil
+        expiryContinuation?.finish()
+        expiryContinuation = nil
     }
 
     /// Answers a waiting call. The hook is polling for this file and will pick it up.
@@ -85,6 +100,7 @@ public actor ApprovalGate {
     /// reading a rented machine's gate directory will eventually be.
     private func poll() async {
         let pending = directory.appendingPathComponent("pending")
+        let expired = directory.appendingPathComponent("expired")
         while !Task.isCancelled {
             let files = (try? FileManager.default.contentsOfDirectory(
                 at: pending, includingPropertiesForKeys: nil)) ?? []
@@ -96,6 +112,15 @@ public actor ApprovalGate {
                 if let request = Self.parse(id: id, at: file) {
                     continuation?.yield(request)
                 }
+            }
+
+            let expiredFiles = (try? FileManager.default.contentsOfDirectory(
+                at: expired, includingPropertiesForKeys: nil)) ?? []
+            for file in expiredFiles {
+                let id = file.lastPathComponent
+                guard !id.hasPrefix("."), !expiredSeen.contains(id) else { continue }
+                expiredSeen.insert(id)
+                expiryContinuation?.yield(id)
             }
             try? await Task.sleep(for: .milliseconds(200))
         }

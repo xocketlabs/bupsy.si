@@ -77,7 +77,7 @@ public enum GateInstaller {
         PENDING="$GATE/pending/$ID.json"
         DECISION="$GATE/decisions/$ID.json"
 
-        mkdir -p "$GATE/pending" "$GATE/decisions"
+        mkdir -p "$GATE/pending" "$GATE/decisions" "$GATE/expired"
 
         # Write atomically: the watcher polls this directory and must never read half a file.
         cat > "$PENDING.part" && mv "$PENDING.part" "$PENDING"
@@ -94,6 +94,9 @@ public enum GateInstaller {
         done
 
         rm -f "$PENDING"
+        # Tells the app this one was denied for lack of an answer, so its card can settle.
+        mkdir -p "$GATE/expired"
+        : > "$GATE/expired/$ID"
         printf '%s\\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"bupsy: nobody approved this in time, so it was denied"}}'
         exit 0
         """

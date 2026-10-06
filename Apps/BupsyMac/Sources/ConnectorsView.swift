@@ -233,6 +233,12 @@ struct ConnectorRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     let server: MCPServer
+    /// Set to ask before removing. Removing also takes back every always-allow rule for it.
+    @State private var removing: MCPServer?
+
+    init(server: MCPServer) {
+        self.server = server
+    }
 
     private var missing: [String] { server.missingEnv() }
     private var live: ConnectorState? { model.liveStatus(of: server) }
@@ -250,11 +256,17 @@ struct ConnectorRow: View {
                 .labelsHidden().toggleStyle(.switch).controlSize(.small)
                 .help(server.enabled ? "Turn off \(server.name)" : "Turn on \(server.name)")
                 SetupIconButton(systemName: "trash", help: "Remove \(server.name)", destructive: true) {
-                    model.removeConnector(server)
+                    removing = server
                 }
             }
         }
         .opacity(server.enabled ? 1 : 0.6)
+        .confirmsDeletion(
+            of: $removing,
+            title: { "Remove \($0.name)?" },
+            button: "Remove server",
+            message: { _ in "Bots lose its tools and any always-allow rules for it." },
+            perform: { model.removeConnector($0) })
     }
 
     private var command: String {

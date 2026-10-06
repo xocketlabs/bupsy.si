@@ -18,6 +18,8 @@ struct TeamView: View {
     @State private var botsBeforeAdding: Set<BotID> = []
     @State private var isAddingSection = false
     @State private var renamingBot: Bot?
+    /// Set to ask before deleting. Owned here, not by the card's menu, which is gone on click.
+    @State private var deletingBot: Bot?
     /// The column a dragged card is over, so it can light up. "" is Unassigned.
     @State private var dropTarget: String?
 
@@ -114,6 +116,9 @@ struct TeamView: View {
         }
         .background {
             Color.clear.sheet(item: $renamingBot) { BotCreatorSheet(editing: $0) }
+        }
+        .background {
+            Color.clear.confirmsBotDeletion($deletingBot) { model.deleteBot($0) }
         }
     }
 
@@ -215,7 +220,8 @@ struct TeamView: View {
                         bot: bot,
                         sections: sections,
                         onOpen: { onOpen(bot.id) },
-                        onRename: { renamingBot = bot })
+                        onRename: { renamingBot = bot },
+                        onDelete: { deletingBot = bot })
                     .draggable(bot.id.rawValue)
                 }
             }
@@ -332,14 +338,17 @@ struct TeamBotCard: View {
     let sections: [String]
     let onOpen: () -> Void
     let onRename: () -> Void
+    /// Asks the board to confirm. The menu cannot host the dialog: it closes on click.
+    let onDelete: () -> Void
     @State private var hovering = false
 
     init(bot: Bot, sections: [String], onOpen: @escaping () -> Void,
-         onRename: @escaping () -> Void) {
+         onRename: @escaping () -> Void, onDelete: @escaping () -> Void) {
         self.bot = bot
         self.sections = sections
         self.onOpen = onOpen
         self.onRename = onRename
+        self.onDelete = onDelete
     }
 
     private var mood: BotMood {
@@ -425,8 +434,8 @@ struct TeamBotCard: View {
             Button { model.shuffleFace(bot) } label: { Label("Shuffle face", systemImage: "sparkles") }
             Button(action: onOpen) { Label("Open chat", systemImage: "bubble.left") }
             Divider()
-            Button(role: .destructive) { model.deleteBot(bot) } label: {
-                Label("Delete bot", systemImage: "trash")
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete bot…", systemImage: "trash")
             }
         } label: {
             Image(systemName: "ellipsis")

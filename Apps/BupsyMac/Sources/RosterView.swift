@@ -15,6 +15,9 @@ struct BotMenu: View {
     /// Same reason as `onNewFolder`: a context menu is gone the moment it is clicked, so the
     /// sheet has to belong to the view behind it.
     var onRename: () -> Void = {}
+    /// Asks before deleting. Same reason again: the confirmation has to live on the view behind
+    /// the menu, so the menu only says which bot.
+    var onDelete: () -> Void
 
     var body: some View {
         Button("Pin to top", systemImage: bot.pinned ? "pin.slash" : "pin") {
@@ -71,7 +74,68 @@ struct BotMenu: View {
         Button(bot.hidden ? "Show in sidebar" : "Hide from sidebar") {
             model.toggleHidden(bot)
         }
-        Button("Delete bot", role: .destructive) { model.deleteBot(bot) }
+        Button("Delete bot…", role: .destructive, action: onDelete)
+    }
+}
+
+// MARK: - Asking before deleting
+
+/// The one way Bupsy asks before deleting something. A confirmation dialog with a red button
+/// named for the action, and a message that says exactly what goes.
+///
+/// Hosted on a stable view, never inside a menu: a context menu is torn down the moment it is
+/// clicked, and a dialog attached to it would go with it. Set `item` to ask; it is cleared when
+/// the dialog closes, whichever button was pressed.
+extension View {
+    func confirmsDeletion<Item>(
+        of item: Binding<Item?>,
+        title: @escaping (Item) -> String,
+        button: String,
+        message: @escaping (Item) -> String,
+        perform: @escaping (Item) -> Void
+    ) -> some View {
+        let current = item.wrappedValue
+        return confirmationDialog(
+            current.map(title) ?? "",
+            isPresented: Binding(
+                get: { item.wrappedValue != nil },
+                set: { if !$0 { item.wrappedValue = nil } }),
+            titleVisibility: .visible,
+            presenting: current
+        ) { value in
+            Button(button, role: .destructive) { perform(value) }
+            Button("Cancel", role: .cancel) {}
+        } message: { value in
+            Text(message(value))
+        }
+    }
+
+    /// Asks before deleting a bot, in the same words wherever it is offered.
+    func confirmsBotDeletion(
+        _ bot: Binding<Bot?>, perform: @escaping (Bot) -> Void
+    ) -> some View {
+        confirmsDeletion(
+            of: bot,
+            title: { "Delete \($0.name)?" },
+            button: "Delete bot",
+            message: { _ in
+                "Its conversation, routines and folder watches are deleted too. This can't be undone."
+            },
+            perform: perform)
+    }
+
+    /// Asks before deleting a group chat, in the same words wherever it is offered.
+    func confirmsGroupDeletion(
+        _ group: Binding<ChatGroup?>, perform: @escaping (ChatGroup) -> Void
+    ) -> some View {
+        confirmsDeletion(
+            of: group,
+            title: { "Delete \($0.name)?" },
+            button: "Delete group",
+            message: { _ in
+                "Its conversation is deleted. The bots in it stay as they are. This can't be undone."
+            },
+            perform: perform)
     }
 }
 

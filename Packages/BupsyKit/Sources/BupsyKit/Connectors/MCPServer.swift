@@ -30,11 +30,21 @@ public struct MCPServer: Sendable, Equatable, Identifiable, Codable {
         self.args = args; self.requiredEnvNames = requiredEnvNames; self.enabled = enabled
     }
 
-    /// Environment variables this server needs that are missing from the current environment.
-    public func missingEnv(
-        in environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> [String] {
-        requiredEnvNames.filter { (environment[$0] ?? "").isEmpty }
+    /// Environment variables this server needs that are missing.
+    ///
+    /// With no environment given, a name counts as set if this process has it or the person's
+    /// login shell does (`LoginShellEnvironment`), which is where the setup copy tells them to
+    /// put it. The first check for a name may wait on a shell; later ones are answered from
+    /// memory.
+    public func missingEnv(in environment: [String: String]? = nil) -> [String] {
+        let source = environment ?? LoginShellEnvironment.resolved(requiredEnvNames)
+        return requiredEnvNames.filter { (source[$0] ?? "").isEmpty }
+    }
+
+    /// The values to hand an engine so this server's `${NAME}` references resolve. Never write
+    /// these anywhere: they are passed in the spawned process's environment only.
+    public func resolvedEnv() -> [String: String] {
+        LoginShellEnvironment.resolved(requiredEnvNames)
     }
 
     /// The prefix every tool from this server carries, which is what per-bot allowlists match on.

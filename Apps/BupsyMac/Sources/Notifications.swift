@@ -24,7 +24,10 @@ final class Notifier {
     /// - Parameter approvalID: the gate request's id, when the caller has it. With it, Allow and
     ///   Deny on the banner answer exactly that request; without it they match on bot, tool and
     ///   summary, which is what the banner showed.
-    func needsApproval(bot: String, tool: String, summary: String, approvalID: String? = nil) {
+    /// - Parameter botID: carried in the banner so a press finds the bot by id, not by a name
+    ///   that may have changed since, and so a click can open the right bot.
+    func needsApproval(bot: String, tool: String, summary: String, approvalID: String? = nil,
+                       botID: BotID? = nil) {
         // A bot's question with set answers comes through here too, as "a question". Allow and
         // Deny mean nothing for it, so it gets a plain banner that opens the app.
         let isToolRequest = tool != "a question"
@@ -35,39 +38,58 @@ final class Notifier {
                     ApprovalNotificationActions.summaryKey: summary]
             if let approvalID { info[ApprovalNotificationActions.approvalKey] = approvalID }
         }
+        // One banner per request, so answering it in the app can take exactly that banner away.
         post(
-            id: "approval-\(bot)-\(summary.hashValue)",
+            id: approvalID.map { Self.approvalIdentifier($0) } ?? "approval-\(bot)-\(summary.hashValue)",
             title: "\(bot) needs you",
             body: summary.isEmpty ? "Wants to use \(tool)" : summary,
             sound: true,
             category: isToolRequest ? ApprovalNotificationActions.category : nil,
-            info: info
+            info: info,
+            botID: botID
         )
     }
 
-    func objectiveNeedsYou(bot: String, question: String) {
+    /// The notification identifier for one approval request.
+    static func approvalIdentifier(_ approvalID: String) -> String { "approval-\(approvalID)" }
+
+    /// Takes away the banner for a request that was answered, or that can no longer be answered,
+    /// so Allow on a stale banner is never offered.
+    func clearApproval(_ approvalID: String) {
+        let ids = [Self.approvalIdentifier(approvalID)]
+        let centre = UNUserNotificationCenter.current()
+        centre.removeDeliveredNotifications(withIdentifiers: ids)
+        centre.removePendingNotificationRequests(withIdentifiers: ids)
+    }
+
+    func objectiveNeedsYou(bot: String, question: String, botID: BotID? = nil) {
         post(id: "objective-\(bot)-\(question.hashValue)",
-             title: "\(bot) needs you", body: question, sound: true)
+             title: "\(bot) needs you", body: question, sound: true, botID: botID)
     }
 
     /// A routine finished. Quiet, because this is information rather than a request.
-    func routineFinished(bot: String, routine: String, summary: String?) {
+    func routineFinished(bot: String, routine: String, summary: String?, botID: BotID? = nil) {
         post(
             id: "routine-\(bot)-\(routine)",
             title: "\(bot) finished \(routine)",
             body: summary ?? "Open Bupsy to see what it did.",
-            sound: false
+            sound: false,
+            botID: botID
         )
     }
 
-    func failed(bot: String, reason: String) {
-        post(id: "failed-\(bot)", title: "\(bot) stopped", body: reason, sound: false)
+    func failed(bot: String, reason: String, botID: BotID? = nil) {
+        post(id: "failed-\(bot)", title: "\(bot) stopped", body: reason, sound: false, botID: botID)
     }
 
     private func post(id: String, title: String, body: String, sound: Bool,
-                      category: String? = nil, info: [String: String] = [:]) {
+                      category: String? = nil, info: [String: String] = [:],
+                      botID: BotID? = nil) {
         // You are looking at the app; a banner over it is noise.
         guard !NSApp.isActive else { return }
+        var info = info
+        // Every banner says which bot it is about, so a click can open that bot.
+        if let botID { info[ApprovalNotificationActions.botIDKey] = botID.rawValue }
 
         Task {
             await requestAuthorizationIfNeeded()
@@ -103,6 +125,7 @@ final class ApprovalNotificationActions: NSObject, UNUserNotificationCenterDeleg
     static let toolKey = "tool"
     static let summaryKey = "summary"
     static let approvalKey = "approval"
+    static let botIDKey = "botID"
 
     private weak var model: AppModel?
     /// A press that arrived before the model was attached, as at a launch the banner caused.
@@ -153,8 +176,11 @@ final class ApprovalNotificationActions: NSObject, UNUserNotificationCenterDeleg
             waiting.append((action: action, info: info))
             return
         }
-        guard let botName = info[Self.botKey],
-              let bot = model.bots.first(where: { $0.name == botName }),
+        // By id: a bot renamed after the banner went out is still the same bot. The name is only
+        // a fallback for a banner posted before ids were included.
+        let byID = info[Self.botIDKey].flatMap { id in model.bots.first { $0.id.rawValue == id } }
+        let byName = info[Self.botKey].flatMap { name in model.bots.first { $0.name == name } }
+        guard let bot = byID ?? (info[Self.botIDKey] == nil ? byName : nil),
               let approval = Self.pending(for: bot, info: info, in: model)
         else { return }
         model.decide(approval, allow: action == Self.allowAction, for: bot)

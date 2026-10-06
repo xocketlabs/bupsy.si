@@ -20,13 +20,14 @@ extension AppModel {
         guard let bot = self.bot(for: routine) else { return }
         let name = routine.name
         let botName = bot.name
+        let botID = bot.id
         // A fresh Notifier rather than AppModel's own, which is private to AppModel.swift. It is
         // stateless apart from caching whether permission was granted, so the result is the same.
         let notifier = Notifier()
         send(routine.prompt, to: bot) { reply in
             notifier.routineFinished(
                 bot: botName, routine: name,
-                summary: reply.split(separator: "\n").first.map(String.init))
+                summary: reply.split(separator: "\n").first.map(String.init), botID: botID)
         }
     }
 

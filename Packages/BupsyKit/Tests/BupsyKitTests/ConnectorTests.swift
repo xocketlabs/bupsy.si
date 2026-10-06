@@ -111,3 +111,55 @@ struct AllowlistTests {
         if case .ask = outcome {} else { Issue.record("expected ask, got \(outcome)") }
     }
 }
+
+@Suite("Login shell environment")
+struct LoginShellEnvironmentTests {
+    @Test("reads back only the names asked for, with values intact")
+    func parsesNamedValues() {
+        var data = Data("LINEAR_API_KEY=lin_abc=def\nline2".utf8)
+        data.append(0)
+        data.append(contentsOf: Data("EMPTY=".utf8))
+        data.append(0)
+        data.append(contentsOf: Data("OTHER=nope".utf8))
+        data.append(0)
+        let parsed = LoginShellEnvironment.parse(data, names: ["LINEAR_API_KEY", "EMPTY", "MISSING"])
+        #expect(parsed == ["LINEAR_API_KEY": "lin_abc=def\nline2"])
+    }
+
+    /// A name goes into a shell command, so anything that is not a plain identifier is refused
+    /// rather than quoted.
+    @Test("never puts an unsafe name into the shell command")
+    func refusesUnsafeNames() {
+        #expect(LoginShellEnvironment.isValidName("GITHUB_PERSONAL_ACCESS_TOKEN"))
+        #expect(LoginShellEnvironment.isValidName("_x1"))
+        #expect(!LoginShellEnvironment.isValidName("1X"))
+        #expect(!LoginShellEnvironment.isValidName(""))
+        #expect(!LoginShellEnvironment.isValidName("A;rm -rf ~"))
+        #expect(!LoginShellEnvironment.isValidName("$(id)"))
+
+        let script = LoginShellEnvironment.script(for: ["OK_NAME", "bad name", "A`b`"])
+        #expect(script == #"printf '%s\0' "OK_NAME=$OK_NAME""#)
+    }
+
+    /// The process's own value wins, so a Bupsy started from a terminal behaves as it always did.
+    @Test("prefers a value this process already has")
+    func prefersCurrentEnvironment() {
+        let values = LoginShellEnvironment.resolved(["BUPSY_TEST_SET"], current: ["BUPSY_TEST_SET": "here"])
+        #expect(values == ["BUPSY_TEST_SET": "here"])
+    }
+
+    /// The script really runs in a POSIX shell and round-trips a value with awkward characters.
+    @Test("the generated script prints values a shell set")
+    func scriptRuns() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "BUPSY_T='a=b c'; export BUPSY_T; "
+            + LoginShellEnvironment.script(for: ["BUPSY_T", "BUPSY_UNSET_\(UUID().uuidString.prefix(4))"])]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        #expect(LoginShellEnvironment.parse(data, names: ["BUPSY_T"]) == ["BUPSY_T": "a=b c"])
+    }
+}

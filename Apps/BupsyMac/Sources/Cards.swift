@@ -170,7 +170,8 @@ struct ApprovalCard: View {
         case .allowed: "You allowed this"
         case .alwaysAllowed: "You always allow this"
         case .denied: "You declined this"
-        case .expired: "Denied, nobody answered in time"
+        // Settled and grey, not red: nobody declined anything, it just was not answered.
+        case .expired: "Timed out. Nothing ran."
         }
     }
 
@@ -178,7 +179,8 @@ struct ApprovalCard: View {
         switch approval.decided {
         case nil: "hand.raised.fill"
         case .allowed, .alwaysAllowed: "checkmark"
-        case .denied, .expired: "xmark"
+        case .denied: "xmark"
+        case .expired: "clock"
         }
     }
 
@@ -186,7 +188,8 @@ struct ApprovalCard: View {
         switch approval.decided {
         case nil: palette.primary
         case .allowed, .alwaysAllowed: palette.success
-        case .denied, .expired: palette.destructiveText
+        case .denied: palette.destructiveText
+        case .expired: palette.mutedForeground
         }
     }
 }
@@ -365,7 +368,9 @@ struct QuestionCard: View {
                 // While the bot is still finishing its turn an answer sent now would be dropped,
                 // so the line says to wait rather than letting the click vanish.
                 Text(busy ? "\(bot.name) is finishing up. Answer in a moment."
-                          : "One click answers. \(bot.name) waits until you do.")
+                          : question.options.isEmpty
+                            ? "Type your answer. \(bot.name) waits until you do."
+                            : "One click answers. \(bot.name) waits until you do.")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(palette.mutedForeground)
             }

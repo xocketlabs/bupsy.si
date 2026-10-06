@@ -121,6 +121,8 @@ struct GroupsListView: View {
     let onOpen: (String) -> Void
     @State private var isCreating = false
     @State private var renaming: ChatGroup?
+    /// Set to ask before deleting. Owned here, not by the card's menu, which is gone on click.
+    @State private var deleting: ChatGroup?
 
     init(onOpen: @escaping (String) -> Void) {
         self.onOpen = onOpen
@@ -151,7 +153,8 @@ struct GroupsListView: View {
                     ForEach(model.groups) { group in
                         GroupCard(group: group,
                                   onOpen: { onOpen(group.id) },
-                                  onRename: { renaming = group })
+                                  onRename: { renaming = group },
+                                  onDelete: { deleting = group })
                     }
                     invite
                 }
@@ -167,6 +170,9 @@ struct GroupsListView: View {
         }
         .background {
             Color.clear.sheet(item: $renaming) { RenameGroupSheet(group: $0) }
+        }
+        .background {
+            Color.clear.confirmsGroupDeletion($deleting) { model.deleteGroup($0) }
         }
     }
 
@@ -201,12 +207,16 @@ struct GroupCard: View {
     let group: ChatGroup
     let onOpen: () -> Void
     let onRename: () -> Void
+    /// Asks the list to confirm. The menu cannot host the dialog: it closes on click.
+    let onDelete: () -> Void
     @State private var hovering = false
 
-    init(group: ChatGroup, onOpen: @escaping () -> Void, onRename: @escaping () -> Void) {
+    init(group: ChatGroup, onOpen: @escaping () -> Void, onRename: @escaping () -> Void,
+         onDelete: @escaping () -> Void) {
         self.group = group
         self.onOpen = onOpen
         self.onRename = onRename
+        self.onDelete = onDelete
     }
 
     var body: some View {
@@ -257,8 +267,8 @@ struct GroupCard: View {
                 GroupTurnLimitPicker(group: group)
                 Divider()
                 // The conversation only. Its bots are untouched.
-                Button(role: .destructive) { model.deleteGroup(group) } label: {
-                    Label("Delete group", systemImage: "trash")
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete group…", systemImage: "trash")
                 }
             } label: {
                 Image(systemName: "ellipsis")

@@ -208,6 +208,8 @@ struct MachineRow: View {
     @Environment(\.palette) private var palette
     let machine: MachineRecord
     @State private var confirmingDelete = false
+    /// True while boat.dev is being asked to shut the machine down. The row stays until it has.
+    @State private var deleting = false
 
     init(machine: MachineRecord) { self.machine = machine }
 
@@ -228,18 +230,40 @@ struct MachineRow: View {
                                 help: isRunning ? "Stop \(machine.name)" : "Start \(machine.name)") {
                     model.toggleMachine(machine)
                 }
-                SetupIconButton(systemName: "trash", help: "Delete \(machine.name)", destructive: true) {
-                    confirmingDelete = true
+                if deleting {
+                    ProgressView()
+                        .controlSize(.small)
+                        .help("Shutting \(machine.name) down on boat.dev")
+                        .accessibilityLabel("Deleting \(machine.name)")
+                } else {
+                    SetupIconButton(systemName: "trash", help: "Delete \(machine.name)", destructive: true) {
+                        confirmingDelete = true
+                    }
                 }
             }
         }
-        .confirmationDialog("Delete \(machine.name)?", isPresented: $confirmingDelete) {
-            Button("Delete machine", role: .destructive) { model.deleteMachine(machine) }
+        .disabled(deleting)
+        .confirmationDialog("Delete \(machine.name)?", isPresented: $confirmingDelete,
+                            titleVisibility: .visible) {
+            Button("Delete machine", role: .destructive) { delete() }
             Button("Cancel", role: .cancel) {}
         } message: {
+            // Says what really happens: boat's API has no delete, so the machine is force-stopped
+            // there and forgotten here. See AppModel.destroyMachine.
             Text(assignedBots.isEmpty
-                 ? "It is removed from your boat.dev account."
-                 : "It is removed from your boat.dev account. Its bots go back to running on this Mac.")
+                 ? "It's shut down on boat.dev and removed from Bupsy. To remove it from your boat.dev account too, delete it there."
+                 : "It's shut down on boat.dev and removed from Bupsy, and its bots move back to this Mac. To remove it from your boat.dev account too, delete it there.")
+        }
+    }
+
+    /// Shuts it down on boat.dev, then forgets it. If boat could not stop it, it stays in the
+    /// list (it may still be billing) and the page shows why, from `machineProblem`.
+    private func delete() {
+        deleting = true
+        model.machineProblem = nil
+        Task { @MainActor in
+            _ = await model.destroyMachine(machine)
+            deleting = false
         }
     }
 

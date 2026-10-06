@@ -289,7 +289,11 @@ struct RootView: View {
             if let bot = model.bots.first(where: { $0.id == id }) {
                 // No card here: BotPage draws its own, so its details panel can sit beside the
                 // card on the window rather than inside it. See BotPage.body.
+                // Keyed by the bot, so switching bots starts a fresh page: a draft, a reply-to or a
+                // scroll position belongs to one conversation and must never follow you into the
+                // next, where it could be sent to the wrong bot.
                 BotPage(bot: bot)
+                    .id(bot.id)
             } else {
                 floating { NothingSelected() }
             }
@@ -314,7 +318,9 @@ struct RootView: View {
         case .group(let id):
             if let group = model.groups.first(where: { $0.id == id }) {
                 // Like a bot page, it draws its own card.
+                // Keyed for the same reason as BotPage: a draft belongs to one group.
                 GroupPage(group: group)
+                    .id(group.id)
             } else {
                 floating { NothingSelected() }
             }

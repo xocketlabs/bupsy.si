@@ -19,12 +19,19 @@ struct BotPage: View {
     @State private var editingRoutine: Routine?
     @State private var showsObjectives = false
     @State private var showsNewWatch = false
-    @State private var showsDetails = false
+    /// Kept outside the page, because the page is rebuilt for each bot (see BupsyApp's panel):
+    /// opening the details for one bot leaves them open as you move to the next, as before.
+    @AppStorage("bupsy.botPage.showsDetails", store: AppHome.defaults) private var showsDetails = false
     @State private var editingBot: Bot?
     /// The message being replied to, shown above the composer until sent or dismissed.
     @State private var replyingTo: ReplyTarget?
     @State private var tab = DetailTab.details
     @State private var awayFromBottom = false
+    /// The goal whose "what it's learned" notes are open under its row, if any.
+    @State private var notesObjectiveID: String?
+    /// Set to ask before deleting. Owned by the page, never by a menu, which is gone on click.
+    @State private var deletingObjective: Objective?
+    @State private var deletingWatch: FolderWatch?
 
     private var thread: Thread { model.thread(for: bot.id) }
     private var routines: [Routine] { model.routines.filter { $0.botID == bot.id.rawValue } }
@@ -73,10 +80,25 @@ struct BotPage: View {
         .background { Color.clear.sheet(item: $editingBot) { BotCreatorSheet(editing: $0) } }
         // The folder watch form is the new-routine sheet opened on its Folder watch tab.
         .background { Color.clear.sheet(isPresented: $showsNewWatch) { NewRoutineSheet(bot: bot, kind: .folderWatch) } }
+        .background {
+            Color.clear.confirmsObjectiveDeletion($deletingObjective) { model.deleteObjective($0) }
+        }
+        .background {
+            Color.clear.confirmsDeletion(
+                of: $deletingWatch,
+                title: { "Delete the folder watch \u{201C}\($0.name)\u{201D}?" },
+                button: "Delete watch",
+                message: { _ in
+                    "\(bot.name) stops running when files in that folder change. The folder and its files are not touched. This can't be undone."
+                },
+                perform: { model.deleteFolderWatch($0) })
+        }
         // A routine open for one bot must not stay open, unrelated, on the next.
         .onChange(of: bot.id) { openRoutineID = nil }
-        .onChange(of: model.tourDetails, initial: true) { _, new in
-            if let new { tab = new; showsDetails = true } else { showsDetails = false }
+        .onChange(of: model.tourDetails, initial: true) { old, new in
+            // Only a tour ending closes the panel. On appear there is no tour, and closing it then
+            // would undo the remembered choice every time you switch bots.
+            if let new { tab = new; showsDetails = true } else if old != nil { showsDetails = false }
         }
         .onChange(of: model.tourSheet, initial: true) { _, new in
             showsRoutines = new == "newRoutine"
@@ -741,35 +763,56 @@ struct BotPage: View {
             } else {
                 VStack(spacing: Theme.Space.snug) {
                     ForEach(objectives) { objective in
-                        CardRow {
-                            IconTile(systemName: objective.lastOutcome?.needsAttention == true
-                                     ? "exclamationmark.triangle" : "checkmark.circle")
-                        } content: {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(objective.goal)
-                                    .font(Theme.Typography.body)
-                                    .foregroundStyle(palette.foreground)
-                                    .lineLimit(1)
-                                HStack(spacing: Theme.Space.snug) {
-                                    Text(checkedLabel(objective))
-                                    MetaDot()
-                                    Text(Schedule.describe(objective.checkCron))
-                                    if let outcome = objective.lastOutcome {
-                                        MetaDot()
-                                        Text(outcome.label)
-                                            .foregroundStyle(outcome.needsAttention
-                                                             ? palette.primary : palette.success)
-                                    }
-                                }
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(palette.mutedForeground)
-                            }
-                        } trailing: {
-                            Button("Check now") { model.checkObjective(objective) }
-                                .buttonStyle(QuietButton(compact: true))
-                        }
+                        goalRow(objective)
                     }
                 }
+            }
+        }
+    }
+
+    /// The same anatomy as a routine row: what and when on the left, then on and off and the
+    /// rest of what you can do with it on the right, all visible rather than behind a right-click.
+    private func goalRow(_ objective: Objective) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            CardRow {
+                IconTile(systemName: objective.lastOutcome?.needsAttention == true
+                         ? "exclamationmark.triangle" : "checkmark.circle")
+            } content: {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(objective.goal)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
+                        .lineLimit(1)
+                    HStack(spacing: Theme.Space.snug) {
+                        Text(checkedLabel(objective))
+                        MetaDot()
+                        Text(Schedule.describe(objective.checkCron))
+                        if let outcome = objective.lastOutcome {
+                            MetaDot()
+                            Text(outcome.label)
+                                .foregroundStyle(outcome.needsAttention
+                                                 ? palette.primary : palette.success)
+                        }
+                    }
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .lineLimit(1)
+                }
+            } trailing: {
+                HStack(spacing: Theme.Space.tight) {
+                    ObjectiveToggle(objective: objective)
+                    ObjectiveMenu(
+                        objective: objective,
+                        showsNotes: Binding(
+                            get: { notesObjectiveID == objective.id },
+                            set: { notesObjectiveID = $0 ? objective.id : nil }),
+                        onDelete: { deletingObjective = objective })
+                }
+            }
+            .opacity(objective.enabled ? 1 : 0.6)
+
+            if notesObjectiveID == objective.id {
+                ObjectiveNotesEditor(objective: objective)
             }
         }
     }
@@ -849,7 +892,7 @@ struct BotPage: View {
                         .opacity(watch.enabled ? 1 : 0.6)
                         .contextMenu {
                             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: watch.path)]) }
-                            Button("Delete watch", role: .destructive) { model.deleteFolderWatch(watch) }
+                            Button("Delete watch…", role: .destructive) { deletingWatch = watch }
                         }
                     }
                 }

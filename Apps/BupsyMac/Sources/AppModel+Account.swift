@@ -16,27 +16,53 @@ extension AppModel {
     static let authCheckPendingKey = "bupsy.authCheckPending"
 
     /// Opens Terminal running the engine's own sign-in, exactly as its adapter defines it.
+    /// Fire and forget; a failure lands in `accountProblem`.
     func openSignIn(for engine: EngineID) {
-        guard let login = Self.loginCommand(for: engine) else { return }
+        Task { await signIn(to: engine) }
+    }
+
+    /// Opens Terminal running the engine's own sign-out command, if its CLI has one.
+    /// Fire and forget; a failure lands in `accountProblem`.
+    func openSignOut(for engine: EngineID) {
+        Task { await signOut(of: engine) }
+    }
+
+    /// Opens the engine's own sign-in in Terminal. Returns false, and sets `accountProblem` to a
+    /// sentence the UI can show, if the window could not be opened. True means Terminal was
+    /// asked to open it, not that the person finished signing in: that is learned afterwards
+    /// from `refreshEngineStatus()`.
+    @discardableResult
+    func signIn(to engine: EngineID) async -> Bool {
+        accountProblem = nil
+        guard let login = Self.loginCommand(for: engine),
+              let binary = login.command.split(separator: " ").map(String.init).first else {
+            accountProblem = "Bupsy doesn't know how to sign in to \(engine.displayName)."
+            return false
+        }
         let parts = login.command.split(separator: " ").map(String.init)
-        guard let binary = parts.first else { return }
         let arguments = parts.dropFirst().map { Self.shellQuoted($0) }.joined(separator: " ")
         let call = arguments.isEmpty ? "\"$CLI\"" : "\"$CLI\" \(arguments)"
         let intro = Self.signInIntro(for: engine)
-        openAccountScript(
+        return await openAccountScript(
             named: "Sign in to \(engine.displayName)", binary: binary,
             body: intro.map { "echo \(Self.shellQuoted($0))" }.joined(separator: "\n")
                 + "\necho\n" + call + "\n")
     }
 
-    /// Opens Terminal running the engine's own sign-out command, if its CLI has one.
+    /// Opens the engine's own sign-out in Terminal. Returns false and sets `accountProblem` if
+    /// it could not be opened.
     ///
     /// Whether the command exists is checked inside the script, against the CLI's own `--help`,
     /// so an older build that lacks it gets an explanation rather than a confusing error.
-    func openSignOut(for engine: EngineID) {
-        guard let script = Self.signOutScript(for: engine) else { return }
-        openAccountScript(named: "Sign out of \(engine.displayName)",
-                          binary: Self.binaryName(for: engine), body: script)
+    @discardableResult
+    func signOut(of engine: EngineID) async -> Bool {
+        accountProblem = nil
+        guard let script = Self.signOutScript(for: engine) else {
+            accountProblem = "Bupsy can't sign out of \(engine.displayName) from here."
+            return false
+        }
+        return await openAccountScript(named: "Sign out of \(engine.displayName)",
+                                       binary: Self.binaryName(for: engine), body: script)
     }
 
     /// Asks the engines again if a sign-in or sign-out window was opened since the last check.
@@ -152,25 +178,31 @@ extension AppModel {
     /// person's login shell), off the main thread because that fallback spawns a shell. If it
     /// cannot be found the script uses the bare name, which the login shell may still find, and
     /// otherwise says plainly that the CLI is missing.
-    private func openAccountScript(named name: String, binary: String, body: String) {
-        AppHome.defaults.set(true, forKey: Self.authCheckPendingKey)
-        Task {
-            let resolved = await Task.detached { try? BinaryResolver.resolve(binary).path }.value
-            let cli = resolved ?? binary
-            let script = "#!/bin/zsh -l\nclear\nCLI=\(Self.shellQuoted(cli))\n"
-                + "if ! command -v \"$CLI\" >/dev/null 2>&1; then\n"
-                + "  echo \(Self.shellQuoted("Bupsy couldn't find \(binary) on this Mac. Install it first, then try again."))\n"
-                + "  exit 1\n"
-                + "fi\n"
-                + body
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("\(name).command")
-            do {
-                try script.write(to: url, atomically: true, encoding: .utf8)
-                try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
-            } catch { return }
-            NSWorkspace.shared.open(url)
+    private func openAccountScript(named name: String, binary: String, body: String) async -> Bool {
+        let resolved = await Task.detached { try? BinaryResolver.resolve(binary).path }.value
+        let cli = resolved ?? binary
+        let script = "#!/bin/zsh -l\nclear\nCLI=\(Self.shellQuoted(cli))\n"
+            + "if ! command -v \"$CLI\" >/dev/null 2>&1; then\n"
+            + "  echo \(Self.shellQuoted("Bupsy couldn't find \(binary) on this Mac. Install it first, then try again."))\n"
+            + "  exit 1\n"
+            + "fi\n"
+            + body
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(name).command")
+        do {
+            try script.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        } catch {
+            accountProblem = "Couldn't open Terminal for this: \(error.localizedDescription)"
+            return false
         }
+        guard NSWorkspace.shared.open(url) else {
+            accountProblem = "Couldn't open Terminal. Open Terminal yourself and run \(binary) to do this."
+            return false
+        }
+        // Only once a window really opened, so a failed attempt does not trigger a check.
+        AppHome.defaults.set(true, forKey: Self.authCheckPendingKey)
+        return true
     }
 
     /// Single-quoted for zsh, with any single quote inside closed, escaped and reopened.

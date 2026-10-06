@@ -21,6 +21,8 @@ private struct SettingsContent: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @State private var checking = false
+    /// The engine "Sign out" was clicked for, until the person confirms.
+    @State private var signingOut: EngineID?
 
     var body: some View {
         ScrollView {
@@ -35,6 +37,7 @@ private struct SettingsContent: View {
         .frame(minHeight: 460, idealHeight: 560)
         .background(palette.background)
         .tint(palette.primary)
+        .confirmsSignOut($signingOut)
         // Back from Terminal: ask the engines again, once, if a sign-in or sign-out was opened.
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -90,6 +93,15 @@ private struct SettingsContent: View {
                 .disabled(checking)
             }
             .padding(.horizontal, 2)
+            // A sign-in or sign-out that could not even open Terminal says so, rather than
+            // leaving the button looking like it did nothing.
+            if let problem = model.accountProblem {
+                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.destructiveText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 2)
+            }
             // Never hidden: each engine can also run on an API key, and saying so is part of not
             // restricting any of its sign-in methods.
             Text("Prefer an API key? Claude Code offers Anthropic Console during its own sign-in, "
@@ -136,7 +148,7 @@ private struct SettingsContent: View {
                 Spacer(minLength: Theme.Space.snug)
                 if status != nil {
                     if signedIn {
-                        Button("Sign out") { model.openSignOut(for: engine) }
+                        Button("Sign out…") { signingOut = engine }
                             .buttonStyle(QuietButton(compact: true))
                             .help("Opens Terminal and runs \(engine.displayName)'s own sign-out command")
                     } else {
