@@ -94,10 +94,9 @@ struct RoutineRunStats {
         var guardDays = 0
         while day < interval.end && guardDays < 400 {
             let parts = calendar.dateComponents([.day, .month, .weekday], from: day)
+            // The same day rule the schedule fires by, so "expected runs" agrees with what ran.
             if let dayOfMonth = parts.day, let month = parts.month, let weekday = parts.weekday,
-               expression.daysOfMonth.contains(dayOfMonth),
-               expression.months.contains(month),
-               expression.weekdays.contains(weekday - 1) {
+               expression.matchesDay(dayOfMonth: dayOfMonth, month: month, weekday: weekday) {
                 count += perDay
             }
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
