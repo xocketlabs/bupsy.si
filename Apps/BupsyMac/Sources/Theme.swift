@@ -742,7 +742,11 @@ extension View {
 
 /// The older spelling of `.bupsyField()`, kept so `.textFieldStyle(BupsyFieldStyle())` still
 /// works. It holds no environment of its own; the modifier it applies does the reading.
-struct BupsyFieldStyle: TextFieldStyle {
+///
+/// Main-actor isolated with a `@preconcurrency` conformance: the modifier it applies is a view
+/// type, and handing the field to it from a nonisolated requirement is a data race in Swift 6.
+@MainActor
+struct BupsyFieldStyle: @preconcurrency TextFieldStyle {
     // swiftlint:disable:next identifier_name
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration.bupsyField()
