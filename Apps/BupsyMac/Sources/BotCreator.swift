@@ -11,9 +11,14 @@ struct BotCreatorSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The bot being edited, or nil to make a new one.
     var editing: Bot? = nil
+    /// A name to start a new bot with, such as what was typed into the palette.
+    var initialName: String? = nil
+    /// The section a new bot starts in, such as the one whose "+" opened this.
+    var initialSection: String? = nil
 
     @State private var name = ""
     @State private var role = ""
@@ -23,14 +28,17 @@ struct BotCreatorSheet: View {
     @State private var typingNewSection = false
     @State private var engine = EngineID.claude
     @State private var modelID: String?
-    @State private var trust = Autonomy.ask
+    /// "Asks unless allowed", the same default as first run and the board.
+    @State private var trust = Autonomy.allowlist
     @State private var shape = BotShape.bup
-    @State private var colour = 8
+    @State private var colour = 0
     @State private var faceChanged = false
     @State private var loaded = false
 
-    init(editing: Bot? = nil) {
+    init(editing: Bot? = nil, name: String? = nil, section: String? = nil) {
         self.editing = editing
+        self.initialName = name
+        self.initialSection = section
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
@@ -52,12 +60,14 @@ struct BotCreatorSheet: View {
     private var tint: Color { BotShape.palette[safeColour] }
 
     var body: some View {
+        // The header tile is the bot, in the colour it is wearing, not a generic plus.
         SheetFrame(title: displayName,
-                   icon: editing == nil ? "plus.circle" : "pencil",
+                   icon: "face.smiling",
                    subtitle: "Pick its face, give it a job, choose how careful it is.",
                    width: 760,
                    tone: .primary,
-                   primaryVerb: editing == nil ? "create" : "save") {
+                   primaryVerb: editing == nil ? "create" : "save",
+                   tint: tint) {
             HStack(alignment: .top, spacing: Theme.Space.section) {
                 VStack(alignment: .leading, spacing: Theme.Space.gutter) {
                     preview
@@ -81,15 +91,15 @@ struct BotCreatorSheet: View {
     }
 
     private var displayName: String {
-        trimmedName.isEmpty ? (editing == nil ? "New bot" : "Edit bot") : trimmedName
+        trimmedName.isEmpty ? (editing == nil ? "Set up a bot" : "Edit bot") : trimmedName
     }
 
     // MARK: - Preview
 
     /// The bot, live, on a stage in its own colour.
     private var preview: some View {
-        VStack(spacing: 10) {
-            BotFace(hue: 0.5, mood: previewMood, size: 120, shape: shape, colour: safeColour)
+        VStack(spacing: Theme.Space.compact) {
+            BotFace(hue: 0.5, mood: previewMood, size: 132, shape: shape, colour: safeColour)
             VStack(spacing: 1) {
                 Text(displayName)
                     .font(.system(size: Theme.scaled(14), weight: .medium))
@@ -105,8 +115,8 @@ struct BotCreatorSheet: View {
         .padding(.top, 18)
         .padding(.bottom, 14)
         .padding(.horizontal, Theme.Space.step)
-        .background { MascotStageBackground(tint: tint, cornerRadius: 14) }
-        .animation(.easeOut(duration: 0.2), value: safeColour)
+        .background { MascotStageBackground(tint: tint, cornerRadius: Theme.Radius.xl) }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: safeColour)
     }
 
     private var previewMood: BotMood {
@@ -134,7 +144,7 @@ struct BotCreatorSheet: View {
             Field(label: "Name") {
                 VStack(alignment: .leading, spacing: Theme.Space.tight) {
                     TextField("", text: $name, prompt: Text("Give it a name"))
-                        .textFieldStyle(BupsyFieldStyle())
+                        .bupsyField()
                     if nameTaken {
                         Text("Another bot is already called that.")
                             .font(Theme.Typography.caption)
@@ -145,8 +155,8 @@ struct BotCreatorSheet: View {
 
             HStack(alignment: .top, spacing: Theme.Space.step) {
                 Field(label: "Role") {
-                    TextField("", text: $role, prompt: Text("Research, PA..."))
-                        .textFieldStyle(BupsyFieldStyle())
+                    TextField("", text: $role, prompt: Text("Research, PA…"))
+                        .bupsyField()
                 }
                 .frame(maxWidth: .infinity)
                 Field(label: "Section") { sectionControl }
@@ -157,7 +167,7 @@ struct BotCreatorSheet: View {
                 TextField("", text: $job,
                           prompt: Text("What should it do? e.g. watch my inbox and flag anything urgent"),
                           axis: .vertical)
-                    .textFieldStyle(BupsyFieldStyle())
+                    .bupsyField()
                     .lineLimit(3...5)
             }
 
@@ -165,11 +175,10 @@ struct BotCreatorSheet: View {
                 Field(label: "Engine") {
                     selectField(engine.displayName) {
                         ForEach(EngineID.supported, id: \.self) { option in
-                            Button {
-                                engine = option
-                                modelID = nil
-                            } label: {
-                                Label(option.displayName, systemImage: engine == option ? "checkmark" : "")
+                            Toggle(isOn: Binding(
+                                get: { engine == option },
+                                set: { if $0 { engine = option; modelID = nil } })) {
+                                Text(option.displayName)
                             }
                         }
                     }
@@ -178,8 +187,10 @@ struct BotCreatorSheet: View {
                 Field(label: "Model") {
                     selectField(modelLabel) {
                         ForEach(modelOptions) { option in
-                            Button { modelID = option.id } label: {
-                                Label(option.label, systemImage: modelID == option.id ? "checkmark" : "")
+                            Toggle(isOn: Binding(
+                                get: { modelID == option.id },
+                                set: { if $0 { modelID = option.id } })) {
+                                Text(option.label)
                             }
                         }
                     }
@@ -188,10 +199,12 @@ struct BotCreatorSheet: View {
             }
 
             Field(label: "Trust", hint: "If nobody answers when it asks, the answer is no.") {
-                selectField(trust.menuLabel, tone: trust == .auto ? palette.destructiveText : nil) {
+                selectField(trust.trustLabel, tone: trust == .auto ? palette.destructiveText : nil) {
                     ForEach(Autonomy.allCases, id: \.self) { level in
-                        Button { trust = level } label: {
-                            Label(level.menuLabel, systemImage: trust == level ? "checkmark" : "")
+                        Toggle(isOn: Binding(
+                            get: { trust == level },
+                            set: { if $0 { trust = level } })) {
+                            Text(level.trustLabel)
                         }
                     }
                 }
@@ -205,7 +218,7 @@ struct BotCreatorSheet: View {
         if typingNewSection {
             HStack(spacing: Theme.Space.tight) {
                 TextField("", text: $folder, prompt: Text("Section name"))
-                    .textFieldStyle(BupsyFieldStyle())
+                    .bupsyField()
                 Button {
                     typingNewSection = false
                     if !sections.contains(trimmedFolder) { folder = "" }
@@ -213,24 +226,29 @@ struct BotCreatorSheet: View {
                     Image(systemName: "xmark")
                         .font(.system(size: Theme.scaled(10), weight: .semibold))
                         .foregroundStyle(palette.mutedForeground)
-                        .frame(width: 24, height: 24)
+                        .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .help("Pick an existing section")
+                .accessibilityLabel("Pick an existing section")
             }
         } else {
             selectField(trimmedFolder.isEmpty ? "Unassigned" : trimmedFolder) {
                 ForEach(sections, id: \.self) { section in
-                    Button { folder = section } label: {
-                        Label(section, systemImage: trimmedFolder == section ? "checkmark" : "")
+                    Toggle(isOn: Binding(
+                        get: { trimmedFolder == section },
+                        set: { if $0 { folder = section } })) {
+                        Text(section)
                     }
                 }
-                Button { folder = "" } label: {
-                    Label("Unassigned", systemImage: trimmedFolder.isEmpty ? "checkmark" : "")
+                Toggle(isOn: Binding(
+                    get: { trimmedFolder.isEmpty },
+                    set: { if $0 { folder = "" } })) {
+                    Text("Unassigned")
                 }
                 Divider()
-                Button("New section...") {
+                Button("New section…") {
                     folder = ""
                     typingNewSection = true
                 }
@@ -240,9 +258,13 @@ struct BotCreatorSheet: View {
 
     /// The sections in use, plus the one this bot is already in if the list leaves it out.
     private var sections: [String] {
-        var list = model.folders
+        // Every section, empty ones and ones holding only pinned bots included.
+        var list = model.allSections
         let current = editing.flatMap { edited in model.bots.first { $0.id == edited.id } }?.folder ?? ""
         if !current.isEmpty && !list.contains(current) { list.append(current) }
+        if let initialSection, !initialSection.isEmpty, !list.contains(initialSection) {
+            list.append(initialSection)
+        }
         return list
     }
 
@@ -265,7 +287,7 @@ struct BotCreatorSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, Theme.Space.step)
         .padding(.trailing, 28)
-        .frame(height: 38)
+        .frame(height: Theme.Size.controlMd)
         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
         .overlay {
             RoundedRectangle(cornerRadius: Theme.Radius.control)
@@ -304,9 +326,13 @@ struct BotCreatorSheet: View {
             shape = bot.effectiveShape
             colour = bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue)
         } else {
-            // A fresh bot starts on a shape nobody else wears.
+            if let initialName { name = initialName }
+            if let initialSection { folder = initialSection }
+            // The first engine that is ready, so a new bot can actually run.
+            engine = model.defaultNewBotEngine
+            // A fresh bot starts on a shape nobody else wears, in any of the eight colours.
             shape = BotShape.allCases.first { !taken.contains($0) } ?? .bup
-            colour = Int.random(in: 0..<BotShape.palette.count - 1)
+            colour = Int.random(in: BotShape.palette.indices)
         }
     }
 
@@ -327,7 +353,7 @@ struct BotCreatorSheet: View {
             if let bot = model.bots.first(where: { $0.name == trimmedName }) {
                 model.setRole(bot, role)
                 model.setModel(bot, modelID)
-                if trust != .ask { model.setAutonomy(bot, trust) }
+                if bot.autonomy != trust { model.setAutonomy(bot, trust) }
             }
         }
         dismiss()

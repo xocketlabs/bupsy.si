@@ -281,6 +281,29 @@ struct RunHistoryTests {
         #expect(summary.duration == nil)
         #expect(!summary.succeeded)
     }
+
+    /// A routine's page finds its runs by this id, so a run started by a routine has to carry it
+    /// back out, and a run you started by typing has to stay untagged.
+    @Test("a run keeps what started it")
+    func keepsTrigger() throws {
+        let store = try Store.inMemory()
+        let bot = BotRecord(name: "Night owl", engine: "claude")
+        try store.save(bot)
+        let conversation = ConversationRecord(botID: bot.id, engine: "claude")
+        try store.save(conversation)
+
+        try store.save(RunRecord(
+            botID: bot.id, conversationID: conversation.id, triggerID: "routine-1", host: "local",
+            startedAt: Date(timeIntervalSince1970: 2_000_000)))
+        try store.save(RunRecord(
+            botID: bot.id, conversationID: conversation.id, host: "local",
+            startedAt: Date(timeIntervalSince1970: 1_000_000)))
+
+        let runs = try store.recentRuns(forBot: bot.id)
+        #expect(runs.count == 2)
+        #expect(runs[0].triggerID == "routine-1")
+        #expect(runs[1].triggerID == nil)
+    }
 }
 
 @Suite("Loading a long transcript")

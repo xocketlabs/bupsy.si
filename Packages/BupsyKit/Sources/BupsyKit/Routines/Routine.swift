@@ -25,8 +25,8 @@ public struct Routine: Sendable, Identifiable, Equatable, Codable {
 
         public var label: String {
             switch self {
-            case .appOpen: "While bupsy is open"
-            case .launchAgent: "Even when bupsy is closed"
+            case .appOpen: "While Bupsy is open"
+            case .launchAgent: "Even when Bupsy is closed"
             case .machine: "On a cloud machine"
             }
         }
@@ -37,9 +37,9 @@ public struct Routine: Sendable, Identifiable, Equatable, Codable {
         public var promise: String {
             switch self {
             case .appOpen:
-                "Runs only while bupsy is open. Skipped otherwise."
+                "Runs only while Bupsy is open. Skipped otherwise."
             case .launchAgent:
-                "Runs even with bupsy closed. A run missed while your Mac slept happens on wake."
+                "Runs even with Bupsy closed. A run missed while your Mac slept happens on wake."
             case .machine:
                 "Runs on time whether your Mac is awake, asleep, or off."
             }

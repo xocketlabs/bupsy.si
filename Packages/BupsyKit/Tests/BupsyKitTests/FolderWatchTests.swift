@@ -24,4 +24,29 @@ struct FolderWatchTests {
         let many = watch.prompt(for: (0..<25).map { "/w/f\($0)" }, limit: 3)
         #expect(many.contains("…and 22 more"))
     }
+
+    @Test("file types are read leniently and kept through the store")
+    func fileTypes() throws {
+        #expect(FolderWatch.fileTypes(from: "pdf, PNG .jpg;*.pdf") == ["pdf", "png", "jpg"])
+        #expect(FolderWatch.fileTypes(from: "  ").isEmpty)
+
+        let store = try Store.inMemory()
+        let bot = BotRecord(name: "Sorter", engine: "claude")
+        try store.save(bot)
+        let watch = FolderWatch(botID: bot.id, name: "Invoices", prompt: "File these.",
+                                path: "/Users/x/Downloads", fileTypes: ["pdf", "png"])
+        try store.save(watch)
+        #expect(try store.folderWatches() == [watch])
+    }
+
+    @Test("only the chosen file types set a watch off; none chosen means every file")
+    func matchesTypes() {
+        let some = FolderWatch(botID: "b", name: "n", prompt: "p", path: "/w", fileTypes: ["pdf"])
+        #expect(some.matches("/w/Invoice.PDF"))
+        #expect(!some.matches("/w/photo.png"))
+        #expect(!some.matches("/w/README"))
+        let every = FolderWatch(botID: "b", name: "n", prompt: "p", path: "/w")
+        #expect(every.matches("/w/anything.bin"))
+        #expect(every.matches("/w/README"))
+    }
 }

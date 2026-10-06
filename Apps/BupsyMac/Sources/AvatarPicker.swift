@@ -9,6 +9,7 @@ import SwiftUI
 /// want.
 struct AvatarPicker: View {
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var shape: BotShape
     @Binding var colour: Int
     /// Shapes other bots are wearing, to mark rather than forbid.
@@ -17,14 +18,15 @@ struct AvatarPicker: View {
     var wearers: [BotShape: Color] = [:]
     var onChange: () -> Void = {}
 
-    private let faceSize: CGFloat = 40
-    private let columns = Array(repeating: GridItem(.flexible(minimum: 52), spacing: 6), count: 4)
+    private let faceSize: CGFloat = 44
+    private let swatchSize: CGFloat = 28
+    private let columns = Array(repeating: GridItem(.flexible(minimum: 52), spacing: Theme.Space.tight), count: 4)
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.gutter) {
             VStack(alignment: .leading, spacing: Theme.Space.snug) {
                 label("Shape")
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Space.tight) {
                     ForEach(BotShape.allCases, id: \.self) { option in
                         shapeTile(option)
                     }
@@ -39,23 +41,40 @@ struct AvatarPicker: View {
 
             VStack(alignment: .leading, spacing: Theme.Space.snug) {
                 label("Colour")
-                HStack(spacing: 4) {
-                    ForEach(BotShape.palette.indices, id: \.self) { index in
-                        swatch(index)
+                // "Surprise me" sits after the swatches, and drops to its own line only when the
+                // column is too narrow for both, as the board's wrapping row does.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Theme.Space.snug) {
+                        swatches
+                        surpriseButton
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Space.snug) {
+                        swatches
+                        surpriseButton
                     }
                 }
-                Button(action: shuffle) {
-                    Label("Surprise me", systemImage: "sparkle")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(palette.foreground)
-                        .padding(.horizontal, Theme.Space.snug)
-                        .frame(height: 30)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .help("Pick a random face nobody else is wearing")
             }
         }
+    }
+
+    private var swatches: some View {
+        HStack(spacing: Theme.Space.snug) {
+            ForEach(BotShape.palette.indices, id: \.self) { index in
+                swatch(index)
+            }
+        }
+        // Room for the selection ring, which is drawn outside the swatch.
+        .padding(.vertical, 3)
+        .fixedSize()
+    }
+
+    private var surpriseButton: some View {
+        Button(action: shuffle) {
+            Label("Surprise me", systemImage: "sparkle")
+        }
+        .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
+        .fixedSize()
+        .help("Pick a random face nobody else is wearing")
     }
 
     private func label(_ text: String) -> some View {
@@ -68,18 +87,18 @@ struct AvatarPicker: View {
         let selected = option == shape
         let worn = taken.contains(option) && !selected
         return Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { shape = option }
+            withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75)) { shape = option }
             onChange()
         } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: Theme.Space.hairline) {
                 StillBotFace(shape: option, colour: colour, size: faceSize)
                 Text(option.label)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(palette.mutedForeground)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
+            .padding(.top, Theme.Space.snug)
+            .padding(.bottom, Theme.Space.tight)
             .background(selected ? palette.background : palette.card,
                         in: .rect(cornerRadius: Theme.Radius.base))
             .overlay {
@@ -92,7 +111,7 @@ struct AvatarPicker: View {
                         .fill(wearers[option] ?? palette.mutedForeground)
                         .frame(width: 8, height: 8)
                         .overlay(Circle().strokeBorder(palette.card, lineWidth: 2).padding(-2))
-                        .padding(6)
+                        .padding(Theme.Space.tight)
                 }
             }
             .contentShape(.rect)
@@ -105,16 +124,17 @@ struct AvatarPicker: View {
     private func swatch(_ index: Int) -> some View {
         let selected = index == colour
         return Button {
-            withAnimation(.easeOut(duration: 0.15)) { colour = index }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { colour = index }
             onChange()
         } label: {
             RoundedRectangle(cornerRadius: Theme.Radius.control)
                 .fill(BotShape.palette[index])
-                .frame(width: 26, height: 26)
-                .padding(3)
+                .frame(width: swatchSize, height: swatchSize)
                 .overlay {
+                    // Outside the swatch, so it keeps its full 28pt of colour when picked.
                     RoundedRectangle(cornerRadius: Theme.Radius.control + 3)
                         .strokeBorder(selected ? palette.foreground : Color.clear, lineWidth: 2)
+                        .padding(-3)
                 }
                 .contentShape(.rect)
         }
@@ -126,10 +146,23 @@ struct AvatarPicker: View {
 
     private func shuffle() {
         let free = BotShape.allCases.filter { $0 != shape && !taken.contains($0) }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75)) {
             shape = (free.isEmpty ? BotShape.allCases.filter { $0 != shape } : free).randomElement() ?? shape
             colour = BotShape.palette.indices.filter { $0 != colour }.randomElement() ?? colour
         }
         onChange()
+    }
+}
+
+/// The design system's ghost button: no fill until the pointer is over it.
+struct AvatarPickerGhostButtonStyle: ButtonStyle {
+    @Environment(\.palette) private var palette
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background((hovering || configuration.isPressed) ? palette.foreground.opacity(0.07) : .clear,
+                        in: .rect(cornerRadius: Theme.Radius.control))
+            .onHover { hovering = $0 }
     }
 }

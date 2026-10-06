@@ -11,16 +11,28 @@ struct PermissionsPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
 
-    /// One rule per row, each carrying the bot it belongs to, in roster order.
+    /// One row per rule, each carrying the bot it belongs to, in roster order. A row can hold
+    /// more than one tool: editing and writing files are one permission to a person, so they are
+    /// one row, and removing it takes back both.
     private struct AllowRule: Identifiable {
         let bot: Bot
-        let tool: String
-        var id: String { "\(bot.id.rawValue)|\(tool)" }
+        let tools: [String]
+        var id: String { "\(bot.id.rawValue)|\(tools.joined(separator: ","))" }
     }
 
+    /// The tools that together mean "edit files in its folder".
+    private static let fileEditTools: Set<String> = ["Edit", "MultiEdit", "Write"]
+
     private var rules: [AllowRule] {
-        model.bots.flatMap { bot in
-            bot.toolAllowlist.sorted().map { AllowRule(bot: bot, tool: $0) }
+        model.bots.flatMap { bot -> [AllowRule] in
+            let all = bot.toolAllowlist.sorted()
+            let editing = all.filter { Self.fileEditTools.contains($0) }
+            var rows: [AllowRule] = []
+            if !editing.isEmpty { rows.append(AllowRule(bot: bot, tools: editing)) }
+            for tool in all where !Self.fileEditTools.contains(tool) {
+                rows.append(AllowRule(bot: bot, tools: [tool]))
+            }
+            return rows
         }
     }
 
@@ -47,14 +59,15 @@ struct PermissionsPage: View {
                 } else {
                     VStack(spacing: Theme.Space.step) {
                         ForEach(rules) { rule in
-                            SetupListRow(title: describe(rule.tool), meta: [rule.bot.name, rule.tool],
+                            SetupListRow(title: describe(rule.tools), meta: [rule.bot.name, toolMeta(rule.tools)],
                                          monospacedMeta: 1) {
-                                BotFace(bot: rule.bot, mood: .idle, size: 44)
+                                BotFace(bot: rule.bot, mood: .idle, size: Theme.Size.tile)
+                                    .accessibilityHidden(true)
                             } trailing: {
                                 SetupIconButton(systemName: "trash",
                                                 help: "Remove, and ask again next time",
                                                 destructive: true) {
-                                    model.disallow(rule.tool, for: rule.bot)
+                                    for tool in rule.tools { model.disallow(tool, for: rule.bot) }
                                 }
                             }
                         }
@@ -74,7 +87,9 @@ struct PermissionsPage: View {
                     SetupEmptyNote(text: "No answers yet. The first time one bot messages another, you\u{2019}re asked.")
                 } else {
                     VStack(spacing: Theme.Space.step) {
-                        ForEach(Array(decisions.enumerated()), id: \.offset) { _, link in
+                        // Keyed by direction, not position: removing one answer must not hand its
+                        // row's state to the next.
+                        ForEach(decisions, id: \.directionKey) { link in
                             SetupListRow(
                                 title: "\(name(of: link.fromBotID) ?? "A bot") to \(name(of: link.toBotID) ?? "a bot")",
                                 meta: [link.allowed
@@ -115,12 +130,31 @@ struct PermissionsPage: View {
         return "on " + date.formatted(.dateTime.day().month(.abbreviated))
     }
 
-    /// "Use Notion" for a whole server, "Edit files" for a tool: the same words the request used.
-    private func describe(_ tool: String) -> String {
-        if tool.hasSuffix("__"), tool.hasPrefix("mcp__") {
-            let server = tool.dropFirst(5).dropLast(2)
-            return "Anything in \(server.capitalized)"
+    /// "Anything in GitHub" for a whole server, "Edit files in its folder" for editing, and the
+    /// request's own words for anything else.
+    private func describe(_ tools: [String]) -> String {
+        if tools.contains(where: { Self.fileEditTools.contains($0) }) {
+            return "Edit files in its folder"
         }
-        return ToolNames.action(tool).prefix(1).uppercased() + ToolNames.action(tool).dropFirst()
+        guard let tool = tools.first else { return "" }
+        if tool.hasSuffix("__"), tool.hasPrefix("mcp__") {
+            let server = String(tool.dropFirst(5).dropLast(2))
+            return "Anything in \(MCPServer.displayName(of: server))"
+        }
+        let action = ToolNames.action(tool)
+        return action.prefix(1).uppercased() + action.dropFirst()
     }
+
+    /// The tool names behind a row, as the engine spells them: "Edit, Write", "mcp__github__*".
+    private func toolMeta(_ tools: [String]) -> String {
+        tools.map { tool in
+            tool.hasPrefix("mcp__") && tool.hasSuffix("__") ? tool + "*" : tool
+        }
+        .joined(separator: ", ")
+    }
+}
+
+private extension BotLinkRecord {
+    /// "from|to": one answer per direction, so this is unique in the list.
+    var directionKey: String { "\(fromBotID)|\(toBotID)" }
 }

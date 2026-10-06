@@ -33,15 +33,15 @@ struct ApprovalCard: View {
         ThreadNestedCard(base: lipBase, wash: pending ? palette.primary.opacity(isDark ? 0.22 : 0.16) : nil) {
             head
 
-            if pending && !approval.reason.isEmpty {
-                Text(approval.reason)
+            if pending, let reason {
+                Text(reason)
                     .font(Theme.Typography.body)
                     .foregroundStyle(palette.mutedForeground)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             // The command in full. An approval you cannot read is not an approval.
-            // Paths shortened for reading; Details still shows the full input.
+            // Paths shortened for reading; Show input still shows the full input.
             Text(PathShortener.shorten(approval.summary,
                                        workingDirectory: bot.map { model.workingDirectory(for: $0).path }))
                 .font(ThreadLayout.monoFont)
@@ -69,6 +69,22 @@ struct ApprovalCard: View {
         }
     }
 
+    /// Why the bot wants this, in its own words: the tool's `description` argument when it gave
+    /// one. Never the command again. The gate's reason is the same summary the command line
+    /// below shows, and printing it twice read as a stutter, not an explanation.
+    private var reason: String? {
+        let given = approval.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidates = [ToolCallInfo.object(approval.inputJSON)?["description"] as? String, given]
+        for candidate in candidates {
+            guard let text = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty, text != approval.summary,
+                  text != approval.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            else { continue }
+            return text
+        }
+        return nil
+    }
+
     private var lipBase: Color {
         if pending { return isDark ? palette.sidebar : palette.background }
         return isDark ? palette.sidebar : palette.card
@@ -79,6 +95,7 @@ struct ApprovalCard: View {
         HStack(spacing: Theme.Space.step) {
             if let bot {
                 BotFace(bot: bot, mood: pending ? .waitingForYou : .idle, size: ThreadLayout.avatar)
+                    .accessibilityHidden(true)
             }
             (Text(bot?.name ?? "Your bot")
                 .fontWeight(.medium)
@@ -88,18 +105,19 @@ struct ApprovalCard: View {
                 .font(ThreadLayout.messageFont)
                 .lineLimit(2)
             Spacer(minLength: Theme.Space.snug)
-            // Plain text in the theme rather than `.link`, which drew it in macOS blue.
-            Button(showsDetail ? "Hide details" : "Details") { showsDetail.toggle() }
-                .buttonStyle(.plain)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(palette.mutedForeground)
+            // Plain text in the theme rather than `.link`, which drew it in macOS blue. Named for
+            // what it shows, so it is not mistaken for the topbar's Details panel.
+            Button(showsDetail ? "Hide input" : "Show input") {
+                showsDetail.toggle()
+            }
+            .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
         }
     }
 
     @ViewBuilder
     private var footer: some View {
         if pending {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 allowButton
                 denyButton
                 if ToolNames.canAlwaysAllow(approval.tool), let bot {
@@ -170,7 +188,8 @@ struct ApprovalCard: View {
         case .allowed: "You allowed this"
         case .alwaysAllowed: "You always allow this"
         case .denied: "You declined this"
-        case .expired: "Denied, nobody answered in time"
+        // Settled and grey, not red: nobody declined anything, it just was not answered.
+        case .expired: "Timed out. Nothing ran."
         }
     }
 
@@ -178,7 +197,8 @@ struct ApprovalCard: View {
         switch approval.decided {
         case nil: "hand.raised.fill"
         case .allowed, .alwaysAllowed: "checkmark"
-        case .denied, .expired: "xmark"
+        case .denied: "xmark"
+        case .expired: "clock"
         }
     }
 
@@ -186,7 +206,8 @@ struct ApprovalCard: View {
         switch approval.decided {
         case nil: palette.primary
         case .allowed, .alwaysAllowed: palette.success
-        case .denied, .expired: palette.destructiveText
+        case .denied: palette.destructiveText
+        case .expired: palette.mutedForeground
         }
     }
 }
@@ -205,53 +226,6 @@ struct ShortcutLabel: View {
                 .font(Theme.Typography.badge)
                 .foregroundStyle(palette.mutedForeground)
         }
-    }
-}
-
-/// How much of your own subscription you have used, read from the engine's own report.
-///
-/// Small and in the header rather than in the thread: it is context, not an event. Protecting
-/// someone's quota protects their account, which protects us.
-struct LimitsGauge: View {
-    @Environment(\.palette) private var palette
-    let limits: RateLimit
-
-    var body: some View {
-        if let tightest = limits.tightest {
-            let percent = Int(tightest.window.utilization * 100)
-            HStack(spacing: 5) {
-                Circle()
-                    .trim(from: 0, to: max(0.02, tightest.window.utilization))
-                    .stroke(colour(percent), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 12, height: 12)
-                Text("\(percent)%")
-                    .font(Theme.Typography.badge.monospacedDigit())
-                    .foregroundStyle(colour(percent))
-            }
-            .help(tooltip)
-        }
-    }
-
-    private func colour(_ percent: Int) -> Color {
-        switch percent {
-        case ..<60: palette.mutedForeground
-        case ..<85: palette.primary
-        default: palette.destructive
-        }
-    }
-
-    private var tooltip: String {
-        var lines = ["Your subscription usage, as the engine reports it:"]
-        for (name, window) in limits.windows.sorted(by: { $0.key < $1.key }) {
-            var line = "  \(name.replacingOccurrences(of: "_", with: " ")): "
-                + "\(Int(window.utilization * 100))%"
-            if let resets = window.resetsAt {
-                line += ", resets \(resets.formatted(date: .omitted, time: .shortened))"
-            }
-            lines.append(line)
-        }
-        return lines.joined(separator: "\n")
     }
 }
 
@@ -274,6 +248,8 @@ struct QuestionCard: View {
         self.bot = bot
     }
 
+    /// Still finishing its turn. The answer waits for it like any message sent meanwhile, so
+    /// this only changes the words under the card, never whether you can answer.
     private var busy: Bool { model.thread(for: bot.id).isRunning }
     private var isDark: Bool { colorScheme == .dark }
 
@@ -282,6 +258,7 @@ struct QuestionCard: View {
             HStack(alignment: .center, spacing: Theme.Space.step) {
                 BotFace(bot: bot, mood: question.answer == nil ? .waitingForYou : .idle,
                         size: ThreadLayout.avatar)
+                    .accessibilityHidden(true)
                 Text(question.question)
                     .font(ThreadLayout.messageFont.weight(.medium))
                     .foregroundStyle(palette.foreground)
@@ -291,12 +268,13 @@ struct QuestionCard: View {
                     Button { model.answer(question, with: "", for: bot) } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: Theme.scaled(10), weight: .semibold))
-                            .frame(width: 24, height: 24)
+                            .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(palette.mutedForeground)
                     .help("Dismiss without answering")
+                    .accessibilityLabel("Dismiss question")
                 }
             }
 
@@ -319,7 +297,7 @@ struct QuestionCard: View {
                                     .font(.system(size: Theme.scaled(10.5), weight: .medium))
                                     .foregroundStyle(palette.mutedForeground)
                                     .frame(width: 24, height: 24)
-                                    .background(palette.card, in: .rect(cornerRadius: 6))
+                                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.sm))
                                 Text(option)
                                     .font(.system(size: Theme.scaled(13.5)))
                                     .foregroundStyle(palette.foreground)
@@ -341,8 +319,6 @@ struct QuestionCard: View {
                         .onHover { hovered = $0 ? index : (hovered == index ? nil : hovered) }
                     }
                 }
-                .disabled(busy)
-                .opacity(busy ? 0.5 : 1)
 
                 TextField("", text: $custom, prompt: Text("Type your own answer"))
                     .textFieldStyle(.plain)
@@ -354,18 +330,19 @@ struct QuestionCard: View {
                         RoundedRectangle(cornerRadius: Theme.Radius.base)
                             .strokeBorder(palette.border, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                     }
-                    .disabled(busy)
                     .onSubmit {
-                        guard !custom.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                        guard !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                         model.answer(question, with: custom, for: bot)
                     }
             }
         } footer: {
             if question.answer == nil {
-                // While the bot is still finishing its turn an answer sent now would be dropped,
-                // so the line says to wait rather than letting the click vanish.
-                Text(busy ? "\(bot.name) is finishing up. Answer in a moment."
-                          : "One click answers. \(bot.name) waits until you do.")
+                // While the bot is still finishing its turn an answer waits for it, so the line
+                // says so rather than leaving you to wonder why nothing happened yet.
+                Text(busy ? "\(bot.name) is finishing up. It reads your answer when it's done."
+                          : question.options.isEmpty
+                            ? "Type your answer. \(bot.name) waits until you do."
+                            : "One click answers. \(bot.name) waits until you do.")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(palette.mutedForeground)
             }

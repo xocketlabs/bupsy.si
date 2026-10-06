@@ -15,22 +15,42 @@ enum Theme {
         static let gutter: CGFloat = 16
         static let section: CGFloat = 24
         static let page: CGFloat = 40
+        /// The in-between steps the design also uses: 2 (a segmented track's inset), 4, 10 (a
+        /// badge's or a ghost button's side padding) and 32 (a page's side margin).
+        static let hairline: CGFloat = 2
+        static let xs: CGFloat = 4
+        static let compact: CGFloat = 10
+        static let pageSide: CGFloat = 32
     }
 
+    /// The design's radius scale. Buttons, chips, badges and fields are `lg`; panels, cards and
+    /// list rows are `xl`; `md` is for things nested inside an `lg` (a segmented option).
     enum Radius {
-        /// rounded-lg — chips, buttons, icon tiles.
-        static let control: CGFloat = 8
+        static let sm: CGFloat = 6
+        static let md: CGFloat = 8
+        static let lg: CGFloat = 10
+        static let xl: CGFloat = 14
+        /// rounded-lg: chips, buttons, icon tiles.
+        static let control: CGFloat = lg
         /// The base radius.
-        static let base: CGFloat = 10
-        /// rounded-xl — cards and rows.
-        static let card: CGFloat = 12
-        static let bubble: CGFloat = 14
+        static let base: CGFloat = lg
+        /// rounded-xl: cards and rows.
+        static let card: CGFloat = xl
+        static let bubble: CGFloat = xl
     }
 
     enum Size {
         /// h-11. Every control lands on this height, which is what makes a row of mixed
         /// buttons, chips and fields look deliberate rather than assembled.
         static let control: CGFloat = 44
+        /// The large control height under its design name (page actions, fields).
+        static let controlLg: CGFloat = 44
+        /// The in-card control height: buttons inside cards, segmented controls, menus in rows.
+        static let controlMd: CGFloat = 36
+        /// The small control height: compact chips and icon buttons at the end of a row.
+        static let controlSm: CGFloat = 28
+        /// One list or settings row.
+        static let row: CGFloat = 36
         /// size-11 — the square tile that leads a card row.
         static let tile: CGFloat = 44
         static let rosterAvatar: CGFloat = Theme.scaled(36)
@@ -38,7 +58,7 @@ enum Theme {
         static let profileAvatar: CGFloat = 72
         /// max-w-4xl. Content stops here however wide the window is; a line of text that spans a
         /// display is hard to read and stops looking composed.
-        static let contentMaxWidth: CGFloat = 820
+        static let contentMaxWidth: CGFloat = 896
         static let bubbleMaxWidth: CGFloat = 560
     }
 
@@ -56,6 +76,8 @@ enum Theme {
     enum Typography {
         static let title = Font.system(size: Theme.scaled(22), weight: .semibold)
         static let heading = Font.system(size: Theme.scaled(15), weight: .medium)
+        /// The sentence under a page title.
+        static let lead = Font.system(size: Theme.scaled(14))
         static let body = Font.system(size: Theme.scaled(13))
         static let label = Font.system(size: Theme.scaled(12))
         static let caption = Font.system(size: Theme.scaled(11))
@@ -166,20 +188,115 @@ struct MetaChip: View {
     }
 }
 
-/// A small coloured label. Violet by default, which is Agndex's "informational" tone.
+/// The tones a `Badge` can take, from the design's `.bp-badge` variants.
+enum BadgeTone: Equatable {
+    /// Grey: engine names and plain facts.
+    case neutral
+    /// Violet: counts and neutral information. Text uses `infoText`.
+    case info
+    /// "Needs you": a pink wash and a pink dot, but ink text, because pink text is too faint.
+    case primary
+    case success
+    case warning
+    case destructive
+    /// Any other colour, washed at 10% behind text in that colour.
+    case custom(Color)
+
+    /// A colour handed in by an older call site, mapped onto the named tone it matches so a
+    /// palette token gets the design's treatment (info text, ink on "Needs you").
+    static func matching(_ colour: Color?, in palette: Palette.Scheme) -> BadgeTone {
+        guard let colour else { return .neutral }
+        if colour == palette.primary { return .primary }
+        if colour == palette.info || colour == palette.infoText { return .info }
+        if colour == palette.success { return .success }
+        if colour == palette.warning { return .warning }
+        if colour == palette.destructive || colour == palette.destructiveText { return .destructive }
+        if colour == palette.mutedForeground { return .neutral }
+        return .custom(colour)
+    }
+
+    func text(_ palette: Palette.Scheme) -> Color {
+        switch self {
+        case .neutral: palette.mutedForeground
+        case .info: palette.infoText
+        case .primary: palette.foreground
+        case .success: palette.success
+        case .warning: palette.warning
+        case .destructive: palette.destructiveText
+        case .custom(let colour): colour
+        }
+    }
+
+    func fill(_ palette: Palette.Scheme) -> Color {
+        switch self {
+        case .neutral: palette.secondary
+        case .info: palette.info.opacity(0.1)
+        case .primary: palette.primary.opacity(0.14)
+        case .success: palette.success.opacity(0.1)
+        case .warning: palette.warning.opacity(0.1)
+        case .destructive: palette.destructive.opacity(0.1)
+        case .custom(let colour): colour.opacity(0.1)
+        }
+    }
+
+    func dot(_ palette: Palette.Scheme) -> Color {
+        self == .primary ? palette.primary : text(palette)
+    }
+}
+
+/// The app's one badge, per the design's `.bp-badge`: radius lg, 6 by 10 padding, 12pt regular
+/// text in the tone over the tone at 10%, and an optional 6pt dot in front for live states.
+///
+/// `ThreadStatusBadge` and `SetupBadge` are thin wrappers over this; new code should use it
+/// directly.
 struct Badge: View {
     @Environment(\.palette) private var palette
     let text: String
-    var tone: Color?
+    let tone: BadgeTone
+    let dot: Bool
+    /// Kept only for colour call sites, so a token colour can be matched at draw time.
+    private let colour: Color?
+    private let usesColour: Bool
+
+    init(text: String, tone: BadgeTone = .info, dot: Bool = false) {
+        self.text = text
+        self.tone = tone
+        self.dot = dot
+        self.colour = nil
+        self.usesColour = false
+    }
+
+    /// The older colour form. Nil is the info tone, as it always was for `Badge`.
+    init(text: String, tone colour: Color?, dot: Bool = false) {
+        self.text = text
+        self.tone = .info
+        self.dot = dot
+        self.colour = colour
+        self.usesColour = colour != nil
+    }
+
+    private var resolved: BadgeTone {
+        usesColour ? BadgeTone.matching(colour, in: palette) : tone
+    }
 
     var body: some View {
-        Text(text)
-            .font(Theme.Typography.caption)
-            .foregroundStyle(tone ?? palette.info)
-            .padding(.horizontal, Theme.Space.snug)
-            .padding(.vertical, 5)
-            .background((tone ?? palette.info).opacity(0.12),
-                        in: .rect(cornerRadius: Theme.Radius.control))
+        let tone = resolved
+        HStack(spacing: Theme.Space.tight) {
+            if dot {
+                Circle()
+                    .fill(tone.dot(palette))
+                    .frame(width: 6, height: 6)
+            }
+            Text(text)
+                .lineLimit(1)
+        }
+        .font(Theme.Typography.label)
+        .foregroundStyle(tone.text(palette))
+        .padding(.vertical, Theme.Space.tight)
+        .padding(.horizontal, Theme.Space.compact)
+        .background(tone.fill(palette), in: .rect(cornerRadius: Theme.Radius.lg))
+        .fixedSize()
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -368,8 +485,12 @@ struct SheetFrame<Content: View, Actions: View>: View {
     var primaryVerb = "confirm"
     /// Narrow sheets hide the keycaps so they don't wrap beside the buttons.
     var hints = true
+    /// A colour for the header tile in place of the tone's, such as the colour a new bot is wearing.
+    var tint: Color? = nil
     @ViewBuilder var content: Content
     @ViewBuilder var actions: Actions
+
+    private var tileColour: Color { tint ?? tone.colour(palette) }
 
     private let peekHeight: CGFloat = 48
     private let peekSize: CGFloat = 76
@@ -415,13 +536,13 @@ struct SheetFrame<Content: View, Actions: View>: View {
             if let icon, bot == nil {
                 Image(systemName: icon)
                     .font(.system(size: Theme.scaled(17), weight: .medium))
-                    .foregroundStyle(tone.colour(palette).opacity(0.95))
+                    .foregroundStyle(tileColour.opacity(0.95))
                     .frame(width: Theme.Size.tile, height: Theme.Size.tile)
-                    .background(tone.colour(palette).opacity(colorScheme == .dark ? 0.2 : 0.13),
+                    .background(tileColour.opacity(colorScheme == .dark ? 0.2 : 0.13),
                                 in: .rect(cornerRadius: 13, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            .strokeBorder(tone.colour(palette).opacity(0.22))
+                            .strokeBorder(tileColour.opacity(0.22))
                     }
             }
             VStack(alignment: .leading, spacing: 3) {
@@ -571,8 +692,9 @@ struct Field<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
+            // The same size as the picker's own labels beside it, so one form reads in one voice.
             Text(label)
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.body)
                 .foregroundStyle(palette.mutedForeground)
             content
             if let hint {
@@ -589,57 +711,343 @@ struct Field<Content: View>: View {
 ///
 /// `.roundedBorder` draws a light, system-styled box that reads as pasted on over a dark panel.
 /// This is the same card-and-border treatment every other surface uses.
-struct BupsyFieldStyle: TextFieldStyle {
+///
+/// The look lives in `BupsyFieldModifier`, a `ViewModifier`, because a `TextFieldStyle` is not a
+/// view: an `@Environment` property on one is not guaranteed to be resolved, and the palette's
+/// default is the dark scheme, which is how a dark field could turn up in light mode. A modifier
+/// reads the environment like any view. Prefer `.bupsyField()`; `BupsyFieldStyle()` is kept and
+/// now just applies the modifier.
+struct BupsyFieldModifier: ViewModifier {
     @Environment(\.palette) private var palette
 
-    // swiftlint:disable:next identifier_name
-    func _body(configuration: TextField<Self._Label>) -> some View {
-        configuration
+    func body(content: Content) -> some View {
+        content
             .textFieldStyle(.plain)
             .font(Theme.Typography.body)
             .foregroundStyle(palette.foreground)
             .padding(.horizontal, Theme.Space.step)
             .padding(.vertical, 9)
-            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.lg))
             .overlay {
-                RoundedRectangle(cornerRadius: Theme.Radius.control)
+                RoundedRectangle(cornerRadius: Theme.Radius.lg)
                     .strokeBorder(palette.border)
             }
     }
 }
 
-/// The one action a dialog is really asking you to take.
+extension View {
+    /// The app's text field look. See `BupsyFieldModifier`.
+    func bupsyField() -> some View { modifier(BupsyFieldModifier()) }
+}
+
+/// The older spelling of `.bupsyField()`, kept so `.textFieldStyle(BupsyFieldStyle())` still
+/// works. It holds no environment of its own; the modifier it applies does the reading.
+///
+/// Main-actor isolated with a `@preconcurrency` conformance: the modifier it applies is a view
+/// type, and handing the field to it from a nonisolated requirement is a data race in Swift 6.
+@MainActor
+struct BupsyFieldStyle: @preconcurrency TextFieldStyle {
+    // swiftlint:disable:next identifier_name
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration.bupsyField()
+    }
+}
+
+/// The one action a dialog is really asking you to take. A wrapper over
+/// `BupsyButtonStyle(kind: .primary, size: .lg)`.
 struct PrimaryButton: ButtonStyle {
-    @Environment(\.palette) private var palette
-    @Environment(\.isEnabled) private var isEnabled
+    func makeBody(configuration: Configuration) -> some View {
+        BupsyButtonStyle(kind: .primary, size: .lg).makeBody(configuration: configuration)
+    }
+}
+
+/// The app's one button style, per the design's `.bp-btn`.
+///
+/// Radius lg, regular weight (medium on primary), at the large 44pt page-action height or the
+/// 36pt in-card height. Every kind has a hover, a pressed and a disabled state: hover lifts the
+/// fill a step, press sinks the button half a point, disabled fades it to half.
+/// `PrimaryButton`, `QuietButton` and `ThreadButtonStyle` are thin wrappers over this.
+struct BupsyButtonStyle: ButtonStyle {
+    enum Kind: Equatable {
+        /// The pink one. At most one per view.
+        case primary
+        /// The grey fill, with a hairline so it still reads on a grey card.
+        case secondary
+        /// Background fill and a border.
+        case outline
+        /// No fill until hovered: row and inline actions.
+        case ghost
+        /// A red tint, never a solid red slab.
+        case destructive
+        /// A ghost button whose label is red, for a removal sitting among quiet actions.
+        case ghostDestructive
+    }
+
+    enum Size: Equatable {
+        /// 44pt: page and dialog actions.
+        case lg
+        /// 36pt: actions inside cards.
+        case md
+        /// 28pt: the smallest, for dense rows.
+        case sm
+        /// Any other height, for a call site that has not been moved onto a step yet.
+        case custom(CGFloat)
+
+        var height: CGFloat {
+            switch self {
+            case .lg: Theme.Size.controlLg
+            case .md: Theme.Size.controlMd
+            case .sm: Theme.Size.controlSm
+            case .custom(let height): height
+            }
+        }
+
+        var padding: CGFloat {
+            switch self {
+            case .lg: Theme.Space.gutter
+            case .md: Theme.Space.step
+            case .sm: Theme.Space.compact
+            case .custom(let height): height >= Theme.Size.controlLg ? Theme.Space.gutter : Theme.Space.step
+            }
+        }
+    }
+
+    var kind: Kind = .secondary
+    var size: Size = .lg
+
+    init(kind: Kind = .secondary, size: Size = .lg) {
+        self.kind = kind
+        self.size = size
+    }
 
     func makeBody(configuration: Configuration) -> some View {
+        BupsyButtonBody(configuration: configuration, kind: kind, size: size)
+    }
+}
+
+/// The drawing behind `BupsyButtonStyle`, a view so it can read the environment and hold hover.
+struct BupsyButtonBody: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.isEnabled) private var isEnabled
+    let configuration: ButtonStyleConfiguration
+    let kind: BupsyButtonStyle.Kind
+    let size: BupsyButtonStyle.Size
+    @State private var hovering = false
+
+    init(configuration: ButtonStyleConfiguration, kind: BupsyButtonStyle.Kind, size: BupsyButtonStyle.Size) {
+        self.configuration = configuration
+        self.kind = kind
+        self.size = size
+    }
+
+    var body: some View {
+        let pressed = configuration.isPressed && isEnabled
+        let lit = (hovering || configuration.isPressed) && isEnabled
         configuration.label
             .font(Theme.Typography.body)
-            .fontWeight(.medium)
-            // Dark text on the accent: the accent is a light pink, and white on it fails to
-            // separate at this size.
-            .foregroundStyle(isEnabled ? Color.black.opacity(0.85) : palette.mutedForeground)
-            .padding(.horizontal, Theme.Space.gutter)
-            .frame(height: Theme.Size.control)
-            .background(
-                isEnabled
-                    ? palette.primary.opacity(configuration.isPressed ? 0.85 : 1)
-                    : palette.secondary,
-                in: .rect(cornerRadius: Theme.Radius.control))
-            // A lit top edge and a soft drop in its own colour: the button reads as pressable.
-            .overlay {
-                if isEnabled {
-                    RoundedRectangle(cornerRadius: Theme.Radius.control)
-                        .strokeBorder(LinearGradient(colors: [.white.opacity(0.3), .clear, .black.opacity(0.08)],
-                                                     startPoint: .top, endPoint: .bottom))
+            .fontWeight(kind == .primary ? .medium : .regular)
+            .foregroundStyle(foreground)
+            .lineLimit(1)
+            .padding(.horizontal, size.padding)
+            .frame(height: size.height)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: Theme.Radius.lg).fill(fill(lit: lit))
+                    // The design mixes 10% ink into the pink on hover. `Color.mix` is macOS 15,
+                    // so the ink is laid over the pink instead, which draws the same thing.
+                    if kind == .primary && lit {
+                        RoundedRectangle(cornerRadius: Theme.Radius.lg)
+                            .fill(palette.foreground.opacity(0.1))
+                    }
                 }
             }
-            .shadow(color: isEnabled ? palette.primary.opacity(0.35) : .clear, radius: 2, y: 1)
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .offset(y: configuration.isPressed ? 0.5 : 0)
+            .overlay {
+                // The primary's lit top edge, so it reads as pressable; a hairline elsewhere.
+                if kind == .primary {
+                    RoundedRectangle(cornerRadius: Theme.Radius.lg)
+                        .strokeBorder(LinearGradient(colors: [.white.opacity(0.22), .clear, .black.opacity(0.1)],
+                                                     startPoint: .top, endPoint: .bottom))
+                } else if kind == .secondary || kind == .outline {
+                    RoundedRectangle(cornerRadius: Theme.Radius.lg)
+                        .strokeBorder(palette.border)
+                }
+            }
+            .shadow(color: kind == .primary && isEnabled ? palette.primary.opacity(0.4) : .clear,
+                    radius: 2, y: 1)
+            .opacity(isEnabled ? 1 : 0.5)
+            .scaleEffect(pressed ? 0.985 : 1)
+            .offset(y: pressed ? 0.5 : 0)
+            .contentShape(.rect)
+            .onHover { hovering = $0 }
             .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.15), value: hovering)
     }
+
+    private var foreground: Color {
+        switch kind {
+        case .primary: palette.onPrimary
+        case .secondary, .outline, .ghost: palette.foreground
+        case .destructive, .ghostDestructive: palette.destructiveText
+        }
+    }
+
+    private func fill(lit: Bool) -> Color {
+        switch kind {
+        case .primary: palette.primary
+        case .secondary: lit ? palette.cardHover : palette.secondary
+        case .outline: lit ? palette.cardHover : palette.background
+        case .ghost: lit ? palette.cardHover : Color.clear
+        case .destructive: palette.destructive.opacity(lit ? 0.18 : 0.1)
+        case .ghostDestructive: lit ? palette.destructive.opacity(0.1) : Color.clear
+        }
+    }
+}
+
+/// The app's one on/off switch, per the design's `.bp-switch`: a 36 by 20 track, ink when on
+/// (pink is kept for things that need you), a grey track when off, and a white 16pt knob.
+///
+/// Apply it with `.bupsySwitch()` rather than relying on `.tint`: the tint only recolours the
+/// system switch, which is the wrong size and goes pink under the app-wide tint.
+struct BupsySwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        BupsySwitchBody(configuration: configuration)
+    }
+}
+
+struct BupsySwitchBody: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
+    let configuration: ToggleStyleConfiguration
+
+    init(configuration: ToggleStyleConfiguration) {
+        self.configuration = configuration
+    }
+
+    var body: some View {
+        HStack(spacing: Theme.Space.step) {
+            configuration.label
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { configuration.isOn.toggle() }
+            } label: {
+                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                    Capsule()
+                        .fill(configuration.isOn ? palette.foreground : palette.switchOff)
+                    Circle()
+                        .fill(knob)
+                        .overlay { Circle().strokeBorder(Color.black.opacity(0.06), lineWidth: 0.5) }
+                        .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
+                        .frame(width: 16, height: 16)
+                        .padding(2)
+                }
+                .frame(width: 36, height: 20)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isToggle)
+            .accessibilityValue(configuration.isOn ? "On" : "Off")
+        }
+        .opacity(isEnabled ? 1 : 0.5)
+    }
+
+    /// White in light mode. In dark mode the "on" track is the near-white ink, so the knob takes
+    /// the background colour instead, as the design's base `--background` knob does.
+    private var knob: LinearGradient {
+        colorScheme == .dark
+            ? LinearGradient(colors: [palette.background, palette.background], startPoint: .top, endPoint: .bottom)
+            : LinearGradient(colors: [.white, Color(white: 0.925)], startPoint: .top, endPoint: .bottom)
+    }
+}
+
+extension View {
+    /// The app's switch. See `BupsySwitchStyle`.
+    func bupsySwitch() -> some View { toggleStyle(BupsySwitchStyle()) }
+}
+
+/// One option of a `Segmented` control.
+struct SegmentedOption<Value: Hashable>: Identifiable {
+    let value: Value
+    let title: String
+    var id: Value { value }
+
+    init(_ value: Value, _ title: String) {
+        self.value = value
+        self.title = title
+    }
+}
+
+/// The app's one segmented control, per the design's `.bp-seg`: two to five short options in a
+/// radius-lg track; the chosen one lifts onto the background with a hairline ring and medium
+/// weight. 32pt options at 13pt, so the whole control is 36 tall, the in-card control height.
+/// Pass `full` to stretch the options across the width.
+struct Segmented<Value: Hashable>: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
+    @Binding var selection: Value
+    let options: [SegmentedOption<Value>]
+    var full: Bool
+    @State private var hovered: Value?
+
+    init(selection: Binding<Value>, options: [SegmentedOption<Value>], full: Bool = false) {
+        self._selection = selection
+        self.options = options
+        self.full = full
+    }
+
+    /// Options built from values and a closure that names each one.
+    init(selection: Binding<Value>, values: [Value], full: Bool = false, title: (Value) -> String) {
+        self.init(selection: selection,
+                  options: values.map { SegmentedOption($0, title($0)) },
+                  full: full)
+    }
+
+    var body: some View {
+        HStack(spacing: Theme.Space.hairline) {
+            ForEach(options) { option in
+                optionButton(option)
+            }
+        }
+        .padding(Theme.Space.hairline)
+        .background(trackColour, in: .rect(cornerRadius: Theme.Radius.lg))
+        .fixedSize(horizontal: !full, vertical: true)
+    }
+
+    private func optionButton(_ option: SegmentedOption<Value>) -> some View {
+        let chosen = option.value == selection
+        let lit = chosen || hovered == option.value
+        return Button {
+            selection = option.value
+        } label: {
+            Text(option.title)
+                .font(.system(size: Theme.scaled(13), weight: chosen ? .medium : .regular))
+                .foregroundStyle(lit ? palette.foreground : palette.mutedForeground)
+                .lineLimit(1)
+                .padding(.horizontal, Theme.Space.step)
+                .frame(maxWidth: full ? .infinity : nil)
+                .frame(height: 32)
+                .background(chosen ? chosenColour : Color.clear,
+                            in: .rect(cornerRadius: Theme.Radius.md))
+                .overlay {
+                    if chosen {
+                        RoundedRectangle(cornerRadius: Theme.Radius.md)
+                            .strokeBorder(palette.border)
+                    }
+                }
+                .shadow(color: chosen ? Color.black.opacity(0.06) : .clear, radius: 1, y: 1)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside { hovered = option.value } else if hovered == option.value { hovered = nil }
+        }
+        .accessibilityAddTraits(chosen ? .isSelected : [])
+        .animation(.easeOut(duration: 0.12), value: chosen)
+    }
+
+    /// Light: a grey card track with the chosen option on white. Dark: the design's override, a
+    /// sidebar-dark track with the chosen option on the hover grey, so it still lifts.
+    private var trackColour: Color { colorScheme == .dark ? palette.sidebar : palette.card }
+    private var chosenColour: Color { colorScheme == .dark ? palette.cardHover : palette.background }
 }
 
 /// A row that states a number rather than offering a choice.
@@ -694,7 +1102,7 @@ struct LimitBar: View {
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
                     Spacer(minLength: Theme.Space.snug)
-                    Text("\(Int((window.utilization * 100).rounded()))%")
+                    Text("\(LimitScale.percent(window.utilization))%")
                         .font(Theme.Typography.body)
                         .foregroundStyle(tone)
                         .monospacedDigit()
@@ -725,13 +1133,9 @@ struct LimitBar: View {
     }
 
     /// Only coloured once it is worth noticing. Everything red all the time teaches people to
-    /// ignore red.
+    /// ignore red. The one scale every limit readout uses: see `LimitScale`.
     private var tone: Color {
-        switch window.utilization {
-        case 0.9...: palette.destructive
-        case 0.7...: .orange
-        default: palette.mutedForeground
-        }
+        LimitScale.fill(window.utilization, palette)
     }
 }
 

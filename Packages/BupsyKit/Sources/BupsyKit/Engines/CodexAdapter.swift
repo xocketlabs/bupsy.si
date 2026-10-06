@@ -47,8 +47,8 @@ public struct CodexAdapter: EngineAdapter {
     public func loginCommand() -> LoginCommand {
         LoginCommand(
             command: "codex login --device-auth",
-            hint: "Complete the code in your browser. bupsy never sees the token — "
-                + "it stays in ~/.codex, owned by you and the CLI."
+            hint: "Complete the code in your browser. Bupsy never sees the token. "
+                + "It stays in ~/.codex, owned by you and the CLI."
         )
     }
 
@@ -56,9 +56,8 @@ public struct CodexAdapter: EngineAdapter {
         // `codex login status` is necessary but NOT sufficient. It reported "Logged in using
         // ChatGPT" on an account where every model returned HTTP 400. So: check the cheap status
         // first, then confirm a turn can actually start.
-        guard case .signedIn = await statusCommandVerdict(on: host) else {
-            return await statusCommandVerdict(on: host)
-        }
+        let verdict = await statusCommandVerdict(on: host)
+        guard case .signedIn = verdict else { return verdict }
         return await probeModelAccess(on: host)
     }
 
@@ -74,10 +73,14 @@ public struct CodexAdapter: EngineAdapter {
                     if code == 0, lowered.contains("logged in") {
                         return .signedIn(method: lowered.contains("api key") ? .apiKey : .subscription)
                     }
+                    // 127 is the shell's "command not found", from a host that runs through one.
+                    if code == 127 { return .notInstalled }
                     return .signedOut
                 }
             }
             return .unknown("status probe ended without an exit status")
+        } catch HostError.binaryNotFound(_) {
+            return .notInstalled
         } catch {
             return .unknown(error.localizedDescription)
         }

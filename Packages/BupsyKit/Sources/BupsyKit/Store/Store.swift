@@ -338,6 +338,16 @@ public struct Store: Sendable {
             }
         }
 
+        // How many bot turns a group takes, with nobody speaking, before it pauses and checks
+        // with the person. Per group, chosen when it is made. Existing groups get the default,
+        // which is one turn fewer than the old fixed ceiling of six: stricter, never looser.
+        migrator.registerMigration("v13-group-turn-limit") { db in
+            try db.alter(table: "groups") { t in
+                t.add(column: "turnLimit", .integer).notNull()
+                    .defaults(to: GroupRouting.defaultTurnLimit)
+            }
+        }
+
         return migrator
     }
 
@@ -472,7 +482,8 @@ public struct Store: Sendable {
                     reply: reply.flatMap(Self.text(in:)),
                     toolCalls: tools,
                     inputTokens: run.inputTokens,
-                    outputTokens: run.outputTokens)
+                    outputTokens: run.outputTokens,
+                    triggerID: run.triggerID)
             }
         }
     }

@@ -219,6 +219,9 @@ public struct RunSummary: Sendable, Identifiable, Equatable {
     /// different fact from zero and is shown differently.
     public let inputTokens: Int?
     public let outputTokens: Int?
+    /// What started the run when it was not a message: a routine, a goal check or a folder
+    /// watch, by id. nil for a message, and for every run recorded before runs were tagged.
+    public let triggerID: String?
 
     public var duration: TimeInterval? {
         endedAt.map { $0.timeIntervalSince(startedAt) }
@@ -228,11 +231,12 @@ public struct RunSummary: Sendable, Identifiable, Equatable {
 
     public init(id: String, startedAt: Date, endedAt: Date?, status: String, host: String,
                 prompt: String?, reply: String?, toolCalls: Int,
-                inputTokens: Int? = nil, outputTokens: Int? = nil) {
+                inputTokens: Int? = nil, outputTokens: Int? = nil, triggerID: String? = nil) {
         self.id = id; self.startedAt = startedAt; self.endedAt = endedAt
         self.status = status; self.host = host
         self.prompt = prompt; self.reply = reply; self.toolCalls = toolCalls
         self.inputTokens = inputTokens; self.outputTokens = outputTokens
+        self.triggerID = triggerID
     }
 }
 
@@ -286,12 +290,16 @@ public struct GroupRecord: Codable, FetchableRecord, PersistableRecord, Sendable
     public var sortIndex: Int
     public var pinned: Bool
     public var lastReadAt: Date?
+    /// How many bot turns in a row, with nobody speaking, before the group pauses and checks
+    /// with the person. See `GroupRouting.turnLimitChoices`.
+    public var turnLimit: Int
 
     public init(id: String = UUID().uuidString, name: String, leadBotID: String?,
                 createdAt: Date = Date(), sortIndex: Int = 0, pinned: Bool = false,
-                lastReadAt: Date? = nil) {
+                lastReadAt: Date? = nil, turnLimit: Int = GroupRouting.defaultTurnLimit) {
         self.id = id; self.name = name; self.leadBotID = leadBotID; self.createdAt = createdAt
         self.sortIndex = sortIndex; self.pinned = pinned; self.lastReadAt = lastReadAt
+        self.turnLimit = turnLimit
     }
 }
 

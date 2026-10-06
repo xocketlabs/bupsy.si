@@ -23,10 +23,10 @@ public enum Executor {
     /// Run in Terminal, in view, so the person sees exactly what is installed.
     public static let installScript = """
         if ! command -v npm >/dev/null 2>&1; then
-          echo "Executor needs Node.js. Install it from https://nodejs.org, then click Install in bupsy again."
+          echo "Executor needs Node.js. Install it from https://nodejs.org, then click Install in Bupsy again."
           exit 1
         fi
-        npm install -g executor && executor install && echo && echo "Done — you can close this window. Back in bupsy, Executor is on for every bot."
+        npm install -g executor && executor install && echo && echo "Done. You can close this window. Back in Bupsy, Executor is on for every bot."
         """
 
     /// Where Executor's web app runs once its service is installed, to connect tools in.

@@ -11,13 +11,13 @@ struct SetupPageScroll<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 40) {
+            VStack(alignment: .leading, spacing: Theme.Space.page) {
                 content
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, Theme.Space.pageSide)
             .padding(.top, Theme.Space.section)
             .padding(.bottom, Theme.Space.page)
-            .frame(maxWidth: 896, alignment: .leading)
+            .frame(maxWidth: Theme.Size.contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
     }
@@ -34,11 +34,11 @@ struct SetupPageHeader<Trailing: View>: View {
         HStack(alignment: .bottom, spacing: Theme.Space.gutter) {
             VStack(alignment: .leading, spacing: Theme.Space.snug) {
                 Text(title)
-                    .font(.system(size: Theme.scaled(22), weight: .semibold))
+                    .font(Theme.Typography.title)
                     .tracking(-0.4)
                     .foregroundStyle(palette.foreground)
                 Text(description)
-                    .font(.system(size: Theme.scaled(14)))
+                    .font(Theme.Typography.lead)
                     .foregroundStyle(palette.mutedForeground)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -59,41 +59,31 @@ enum SetupTone {
     case success, warning, destructive, info, neutral
 
     func colour(_ palette: Palette.Scheme) -> Color {
+        badgeTone.text(palette)
+    }
+
+    /// The `Badge` tone this maps to.
+    var badgeTone: BadgeTone {
         switch self {
-        case .success: palette.success
-        case .warning: palette.warning
-        case .destructive: palette.destructiveText
-        case .info: palette.infoText
-        case .neutral: palette.mutedForeground
+        case .success: .success
+        case .warning: .warning
+        case .destructive: .destructive
+        case .info: .info
+        case .neutral: .neutral
         }
     }
 }
 
-/// A small status pill: "Connected", "Needs LINEAR_API_KEY", "Failed to start".
+/// A small status pill: "Connected", "Needs LINEAR_API_KEY", "Failed to start". A thin wrapper
+/// over `Badge`.
 struct SetupBadge: View {
-    @Environment(\.palette) private var palette
     let text: String
     var tone: SetupTone = .neutral
     /// A live dot in front, for states that are actively on (connected, running).
     var dot = false
 
     var body: some View {
-        HStack(spacing: 5) {
-            if dot {
-                Circle()
-                    .fill(tone.colour(palette))
-                    .frame(width: 5, height: 5)
-            }
-            Text(text)
-                .lineLimit(1)
-        }
-        .font(Theme.Typography.caption)
-        .foregroundStyle(tone.colour(palette))
-        .padding(.horizontal, Theme.Space.snug)
-        .frame(height: 24)
-        .background(tone.colour(palette).opacity(tone == .neutral ? 0.1 : 0.13),
-                    in: .rect(cornerRadius: Theme.Radius.control))
-        .fixedSize()
+        Badge(text: text, tone: tone.badgeTone, dot: dot)
     }
 }
 
@@ -107,14 +97,14 @@ struct SetupSectionHeader: View {
     var description: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             HStack(spacing: Theme.Space.snug) {
                 Image(systemName: icon)
                     .font(.system(size: Theme.scaled(13), weight: .medium))
                     .foregroundStyle(palette.foreground)
                     .frame(width: 18)
                 Text(title)
-                    .font(.system(size: Theme.scaled(15), weight: .medium))
+                    .font(Theme.Typography.heading)
                     .foregroundStyle(palette.foreground)
                 if let badge { SetupBadge(text: badge, tone: badgeTone) }
             }
@@ -156,7 +146,7 @@ struct SetupListRow<Leading: View, Trailing: View>: View {
     var body: some View {
         HStack(spacing: Theme.Space.gutter) {
             leading
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(title)
                     .font(Theme.Typography.body)
                     .foregroundStyle(palette.foreground)
@@ -184,13 +174,15 @@ struct SetupListRow<Leading: View, Trailing: View>: View {
         .padding(.leading, Theme.Space.step)
         .padding(.trailing, Theme.Space.gutter)
         .background(hovering ? palette.cardHover : palette.card,
-                    in: .rect(cornerRadius: 14, style: .continuous))
+                    in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }
 
-/// A square icon-only action at the end of a row. Red for anything that removes.
+/// A square icon-only action at the end of a row, at the small control size (28pt, which is also
+/// its hit area). Red for anything that removes. Always carries its words as help and as the
+/// VoiceOver label, since the icon alone says nothing to a screen reader.
 struct SetupIconButton: View {
     @Environment(\.palette) private var palette
     let systemName: String
@@ -211,7 +203,7 @@ struct SetupIconButton: View {
             Image(systemName: systemName)
                 .font(.system(size: Theme.scaled(12), weight: .semibold))
                 .foregroundStyle(destructive ? palette.destructiveText : palette.foreground)
-                .frame(width: 30, height: 30)
+                .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                 .background(hovering ? palette.background.opacity(0.7) : Color.clear,
                             in: .rect(cornerRadius: Theme.Radius.control))
                 .contentShape(.rect)
@@ -241,9 +233,9 @@ struct SetupPanel<Content: View>: View {
                 .padding(Theme.Space.gutter)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(colorScheme == .dark ? palette.card : palette.background,
-                            in: .rect(cornerRadius: 12, style: .continuous))
+                            in: .rect(cornerRadius: innerRadius, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: innerRadius, style: .continuous)
                         .strokeBorder(palette.border)
                 }
             if let footer {
@@ -251,37 +243,42 @@ struct SetupPanel<Content: View>: View {
                     .font(Theme.Typography.label)
                     .foregroundStyle(palette.mutedForeground)
                     .padding(.horizontal, Theme.Space.step)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, Theme.Space.compact)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(2)
+        .padding(Theme.Space.hairline)
         .background(colorScheme == .dark ? palette.sidebar : palette.card,
-                    in: .rect(cornerRadius: 14, style: .continuous))
+                    in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
     }
+
+    /// Concentric with the lip: the outer radius less the lip's width.
+    private var innerRadius: CGFloat { Theme.Radius.xl - Theme.Space.hairline }
 }
 
-/// A short "nothing here" line with a still bot beside it, for an empty section inside a page
-/// that has other things on it. A whole empty page uses `EmptyState` instead.
+/// A short "nothing here" line with a napping bot beside it, for an empty section inside a page
+/// that has other things on it. Asleep and held still, the compact form of `EmptyState`, so an
+/// empty section reads as calm rather than as a bot waiting for something. A whole empty page
+/// uses `EmptyState` instead.
 struct SetupEmptyNote: View {
     @Environment(\.palette) private var palette
     let text: String
-    var mood: BotMood = .idle
+    var mood: BotMood = .sleeping
 
     var body: some View {
         HStack(spacing: Theme.Space.gutter) {
-            BotFace(hue: 0, mood: mood, size: 48, shape: .bup, colour: 0)
+            BotFace(hue: 0, mood: mood, size: 48, shape: .bup, colour: 0, still: true)
                 .saturation(0)
                 .opacity(0.7)
                 .accessibilityHidden(true)
             Text(text)
-                .font(.system(size: Theme.scaled(13)))
+                .font(Theme.Typography.body)
                 .foregroundStyle(palette.mutedForeground)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .padding(Theme.Space.gutter)
-        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
     }
 }
 

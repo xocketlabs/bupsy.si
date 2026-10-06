@@ -12,42 +12,74 @@ struct UsageSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @State private var period = UsagePeriod.month
+    /// What the database said for `period`, loaded in `.task(id:)` rather than queried on every
+    /// redraw of `body`.
+    @State private var loaded: [BotUsage] = []
+    /// False until the first load lands, so "Nothing yet" never flashes before the numbers.
+    @State private var hasLoaded = false
+
+    /// The rows on screen: usage for bots that still exist. The totals are summed from these
+    /// same rows, so the tiles always add up to the list under them.
+    private var shown: [ShownUsage] {
+        loaded.compactMap { usage in
+            model.bots.first(where: { $0.id.rawValue == usage.botID })
+                .map { ShownUsage(bot: $0, usage: usage) }
+        }
+    }
+
+    /// One bot's row: the bot and what it used.
+    private struct ShownUsage: Identifiable {
+        let bot: Bot
+        let usage: BotUsage
+        var id: String { usage.botID }
+    }
 
     var body: some View {
-        let rows = model.usage(since: period.start)
+        let shown = self.shown
+        let rows = shown.map(\.usage)
 
-        SetupPageScroll {
-            SetupPageHeader(title: "Usage", description: "What your bots spent of your plan") {
-                UsagePeriodPicker(period: $period)
-            }
+        // Its own topbar rather than one from `Page` in the panel switch: the breadcrumb
+        // carries the period, which only this view knows.
+        Page(trail: ["Usage", period.label]) {
+            SetupPageScroll {
+                SetupPageHeader(title: "Usage", description: "What your bots spent of your plan") {
+                    UsagePeriodPicker(period: $period)
+                }
 
-            if rows.isEmpty {
-                EmptyState(
-                    title: period == .all ? "Nothing yet" : "Nothing \(period.phrase)",
-                    message: "Usage shows up here after a bot's first run.")
-                    .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
-            } else {
-                totals(rows)
+                if !hasLoaded {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, minHeight: 120)
+                } else if rows.isEmpty {
+                    EmptyState(
+                        title: period == .all ? "Nothing yet" : "Nothing \(period.phrase)",
+                        message: "Usage shows up here after a bot's first run.")
+                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
+                } else {
+                    totals(rows)
 
-                VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-                    SetupSectionHeader(
-                        icon: "face.smiling",
-                        title: "By bot",
-                        description: "Bars share one scale, so you can compare bots at a glance")
-                    VStack(spacing: Theme.Space.step) {
-                        ForEach(rows, id: \.botID) { usage in
-                            if let bot = model.bots.first(where: { $0.id.rawValue == usage.botID }) {
-                                UsageRow(bot: bot, usage: usage,
-                                         share: share(of: usage, in: rows),
-                                         working: model.isRunning(bot.id))
+                    VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                        SetupSectionHeader(
+                            icon: "face.smiling",
+                            title: "By bot",
+                            description: "Bars share one scale, so you can compare bots at a glance")
+                        VStack(spacing: Theme.Space.step) {
+                            ForEach(shown) { item in
+                                UsageRow(bot: item.bot, usage: item.usage,
+                                         share: share(of: item.usage, in: rows),
+                                         working: model.isRunning(item.bot.id))
                             }
                         }
                     }
                 }
-            }
 
-            SetupFootnote(text: "Dollar figures are the API price, shown for scale. You pay your "
-                          + "plan, not this. Codex runs show no dollar figure.")
+                SetupFootnote(text: "Dollar figures are the API price, shown for scale. You pay your "
+                              + "plan, not this. Codex runs show no dollar figure.")
+            }
+        }
+        .task(id: period) {
+            loaded = model.usage(since: period.start)
+            hasLoaded = true
         }
     }
 
@@ -78,35 +110,12 @@ struct UsageSheet: View {
     }
 }
 
-/// 7 days, 30 days, All time: a quiet segmented control that matches the cards beside it.
+/// 7 days, 30 days, All time: the app's one segmented control.
 private struct UsagePeriodPicker: View {
-    @Environment(\.palette) private var palette
-    @Environment(\.colorScheme) private var colorScheme
     @Binding var period: UsagePeriod
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(UsagePeriod.allCases, id: \.self) { option in
-                let selected = option == period
-                Button { period = option } label: {
-                    Text(option.label)
-                        .font(.system(size: Theme.scaled(13)))
-                        .foregroundStyle(selected ? palette.foreground : palette.mutedForeground)
-                        .padding(.horizontal, 14)
-                        .frame(height: 34)
-                        .background(selected ? (colorScheme == .dark ? palette.cardHover : palette.background)
-                                             : Color.clear,
-                                    in: .rect(cornerRadius: Theme.Radius.control))
-                        .shadow(color: selected ? Color.black.opacity(0.08) : Color.clear, radius: 1, y: 1)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-            }
-        }
-        .padding(2)
-        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.base))
-        .fixedSize()
+        Segmented(selection: $period, values: UsagePeriod.allCases) { $0.label }
     }
 }
 
@@ -185,7 +194,7 @@ private struct StatTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Space.gutter)
-        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
     }
 }
 
@@ -208,11 +217,11 @@ private struct UsageRow: View {
 
     var body: some View {
         Button {
-            model.selectedBotID = bot.id
+            model.open(bot.id)
         } label: {
             HStack(spacing: Theme.Space.gutter) {
                 BotFace(bot: bot, mood: working ? .working : .idle, size: 40)
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     HStack {
                         Text(bot.name)
                             .font(Theme.Typography.body)
@@ -246,7 +255,7 @@ private struct UsageRow: View {
             .padding(.leading, Theme.Space.step)
             .padding(.trailing, Theme.Space.gutter)
             .background(hovering ? palette.cardHover : palette.card,
-                        in: .rect(cornerRadius: 14, style: .continuous))
+                        in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

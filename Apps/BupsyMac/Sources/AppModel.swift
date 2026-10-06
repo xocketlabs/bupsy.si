@@ -17,12 +17,17 @@ final class AppModel {
         // the bot shown at launch — selected by default, never opened — so it lit up as unread
         // the moment you moved to another bot, having been on screen the whole time.
         didSet {
+            // Opening a bot is seeing what went wrong with its last run, so the face stops
+            // showing the failure once you have looked at it.
+            if let current = selectedBotID, current != oldValue { lastFailedAt[current] = nil }
             guard let previous = oldValue, previous != selectedBotID,
                   let bot = bots.first(where: { $0.id == previous }) else { return }
             markRead(bot)
         }
     }
     var engineStatus: [EngineID: AuthStatus] = [:]
+    /// Where each engine's CLI was found on this Mac, once checked. Nil when not found yet.
+    var engineBinaryPaths: [EngineID: String] = [:]
     var routines: [Routine] = []
     var machines: [MachineRecord] = []
     var connectors: [MCPServer] = []
@@ -35,6 +40,9 @@ final class AppModel {
     /// Set when a machine operation failed. Shown rather than logged — a machine that did not
     /// start is money not being spent, or work not being done, and either way the user should know.
     var machineProblem: String?
+    /// Set when a sign-in or sign-out window could not be opened, so the UI can say so rather
+    /// than the click doing nothing. Cleared at the start of each attempt.
+    var accountProblem: String?
     /// Shown once. Stored in UserDefaults rather than the database: it is a preference about the
     /// app, not part of the user's data, and it should not travel with a restored database.
     /// Light, dark, or whatever macOS is set to. Saved per home.
@@ -45,6 +53,17 @@ final class AppModel {
     var appearance = Appearance(rawValue: AppHome.defaults.string(forKey: "si.bupsy.appearance") ?? "") ?? .system {
         didSet { AppHome.defaults.set(appearance.rawValue, forKey: "si.bupsy.appearance") }
     }
+
+    /// A page the model wants the window to show next (set from flows outside the window, such
+    /// as onboarding's "Connect apps first"). The root view moves there and clears it.
+    var pendingDestination: NavRail.Destination?
+    /// A page to show, set through `open(_:)` (AppModel+Navigation.swift). The root view moves
+    /// there and clears it; its id makes a repeat request for the same page still count.
+    var navigationRequest: NavigationRequest?
+    /// Set by `startChat(searchFirst:)`, the Cmd N command: the root view opens the palette.
+    var startChatRequest: StartChatRequest?
+    /// Set by `showMainWindow()`: the menu bar icon reopens the main window if it was closed.
+    var windowRequest: UUID?
 
     // Hooks for the debug tour (TourMode); nil in normal use.
     var tourDestination: NavRail.Destination?
@@ -67,7 +86,18 @@ final class AppModel {
     /// Each bot's hidden thread inside each group, keyed "botID|groupID". Holds that engine
     /// session and any approval it raises; the group page shows the approvals, not the thread.
     private var groupSideThreads: [String: Thread] = [:]
+    /// When each bot last finished a run that went well. Drives the short "done" face, which
+    /// `mood(for:)` (AppModel+Mood.swift) shows for a few seconds after a run ends.
+    var lastFinishedAt: [BotID: Date] = [:]
+    /// When each bot's most recent run failed. Cleared when it runs again or you open it.
+    var lastFailedAt: [BotID: Date] = [:]
+    /// Bumped when a "done" face should go back to rest, so views that read `mood(for:)`
+    /// redraw without a timer of their own.
+    var moodTick = 0
     private var running: [BotID: Task<Void, Never>] = [:]
+    /// Which run owns a bot's slot right now. A stopped run's task still finishes later, and its
+    /// cleanup must not wipe the state of a run started after it (stop, then a quick send).
+    private var runTokens: [BotID: UUID] = [:]
     private var gates: [BotID: ApprovalGate] = [:]
     private var awake: [BotID: PowerAssertion] = [:]
     private var routineTimer: Task<Void, Never>?
@@ -95,6 +125,7 @@ final class AppModel {
             }
         }
         loadBots()
+        loadSections()
         loadGroups()
         // `self.store`, not `store` — the initialiser parameter shadows the property, and is nil
         // in normal use. Written as `store?` this silently loaded zero routines on every launch,
@@ -106,6 +137,7 @@ final class AppModel {
         // or a database restored onto a different Mac, leaves routines that quietly never fire.
         machines = (try? self.store?.machines()) ?? []
         connectors = Self.loadConnectors()
+        prefetchConnectorEnv()
         objectives = (try? self.store?.objectives()) ?? []
         folderWatches = (try? self.store?.folderWatches()) ?? []
         syncLaunchAgent()
@@ -128,11 +160,71 @@ final class AppModel {
         if let data = try? JSONEncoder().encode(connectors) {
             AppHome.defaults.set(data, forKey: Self.connectorsKey)
         }
+        prefetchConnectorEnv()
     }
+
+    /// Asks the login shell for the variables connectors need, off the main thread, so the
+    /// "missing" check on the Connectors page answers from memory instead of waiting on a shell.
+    /// Values stay in memory only; nothing here logs or saves them.
+    private func prefetchConnectorEnv() {
+        let servers = connectors
+        guard servers.contains(where: { !$0.requiredEnvNames.isEmpty }) else {
+            missingConnectorEnv = [:]
+            return
+        }
+        envCheck += 1
+        let check = envCheck
+        Task.detached(priority: .utility) { [weak self] in
+            var missing: [String: [String]] = [:]
+            for server in servers { missing[server.name] = server.missingEnv() }
+            await MainActor.run {
+                // A newer check (a connector edited meanwhile) wins over this one.
+                guard let self, self.envCheck == check else { return }
+                self.missingConnectorEnv = missing
+            }
+        }
+    }
+
+    /// The variables each connector still needs, by server name: names only, never values.
+    /// Filled by `prefetchConnectorEnv`, so the Connectors page never waits on a login shell.
+    private(set) var missingConnectorEnv: [String: [String]] = [:]
+
+    /// What you typed and have not sent, per bot and per group, so leaving a page keeps it. In
+    /// memory only. Not observed: only a page appearing reads it, never a view body.
+    @ObservationIgnored var botDrafts: [BotID: String] = [:]
+    @ObservationIgnored var groupDrafts: [String: String] = [:]
+    private var envCheck = 0
 
     func addConnector(_ server: MCPServer) {
         guard !connectors.contains(where: { $0.name == server.name }) else { return }
         connectors.append(server)
+        saveConnectors()
+    }
+
+    /// Whether another server already uses this name. Names key the engine's config, so two
+    /// servers with one name would silently become one.
+    func connectorNameTaken(_ name: String, except id: String? = nil) -> Bool {
+        connectors.contains { $0.name == name && $0.id != id }
+    }
+
+    /// Saves an edited server in place of the one with the same id.
+    ///
+    /// Always-allow rules match on the name, so they are kept when the name is unchanged and
+    /// taken back when it changes: a rule for the old name would otherwise point at nothing, and
+    /// quietly carrying it over would allow a server the person never allowed.
+    func updateConnector(_ server: MCPServer) {
+        guard let index = connectors.firstIndex(where: { $0.id == server.id }),
+              !connectorNameTaken(server.name, except: server.id)
+        else { return }
+        let previous = connectors[index]
+        connectors[index] = server
+        if previous.name != server.name {
+            for botIndex in bots.indices
+            where bots[botIndex].toolAllowlist.contains(previous.toolPrefix) {
+                bots[botIndex].toolAllowlist.remove(previous.toolPrefix)
+                try? store?.save(bots[botIndex].record(sortIndex: botIndex))
+            }
+        }
         saveConnectors()
     }
 
@@ -245,15 +337,66 @@ final class AppModel {
         needsOnboarding = false
     }
 
-    var hasComputeKey: Bool { keychain.has(.boatAPIKey) }
+    /// Bumped whenever the key is saved or removed. The Keychain is not observable, so views that
+    /// read `hasComputeKey` or `computeKeySuffix` depend on this to redraw.
+    private var computeKeyRevision = 0
+
+    /// Where the last four characters of the key are kept, to show it masked. Only those four:
+    /// the full key never leaves the Keychain.
+    private static let computeKeySuffixKey = "si.bupsy.boat.keySuffix"
+
+    var hasComputeKey: Bool {
+        _ = computeKeyRevision
+        return keychain.has(.boatAPIKey)
+    }
+
+    /// The key's last four characters, for "bd_live_••••3f9a". Nil for a key saved before these
+    /// were kept, or when there is no key.
+    var computeKeySuffix: String? {
+        _ = computeKeyRevision
+        return AppHome.defaults.string(forKey: Self.computeKeySuffixKey)
+    }
+
+    /// Machines with a start or stop in flight, by record id, so their rows can show it.
+    private(set) var machinesInFlight: Set<String> = []
 
     func setComputeKey(_ key: String) {
         do {
             try keychain.set(key, for: .boatAPIKey)
+            AppHome.defaults.set(String(key.suffix(4)), forKey: Self.computeKeySuffixKey)
             machineProblem = nil
         } catch {
             machineProblem = error.localizedDescription
         }
+        computeKeyRevision += 1
+    }
+
+    /// Checks a key with boat.dev before saving it, using the cheapest call there is (listing
+    /// machines, which creates and bills nothing). Returns what went wrong, or nil once saved.
+    /// A key boat refuses is never saved, so "Connected" always means a key that worked.
+    func validateAndSaveComputeKey(_ key: String) async -> String? {
+        machineProblem = nil
+        do {
+            try await BoatAPI(apiKey: key).checkKey()
+        } catch let error as BoatError where error.isAuthFailure {
+            return "boat.dev didn\u{2019}t accept that key. Check it and try again."
+        } catch {
+            return "Couldn\u{2019}t reach boat.dev to check the key. \(error.localizedDescription)"
+        }
+        setComputeKey(key)
+        return machineProblem
+    }
+
+    /// Forgets the key. Machines stay listed, and stay on boat.dev, until a key is added again.
+    func removeComputeKey() {
+        do {
+            try keychain.remove(.boatAPIKey)
+            AppHome.defaults.removeObject(forKey: Self.computeKeySuffixKey)
+            machineProblem = nil
+        } catch {
+            machineProblem = error.localizedDescription
+        }
+        computeKeyRevision += 1
     }
 
     private func api() -> BoatAPI? {
@@ -261,6 +404,7 @@ final class AppModel {
     }
 
     func createMachine(name: String, size: MachineSize, alwaysOn: Bool) {
+        machineProblem = nil
         guard let api = api() else {
             machineProblem = "Add your boat.dev key first."
             return
@@ -286,6 +430,7 @@ final class AppModel {
                 updated.state = sandbox.state ?? "running"
                 updated.lastActiveAt = Date()
                 self.replace(updated)
+                self.machineProblem = nil
             } catch {
                 var failed = record
                 failed.state = "failed"
@@ -295,13 +440,54 @@ final class AppModel {
         }
     }
 
+    /// Tries again to create a machine whose create failed, keeping its name, size and
+    /// availability. Its record stays the same, so nothing on the page jumps around.
+    func retryMachine(_ machine: MachineRecord) {
+        machineProblem = nil
+        guard machine.providerID == nil, !machinesInFlight.contains(machine.id) else { return }
+        guard let api = api() else {
+            machineProblem = "Add your boat.dev key first."
+            return
+        }
+        let size = MachineSize(rawValue: machine.size) ?? .small
+        var creating = machine
+        creating.state = "creating"
+        replace(creating)
+        machinesInFlight.insert(machine.id)
+
+        Task { [creating] in
+            defer { self.machinesInFlight.remove(creating.id) }
+            do {
+                let options = creating.ttlSeconds == nil
+                    ? CreateOptions.alwaysOn(size: size)
+                    : CreateOptions(size: size, ttlSeconds: creating.ttlSeconds)
+                let sandbox = try await api.create(options)
+                var updated = creating
+                updated.providerID = sandbox.id
+                updated.state = sandbox.state ?? "running"
+                updated.lastActiveAt = Date()
+                self.replace(updated)
+                self.machineProblem = nil
+            } catch {
+                var failed = creating
+                failed.state = "failed"
+                self.replace(failed)
+                self.machineProblem = error.localizedDescription
+            }
+        }
+    }
+
     func toggleMachine(_ machine: MachineRecord) {
+        machineProblem = nil
+        guard !machinesInFlight.contains(machine.id) else { return }
         guard let api = api(), let providerID = machine.providerID else {
             machineProblem = "This machine was never created on boat.dev."
             return
         }
         let wantsRunning = machine.state != "running"
+        machinesInFlight.insert(machine.id)
         Task {
+            defer { self.machinesInFlight.remove(machine.id) }
             do {
                 let sandbox = wantsRunning
                     ? try await api.resume(providerID)
@@ -310,15 +496,53 @@ final class AppModel {
                 updated.state = sandbox.state ?? (wantsRunning ? "running" : "archived")
                 updated.lastActiveAt = Date()
                 self.replace(updated)
+                self.machineProblem = nil
             } catch {
                 self.machineProblem = error.localizedDescription
             }
         }
     }
 
-    /// Removes it here and on boat. Bots assigned to it become machine-less, which is an
-    /// ordinary state — they go back to running on this Mac rather than breaking.
+    /// Stops the machine on boat.dev, then forgets it here. Returns false, keeps the record and
+    /// sets `machineProblem` if boat could not be reached: forgetting a machine that is still
+    /// running would leave it billing with nothing in Bupsy to stop it from.
+    ///
+    /// A force stop rather than a delete, because boat's API as this client knows it has no
+    /// delete endpoint. A stopped machine stops using compute; removing it from the account
+    /// entirely is done on boat.dev.
+    func destroyMachine(_ machine: MachineRecord) async -> Bool {
+        machineProblem = nil
+        if let providerID = machine.providerID {
+            guard let api = api() else {
+                machineProblem = "Add your boat.dev key first, so \(machine.name) can be stopped there."
+                return false
+            }
+            do {
+                _ = try await api.stop(providerID, force: true)
+            } catch {
+                let status = (error as? BoatError)?.status
+                let alreadyStopped = ["stopped", "archived", "archiving"].contains(machine.state)
+                // Gone on boat, or already stopped there: nothing is running, so it is safe to
+                // forget. Anything else might still be billing.
+                guard status == 404 || (status == 409 && alreadyStopped) else {
+                    machineProblem = "\(machine.name) couldn't be stopped on boat.dev, so it was kept here. \(error.localizedDescription)"
+                    return false
+                }
+            }
+        }
+        forgetMachine(machine)
+        machineProblem = nil
+        return true
+    }
+
+    /// Kept for callers that cannot wait. Stops the machine on boat first, like `destroyMachine`.
     func deleteMachine(_ machine: MachineRecord) {
+        Task { _ = await destroyMachine(machine) }
+    }
+
+    /// Removes the record here. Bots assigned to it become machine-less, which is an
+    /// ordinary state: they go back to running on this Mac rather than breaking.
+    private func forgetMachine(_ machine: MachineRecord) {
         machines.removeAll { $0.id == machine.id }
         for index in bots.indices where bots[index].machineID == machine.id {
             bots[index].machineID = nil
@@ -339,9 +563,13 @@ final class AppModel {
     /// session id means nothing to Codex — so each engine keeps its own conversation, and
     /// switching back returns to where that engine left off. The visible transcript is reloaded
     /// to match, because showing a Claude transcript while talking to Codex would be a lie.
+    /// Not while it runs: the run belongs to the old engine's conversation, and swapping the
+    /// visible thread under it would hide the very work in progress.
     func setEngine(_ bot: Bot, _ engine: EngineID) {
-        guard let index = bots.firstIndex(where: { $0.id == bot.id }), bot.engine != engine
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }), bot.engine != engine,
+              running[bot.id] == nil
         else { return }
+        let previous = bots[index].engine
 
         bots[index].engine = engine
         // A model name from one engine is meaningless to the other.
@@ -349,7 +577,10 @@ final class AppModel {
         try? store?.save(bots[index].record(sortIndex: index))
 
         threads[bot.id] = nil
-        _ = thread(for: bot.id)
+        // Said in the new thread, so the old conversation disappearing never reads as lost.
+        thread(for: bot.id).entries.append(TranscriptEntry(kind: .note(
+            "Switched to \(engine.displayName). Your \(previous.displayName) conversation comes "
+                + "back if you switch back.")))
     }
 
     func setModel(_ bot: Bot, _ model: String?) {
@@ -413,11 +644,33 @@ final class AppModel {
         for watch in folderWatches { syncWatcher(watch) }
     }
 
-    func addFolderWatch(to bot: Bot, name: String, prompt: String, path: String) {
-        let watch = FolderWatch(botID: bot.id.rawValue, name: name, prompt: prompt, path: path)
+    func addFolderWatch(to bot: Bot, name: String, prompt: String, path: String,
+                        fileTypes: [String] = []) {
+        let watch = FolderWatch(botID: bot.id.rawValue, name: name, prompt: prompt, path: path,
+                                fileTypes: fileTypes)
         folderWatches.append(watch)
         try? store?.save(watch)
         syncWatcher(watch)
+    }
+
+    /// Saves changes to a folder watch: its folder, what to do, which files, or its name. A new
+    /// folder starts being watched straight away, which is also how a missing one is fixed.
+    func updateFolderWatch(_ watch: FolderWatch, name: String, prompt: String, path: String,
+                           fileTypes: [String]) {
+        guard let index = folderWatches.firstIndex(where: { $0.id == watch.id }) else { return }
+        folderWatches[index].name = name
+        folderWatches[index].prompt = prompt
+        folderWatches[index].path = path
+        folderWatches[index].fileTypes = fileTypes
+        try? store?.save(folderWatches[index])
+        syncWatcher(folderWatches[index])
+    }
+
+    /// Points a watch at another folder, keeping everything else.
+    func moveFolderWatch(_ watch: FolderWatch, to path: String) {
+        guard let current = folderWatches.first(where: { $0.id == watch.id }) else { return }
+        updateFolderWatch(current, name: current.name, prompt: current.prompt, path: path,
+                          fileTypes: current.fileTypes)
     }
 
     func setFolderWatchEnabled(_ watch: FolderWatch, _ enabled: Bool) {
@@ -441,16 +694,74 @@ final class AppModel {
         }
     }
 
+    /// Changes that arrived while a watch's bot was busy, by watch id, with when the first one
+    /// came. Kept, not dropped, and handed over once the bot is free.
+    private var heldWatchChanges: [String: (paths: Set<String>, since: Date)] = [:]
+
     private func folderChanged(_ id: String, _ changed: [String]) {
+        // Paused: a change is let go rather than kept for later, the same as a skipped routine.
+        guard !isPaused else { return }
         guard let watch = folderWatches.first(where: { $0.id == id }), watch.enabled,
               let bot = bots.first(where: { $0.id.rawValue == watch.botID }) else { return }
-        // A bot editing files in the folder it watches would otherwise trigger itself forever:
-        // nothing fires while it works, or for a few seconds after.
-        if running[bot.id] != nil { return }
+        let wanted = changed.filter { watch.matches($0) }
+        guard !wanted.isEmpty else { return }
+        // Busy: keep the changes and run once it is free. What the bot wrote itself in the
+        // meantime is taken out then, so it does not set itself off.
+        if running[bot.id] != nil {
+            if var held = heldWatchChanges[id] {
+                held.paths.formUnion(wanted)
+                heldWatchChanges[id] = held
+            } else {
+                heldWatchChanges[id] = (Set(wanted), Date())
+                waitingForBot[bot.id, default: []].append { [weak self] in
+                    self?.releaseHeldWatchChanges(id, bot: bot)
+                }
+            }
+            return
+        }
+        // Its own last writes land a few seconds after a run ends; those are not news.
         if let ended = lastRunEnded[bot.id], Date().timeIntervalSince(ended) < 8 { return }
-        send(watch.prompt(for: changed), to: bot) { [weak self] reply in
-            self?.notifier.routineFinished(bot: bot.name, routine: watch.name,
-                                           summary: reply.split(separator: "\n").first.map(String.init))
+        runFolderWatch(watch, bot: bot, changed: wanted)
+    }
+
+    /// Runs a watch for the changes held while its bot was busy, less the files the bot itself
+    /// wrote meanwhile (as far as its recorded tool calls say).
+    private func releaseHeldWatchChanges(_ id: String, bot: Bot) {
+        guard let held = heldWatchChanges.removeValue(forKey: id) else {
+            botBecameFree(bot)
+            return
+        }
+        if running[bot.id] != nil {
+            // Something else claimed the bot first. Wait again.
+            heldWatchChanges[id] = held
+            waitingForBot[bot.id, default: []].append { [weak self] in
+                self?.releaseHeldWatchChanges(id, bot: bot)
+            }
+            return
+        }
+        // Events reach the watcher a few seconds after the write, so look back a little further.
+        let since = held.since.addingTimeInterval(-60)
+        let ownWrites = Set(filesWritten(by: bot)
+            .filter { $0.at >= since }
+            .map { ($0.path as NSString).standardizingPath })
+        let remaining = held.paths.filter { !ownWrites.contains(($0 as NSString).standardizingPath) }
+        guard let watch = folderWatches.first(where: { $0.id == id }), watch.enabled,
+              !remaining.isEmpty, runFolderWatch(watch, bot: bot, changed: Array(remaining))
+        else {
+            // Nothing ran, so whatever waits behind this goes now.
+            botBecameFree(bot)
+            return
+        }
+    }
+
+    @discardableResult
+    private func runFolderWatch(_ watch: FolderWatch, bot: Bot, changed: [String]) -> Bool {
+        let name = watch.name
+        return sendTriggered(watch.prompt(for: changed), to: bot, triggerID: watch.id,
+                             automatic: true) { [weak self] reply in
+            self?.notifier.routineFinished(bot: bot.name, routine: name,
+                                           summary: reply.split(separator: "\n").first.map(String.init),
+                                           botID: bot.id)
         }
     }
 
@@ -504,7 +815,10 @@ final class AppModel {
             Routine(id: $0.id, botID: $0.botID, name: "check", prompt: "",
                     cron: $0.checkCron, enabled: $0.enabled, tier: $0.tier)
         }
-        let intervals = RoutineScheduler().launchdIntervals(for: routines + objectiveRoutines)
+        // Paused: launchd has nothing to wake the app for, so the agent comes out until resume.
+        let intervals = isPaused
+            ? []
+            : RoutineScheduler().launchdIntervals(for: routines + objectiveRoutines)
         let appPath = Bundle.main.bundlePath
         Task.detached { [weak self] in
             do {
@@ -513,10 +827,12 @@ final class AppModel {
                 } else {
                     try LaunchAgent.install(intervals: intervals, appPath: appPath)
                 }
+                // Worked this time, so an earlier failure no longer describes anything.
+                await MainActor.run { [weak self] in self?.routineProblem = nil }
             } catch {
                 // Never swallowed: a routine that silently never fires is this feature's worst
                 // failure, so the reason reaches the user rather than a debug log.
-                FileHandle.standardError.write(Data("bupsy: launch agent — \(error)\n".utf8))
+                FileHandle.standardError.write(Data("bupsy: launch agent: \(error)\n".utf8))
                 // The message is read out here and only the String crosses to the main actor.
                 // Capturing `self` inside the hop sends a task-isolated reference into a
                 // main-actor closure, which Swift 6 rejects — and which this app never compiled
@@ -530,8 +846,14 @@ final class AppModel {
     /// Runs whatever is due. Called at launch — including when launchd started us for exactly
     /// this reason — and on a timer while the app is open.
     func runDueRoutines(now: Date = Date()) {
+        // Paused: each slot that comes round is marked as filled without running, so nothing
+        // piles up to fire in a burst on resume, and no "finished" notification is posted.
+        if isPaused {
+            skipDueWork(now: now)
+            return
+        }
         for objective in dueObjectives(now: now) {
-            checkObjective(objective)
+            checkObjective(objective, automatic: true)
         }
         for due in RoutineScheduler().due(routines: routines, now: now) {
             guard let bot = bots.first(where: { $0.id.rawValue == due.routine.botID })
@@ -545,15 +867,17 @@ final class AppModel {
             }
 
             let note = due.isLate
-                ? "\n\n(Running late — this was scheduled for "
+                ? "\n\n(Running late. This was scheduled for "
                     + due.scheduledFor.formatted(date: .omitted, time: .shortened) + ".)"
                 : ""
             let name = due.routine.name
-            send(due.routine.prompt + note, to: bot) { [weak self] reply in
+            sendTriggered(due.routine.prompt + note, to: bot, triggerID: due.routine.id,
+                          automatic: true) { [weak self] reply in
                 // Unattended work that finishes silently may as well not have run.
                 self?.notifier.routineFinished(
                     bot: bot.name, routine: name,
-                    summary: reply.split(separator: "\n").first.map(String.init))
+                    summary: reply.split(separator: "\n").first.map(String.init),
+                    botID: bot.id)
             }
         }
     }
@@ -584,6 +908,17 @@ final class AppModel {
         syncLaunchAgent()
     }
 
+    /// Rewrites a goal in place, keeping what the bot has learned and when it last checked.
+    /// A cron of nil keeps the current schedule.
+    func updateObjective(_ objective: Objective, goal: String, doneWhen: String, cron: String? = nil) {
+        guard let index = objectives.firstIndex(where: { $0.id == objective.id }) else { return }
+        objectives[index].goal = goal
+        objectives[index].doneWhen = doneWhen
+        if let cron { objectives[index].checkCron = cron }
+        try? store?.save(objectives[index])
+        syncLaunchAgent()
+    }
+
     /// The user editing what a bot has learned. The real safeguard against notes drifting
     /// somewhere unhelpful is that they are plain text a person can read and correct.
     func setObjectiveNotes(_ objective: Objective, _ notes: String) {
@@ -592,8 +927,10 @@ final class AppModel {
         try? store?.save(objectives[index])
     }
 
-    /// Runs one check now.
-    func checkObjective(_ objective: Objective) {
+    /// Runs one check now. `automatic` is true when the schedule started it rather than a person,
+    /// so a pause holds it.
+    func checkObjective(_ objective: Objective, automatic: Bool = false) {
+        if automatic && isPaused { return }
         guard let bot = bots.first(where: { $0.id.rawValue == objective.botID }) else { return }
 
         // Recorded before the run, so a crash mid-check cannot cause it to repeat immediately.
@@ -602,14 +939,17 @@ final class AppModel {
             try? store?.save(objectives[index])
         }
 
-        send(ObjectiveCheck.prompt(for: objective), to: bot) { [weak self] reply in
+        checkingObjectives.insert(objective.id)
+        let started = sendTriggered(ObjectiveCheck.prompt(for: objective), to: bot,
+                                    triggerID: objective.id, automatic: automatic) { [weak self] reply in
+            self?.checkingObjectives.remove(objective.id)
             guard let self,
                   let index = self.objectives.firstIndex(where: { $0.id == objective.id })
             else { return }
 
             let outcome = ObjectiveCheck.outcome(from: reply)
             if case .needsYou(let question) = outcome {
-                self.notifier.objectiveNeedsYou(bot: bot.name, question: question)
+                self.notifier.objectiveNeedsYou(bot: bot.name, question: question, botID: bot.id)
             }
             self.objectives[index].lastOutcome = outcome
             self.objectives[index].notes = ObjectiveCheck.updatedNotes(
@@ -617,7 +957,13 @@ final class AppModel {
                 adding: ObjectiveCheck.learnings(from: reply))
             try? self.store?.save(self.objectives[index])
         }
+        if !started { checkingObjectives.remove(objective.id) }
     }
+
+    /// Goals with a check under way or waiting for their bot, so "Check now" can say so.
+    var checkingObjectives: Set<String> = []
+
+    func isChecking(_ objective: Objective) -> Bool { checkingObjectives.contains(objective.id) }
 
     /// Objectives whose check time has passed, using the same scheduler as routines so late and
     /// collapsed runs behave identically.
@@ -631,22 +977,58 @@ final class AppModel {
         return objectives.filter { dueIDs.contains($0.id) }
     }
 
-    /// Everything waiting on a person, in one place.
+    /// Everything waiting on a person, in one place. The inbox lists exactly these, and the
+    /// sidebar and menu bar counts are this array's count, so the three never disagree.
     var attentionItems: [AttentionItem] {
         var items: [AttentionItem] = []
 
         for bot in bots {
-            for entry in threads[bot.id]?.entries ?? [] {
-                if case .approval(let approval) = entry.kind, approval.decided == nil {
-                    // "Systems wants to run a command", not "Bash needs approval": the person is
-                    // deciding about a bot doing something, and should not have to translate an
-                    // engine's tool name to know what.
-                    items.append(AttentionItem(
-                        id: approval.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
-                        kind: .approval,
-                        title: "\(bot.name) wants to \(ToolNames.action(approval.tool))",
-                        detail: approval.summary,
-                        detailIsCommand: ToolNames.isCommand(approval.tool)))
+            // Its own thread and, while it runs somewhere else, that thread too. Group side
+            // threads are listed per group below, so they can name the group.
+            var own: [Thread] = []
+            if let thread = threads[bot.id] { own.append(thread) }
+            if let active = activeThread[bot.id], !own.contains(where: { $0 === active }),
+               !groupSideThreads.values.contains(where: { $0 === active }) {
+                own.append(active)
+            }
+            for thread in own {
+                for entry in thread.entries {
+                    if case .approval(let approval) = entry.kind, approval.decided == nil {
+                        // "Systems wants to run a command", not "Bash needs approval": the person is
+                        // deciding about a bot doing something, and should not have to translate an
+                        // engine's tool name to know what.
+                        items.append(AttentionItem(
+                            id: approval.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
+                            kind: .approval,
+                            title: "\(bot.name) wants to \(ToolNames.action(approval.tool))",
+                            detail: approval.summary,
+                            detailIsCommand: ToolNames.isCommand(approval.tool)))
+                    }
+                    if case .question(let question) = entry.kind, question.answer == nil {
+                        items.append(AttentionItem(
+                            id: question.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
+                            kind: .question,
+                            title: "\(bot.name) asked you something",
+                            detail: question.question))
+                    }
+                }
+            }
+        }
+
+        for group in groups {
+            for bot in members(of: group) {
+                guard let side = groupSideThreads["\(bot.id.rawValue)|\(group.id)"] else { continue }
+                for entry in side.entries {
+                    if case .approval(let approval) = entry.kind, approval.decided == nil {
+                        var item = AttentionItem(
+                            id: approval.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
+                            kind: .groupApproval(group.id),
+                            title: "\(bot.name) wants to \(ToolNames.action(approval.tool))",
+                            detail: approval.summary,
+                            detailIsCommand: ToolNames.isCommand(approval.tool))
+                        item.groupName = group.name
+                        items.append(item)
+                    }
                 }
             }
         }
@@ -659,7 +1041,29 @@ final class AppModel {
                 detail: detail(for: objective.lastOutcome)))
         }
 
+        // A group that hit its turn limit stops and waits for you to say something.
+        for group in groups where groupThread(for: group).isWaitingOnYou {
+            let face = group.leadBotID.flatMap { id in bots.first { $0.id == id } }
+                ?? members(of: group).first
+            guard let face else { continue }
+            var item = AttentionItem(
+                id: "paused-\(group.id)", botID: face.id, botName: face.name, hue: face.avatarHue,
+                kind: .pausedGroup(group.id),
+                title: "\(group.name) paused after \(group.turnLimit) turns",
+                detail: "Say something in the group to keep it going.")
+            item.groupName = group.name
+            items.append(item)
+        }
+
         return items
+    }
+
+    /// Clears a stuck goal from Waiting on you without running it again. The next check sets
+    /// its outcome afresh.
+    func markObjectiveHandled(_ objective: Objective) {
+        guard let index = objectives.firstIndex(where: { $0.id == objective.id }) else { return }
+        objectives[index].lastOutcome = nil
+        try? store?.save(objectives[index])
     }
 
     private func detail(for outcome: ObjectiveOutcome?) -> String {
@@ -684,13 +1088,13 @@ final class AppModel {
 
     private func loadBots() {
         guard let store else {
-            bots = Self.starterBots()
+            bots = seedBots()
             return
         }
         do {
             let records = try store.bots()
             if records.isEmpty {
-                bots = Self.starterBots()
+                bots = seedBots()
                 for (index, bot) in bots.enumerated() {
                     try store.save(bot.record(sortIndex: index))
                 }
@@ -700,8 +1104,15 @@ final class AppModel {
             links = BotLinks((try? store.botLinks()) ?? [])
         } catch {
             storageProblem = error.localizedDescription
-            bots = Self.starterBots()
+            bots = seedBots()
         }
+    }
+
+    /// The bots an empty roster starts with. None on a fresh install: onboarding makes the
+    /// person's first bot, and starters made before it contradicted "your first bot" and hid
+    /// the empty roster. Someone who already finished onboarding still gets the starters.
+    private func seedBots() -> [Bot] {
+        needsOnboarding ? [] : Self.starterBots()
     }
 
     private static func starterBots() -> [Bot] {
@@ -749,12 +1160,21 @@ final class AppModel {
 
     func isRunning(_ botID: BotID) -> Bool { running[botID] != nil }
 
+    /// What a running bot is doing right now ("Reading 3 files"), read from the thread it is
+    /// actually running in, which inside a group is not its own chat.
+    func liveStatus(for bot: Bot) -> String {
+        ChatLiveStatus.text(for: (activeThread[bot.id] ?? thread(for: bot.id)).entries)
+    }
+
     func recentRuns(for bot: Bot) -> [RunSummary] {
         (try? store?.recentRuns(forBot: bot.id.rawValue, limit: 20)) ?? []
     }
 
     /// True when a bot is blocked on a decision from you, which the roster shows differently
     /// from merely working — it is the state that needs a human.
+    ///
+    /// Older and narrower than `needsYou(_:)` (AppModel+Mood.swift), which also counts group
+    /// approvals, questions and stuck goals. Kept until every caller has moved over.
     func isWaitingForApproval(_ botID: BotID) -> Bool {
         (activeThread[botID] ?? threads[botID])?.entries.contains {
             if case .approval(let approval) = $0.kind { return approval.decided == nil }
@@ -766,6 +1186,14 @@ final class AppModel {
         for (id, adapter) in adapters {
             let status = await adapter.authStatus(on: host)
             engineStatus[id] = status
+            // Where the CLI was found, for the sign-in rows. Resolved the way runs resolve it,
+            // off the main thread because the fallback asks a login shell.
+            if case .notInstalled = status {
+                engineBinaryPaths[id] = nil
+            } else {
+                let binary = adapter.binaryName
+                engineBinaryPaths[id] = await Task.detached { try? BinaryResolver.resolve(binary).path }.value
+            }
             try? store?.save(EngineLinkRecord(
                 machineID: nil,
                 engine: id.rawValue,
@@ -783,6 +1211,7 @@ final class AppModel {
         case .signedIn: "signedIn"
         case .signedInWithoutModelAccess: "noModelAccess"
         case .signedOut: "signedOut"
+        case .notInstalled: "notInstalled"
         case .unknown: "unknown"
         }
     }
@@ -802,13 +1231,42 @@ final class AppModel {
             thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
             queued[bot.id, default: []].append(prompt)
             if queuedNote[bot.id] == nil {
-                let note = TranscriptEntry(kind: .note("Queued — \(bot.name) will read this when it's done."))
+                let note = TranscriptEntry(kind: .note("Queued. \(bot.name) reads this when it's done."))
                 queuedNote[bot.id] = note.id
                 thread.entries.append(note)
             }
             return
         }
         startRun(prompt, bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: onFinish)
+    }
+
+    /// A run something other than you started: a routine, a goal check or a folder watch.
+    ///
+    /// Tagged with the id of what started it, so that thing's history finds it. Never merged with
+    /// messages typed while the bot is busy: it waits its turn as a run of its own, after them,
+    /// and keeps its finish handler, so its notification still arrives. Returns false only when
+    /// it could neither start nor wait, so the caller can undo anything it marked as in flight.
+    ///
+    /// `automatic` marks work nobody started by hand (a schedule, a goal check, a folder watch).
+    /// While paused that is let go: refused here, and dropped if it was waiting for its bot.
+    @discardableResult
+    func sendTriggered(
+        _ prompt: String, to bot: Bot, triggerID: String, automatic: Bool = false,
+        onFinish: (@MainActor @Sendable (String) -> Void)?
+    ) -> Bool {
+        if automatic && isPaused { return false }
+        if running[bot.id] != nil {
+            waitingForBot[bot.id, default: []].append { [weak self] in
+                guard let self else { return }
+                let waited = self.sendTriggered(prompt, to: bot, triggerID: triggerID,
+                                                automatic: automatic, onFinish: onFinish)
+                // Nothing started and nothing to wait for: let whatever is queued behind it go.
+                if !waited || self.running[bot.id] == nil { self.botBecameFree(bot) }
+            }
+            return true
+        }
+        return startRun(prompt, bot: bot, thread: thread(for: bot.id), groupID: nil,
+                        onFinish: onFinish, triggerID: triggerID)
     }
 
     /// Messages typed while a bot was busy, waiting to go to it together.
@@ -849,7 +1307,8 @@ final class AppModel {
         _ prompt: String, bot: Bot, thread: Thread, groupID: String?,
         onFinish: (@MainActor @Sendable (String) -> Void)?,
         from sender: Bot? = nil, shown: String? = nil, hidesPrompt: Bool = false,
-        alreadyShown: Bool = false, separateMessages: [String]? = nil
+        alreadyShown: Bool = false, separateMessages: [String]? = nil,
+        triggerID: String? = nil
     ) -> Bool {
         // One run per bot at a time, wherever it is. A bot cannot answer in a group while it is
         // still working on something you asked it directly.
@@ -868,11 +1327,14 @@ final class AppModel {
         }
         thread.isRunning = true
         activeThread[bot.id] = thread
+        lastFailedAt[bot.id] = nil
 
         let conversationID = ensureConversation(for: bot, thread: thread, group: groupID)
         var run = RunRecord(
             botID: bot.id.rawValue,
             conversationID: conversationID,
+            // The routine, goal or folder watch that started it, so its page finds it by id.
+            triggerID: triggerID,
             host: bot.machineID.map { "cloud:\($0)" } ?? "local",
             groupID: groupID
         )
@@ -910,7 +1372,8 @@ final class AppModel {
         // directory, and the engine is told about them with `--settings`. An engine started
         // without this runs ungated, which is only ever correct for an auth probe.
         var gateSettings: String?
-        if let gate = try? ApprovalGate.temporary() {
+        let runGate = try? ApprovalGate.temporary()
+        if let gate = runGate {
             gates[bot.id] = gate
             gateSettings = try? GateInstaller.install(gateDirectory: gate.directory).path
             watchGate(gate, bot: bot, thread: thread, run: run.id)
@@ -940,22 +1403,35 @@ final class AppModel {
         // minute three of ten leaves a half-finished task and a truncated transcript, which is
         // worse than one that never started.
         if bot.keepAwake == .whileWorking {
-            let assertion = PowerAssertion(reason: "bupsy: \(bot.name) is working")
+            let assertion = PowerAssertion(reason: "Bupsy: \(bot.name) is working")
             if assertion.acquire() { awake[bot.id] = assertion }
         }
 
+        let connectorEnvNames = Array(Set(connectors.filter(\.enabled).flatMap(\.requiredEnvNames)))
+        let token = UUID()
+        runTokens[bot.id] = token
         running[bot.id] = Task { [host, store] in
             var seq = 1
             var failed = false
             var reply = ""
             defer {
-                thread.isRunning = false
-                running[bot.id] = nil
-                activeThread[bot.id] = nil
-                Task { [gate = gates[bot.id]] in await gate?.stop() }
-                gates[bot.id] = nil
-                awake[bot.id]?.release()
-                awake[bot.id] = nil
+                // This run's own gate always closes. The bot's shared state is only cleared if
+                // this run still owns it: after Stop, a new run may already be in the slot.
+                Task { await runGate?.stop() }
+                // A run that was stopped no longer owns the slot, and is neither done nor failed.
+                let ownsSlot = runTokens[bot.id] == token
+                if ownsSlot {
+                    // Finished, failed or crashed: nothing can answer these any more, so the
+                    // cards settle instead of offering an Allow that does nothing.
+                    expirePendingApprovals(for: bot.id)
+                    thread.isRunning = false
+                    running[bot.id] = nil
+                    runTokens[bot.id] = nil
+                    activeThread[bot.id] = nil
+                    gates[bot.id] = nil
+                    awake[bot.id]?.release()
+                    awake[bot.id] = nil
+                }
                 var finished = run
                 finished.status = failed ? "failed" : "finished"
                 finished.endedAt = Date()
@@ -973,12 +1449,32 @@ final class AppModel {
                         groupID: groupID))
                 }
                 lastRunEnded[bot.id] = Date()
-                onFinish?(reply)
-                // Next tick, so whatever onFinish started (a group hand-off) claims the bot first.
-                Task { @MainActor [weak self] in self?.botBecameFree(bot) }
+                if ownsSlot { recordRunEnded(bot.id, failed: failed) }
+                // Stopped by Pause: not finished, so its half-written reply is not posted to a
+                // group, read as a goal's answer or announced as done, and nothing queued behind
+                // it starts. `resumeAll` lets the queue go. Decided by what Pause recorded, not by
+                // whether it is still paused, so a quick resume cannot let the reply through.
+                if stoppedByPause.remove(token) == nil {
+                    onFinish?(reply)
+                    // Next tick, so whatever onFinish started (a group hand-off) claims the bot
+                    // first.
+                    Task { @MainActor [weak self] in self?.botBecameFree(bot) }
+                }
             }
             do {
-                for try await output in try await host.spawn(adapter.invocation(for: request)) {
+                // Connector variables set in the person's shell profile, which an app opened from
+                // Finder does not inherit. Passed in the engine's environment only, so the
+                // `${NAME}` references in the MCP config resolve; never written anywhere.
+                var invocation = adapter.invocation(for: request)
+                if !connectorEnvNames.isEmpty {
+                    let values = await Task.detached {
+                        LoginShellEnvironment.resolved(connectorEnvNames)
+                    }.value
+                    for (name, value) in values where invocation.environment[name] == nil {
+                        invocation.environment[name] = value
+                    }
+                }
+                for try await output in try await host.spawn(invocation) {
                     if Task.isCancelled { return }
                     for event in adapter.normalise(output) {
                         thread.apply(event)
@@ -1033,6 +1529,14 @@ final class AppModel {
     /// what ran and under which rule — a bot on `.auto` still leaves a complete account of itself.
     private func watchGate(_ gate: ApprovalGate, bot: Bot, thread: Thread, run: String) {
         Task { [weak self] in
+            // Taken before `requests()` starts the poll, so an expiry is never missed.
+            let expiries = await gate.expirations()
+            Task { [weak self] in
+                for await id in expiries {
+                    // The hook script waited its full time and denied the call itself.
+                    self?.expireApproval(id: id, in: thread, run: run)
+                }
+            }
             for await request in await gate.requests() {
                 guard let self else { return }
                 let outcome = AutonomyPolicy.decide(
@@ -1052,7 +1556,8 @@ final class AppModel {
                     // The whole point of a gate that waits is that someone finds out it is
                     // waiting. A run blocked at 3am with nothing said is a run that never ran.
                     self.notifier.needsApproval(
-                        bot: bot.name, tool: request.tool, summary: request.summary)
+                        bot: bot.name, tool: request.tool, summary: request.summary,
+                        approvalID: request.id, botID: bot.id)
                 }
             }
         }
@@ -1060,6 +1565,24 @@ final class AppModel {
 
     /// The user's answer on an approval card.
     func decide(_ approval: PendingApproval, allow: Bool, for bot: Bot, always: Bool = false) {
+        // The banner for this request goes either way: it has been answered, or it can't be.
+        notifier.clearApproval(approval.id)
+        let thread = self.threadHolding(approvalID: approval.id, for: bot.id)
+            ?? activeThread[bot.id] ?? self.thread(for: bot.id)
+        // Only a request still waiting, on a gate still open, can be answered. Anything else
+        // settles as expired: a late Allow must never read as if it took effect.
+        // The script may have given up a moment ago, before the poll noticed: its marker is
+        // checked directly so an Allow in that gap is not shown as taking effect.
+        let scriptGaveUp = gates[bot.id].map {
+            FileManager.default.fileExists(
+                atPath: $0.directory.appendingPathComponent("expired/\(approval.id)").path)
+        } ?? false
+        guard Self.isUndecided(approval.id, in: thread), !scriptGaveUp, let gate = gates[bot.id] else {
+            if Self.isUndecided(approval.id, in: thread) {
+                thread.resolveApproval(id: approval.id, as: .expired)
+            }
+            return
+        }
         // "Always" is recorded before the answer goes back, so a second call already queued for
         // the same tool in this run is allowed rather than asked again.
         if allow, always, ToolNames.canAlwaysAllow(approval.tool),
@@ -1067,8 +1590,6 @@ final class AppModel {
             bots[index].toolAllowlist.insert(approval.tool)
             try? store?.save(bots[index].record(sortIndex: index))
         }
-        guard let gate = gates[bot.id] else { return }
-        let thread = activeThread[bot.id] ?? thread(for: bot.id)
         thread.resolveApproval(id: approval.id,
                                as: allow ? (always && ToolNames.canAlwaysAllow(approval.tool) ? .alwaysAllowed : .allowed) : .denied)
         Task {
@@ -1122,19 +1643,151 @@ final class AppModel {
     }
 
     func stop(_ botID: BotID) {
+        // Before the slot is cleared, while the thread the run was in is still known.
+        expirePendingApprovals(for: botID)
+        let current = activeThread[botID] ?? thread(for: botID)
         running[botID]?.cancel()
         running[botID] = nil
+        // Releases ownership, so the cancelled run's cleanup leaves a newer run alone.
+        runTokens[botID] = nil
+        activeThread[botID] = nil
         Task { [gate = gates[botID]] in await gate?.stop() }
         gates[botID] = nil
         awake[botID]?.release()
         awake[botID] = nil
+        current.isRunning = false
         thread(for: botID).isRunning = false
+    }
+
+    // MARK: - Approvals that can no longer be answered
+
+    /// Every thread a bot's approvals can be in: its own, the one it is running in, and its side
+    /// threads inside groups.
+    func approvalThreads(for botID: BotID) -> [Thread] {
+        var found: [Thread] = []
+        func add(_ thread: Thread?) {
+            guard let thread, !found.contains(where: { $0 === thread }) else { return }
+            found.append(thread)
+        }
+        add(threads[botID])
+        add(activeThread[botID])
+        let prefix = "\(botID.rawValue)|"
+        for (key, side) in groupSideThreads where key.hasPrefix(prefix) { add(side) }
+        return found
+    }
+
+    private func threadHolding(approvalID: String, for botID: BotID) -> Thread? {
+        approvalThreads(for: botID).first { thread in
+            thread.entries.contains {
+                if case .approval(let approval) = $0.kind { return approval.id == approvalID }
+                return false
+            }
+        }
+    }
+
+    private static func isUndecided(_ approvalID: String, in thread: Thread) -> Bool {
+        thread.entries.contains {
+            if case .approval(let approval) = $0.kind {
+                return approval.id == approvalID && approval.decided == nil
+            }
+            return false
+        }
+    }
+
+    /// Settles every approval the bot is still waiting on as expired. Called when its run ends
+    /// in any way, because the gate that would have carried the answer is gone with it.
+    private func expirePendingApprovals(for botID: BotID) {
+        for thread in approvalThreads(for: botID) {
+            let waiting: [String] = thread.entries.compactMap {
+                if case .approval(let approval) = $0.kind, approval.decided == nil { return approval.id }
+                return nil
+            }
+            for id in waiting {
+                thread.resolveApproval(id: id, as: .expired)
+                notifier.clearApproval(id)
+            }
+        }
+    }
+
+    /// One request the gate's script gave up on, after waiting its full time.
+    private func expireApproval(id: String, in thread: Thread, run: String) {
+        notifier.clearApproval(id)
+        guard Self.isUndecided(id, in: thread) else { return }
+        thread.resolveApproval(id: id, as: .expired)
+        for entry in thread.entries {
+            if case .approval(let approval) = entry.kind, approval.id == id {
+                recordDecision(run: run, requestID: id, tool: approval.tool,
+                               inputJSON: approval.inputJSON, decision: "denied",
+                               rule: "nobody answered in time")
+                break
+            }
+        }
     }
 
     /// Stops every run and closes every gate. The thing you reach for when a bot is doing
     /// something you did not expect.
     func stopEverything() {
         for id in running.keys { stop(id) }
+    }
+
+    // MARK: - Pause
+
+    private static let pausedKey = "si.bupsy.paused"
+
+    /// Paused: what was running stops, and nothing starts on its own until resume. Routines,
+    /// goal checks, folder watches and bots handing work to each other are held; a message you
+    /// send, or "Run now", still goes, so a paused app is never a dead one. Saved per home, so it
+    /// survives a relaunch.
+    private(set) var isPaused = AppHome.defaults.bool(forKey: "si.bupsy.paused") {
+        didSet { AppHome.defaults.set(isPaused, forKey: Self.pausedKey) }
+    }
+
+    /// Stops every run and holds everything automatic until `resumeAll()`.
+    func pauseAll() {
+        guard !isPaused else { return }
+        isPaused = true
+        // Changes kept for a busy bot are let go, like any other automatic work while paused.
+        heldWatchChanges.removeAll()
+        // A check dropped while it waited for its bot never reports back, so none stays "Checking…".
+        checkingObjectives.removeAll()
+        stoppedByPause.formUnion(runTokens.values)
+        stopEverything()
+        // A stopped turn never reports back, so no group is left showing a bot mid-reply.
+        for thread in groupThreads.values { thread.speaking = nil }
+        syncLaunchAgent()
+    }
+
+    /// Lets automatic work start again. Whatever fell due while paused is marked as filled
+    /// first, so resuming starts from the next slot instead of firing a run of late routines.
+    func resumeAll() {
+        guard isPaused else { return }
+        skipDueWork(now: Date())
+        isPaused = false
+        syncLaunchAgent()
+        // Messages typed to a bot that Pause stopped mid-run were kept for now.
+        for bot in bots where running[bot.id] == nil { botBecameFree(bot) }
+    }
+
+    /// Runs Pause stopped, by token, until each one's cleanup has seen it.
+    private var stoppedByPause: Set<UUID> = []
+
+    func togglePause() {
+        if isPaused { resumeAll() } else { pauseAll() }
+    }
+
+    /// Records every due routine slot and goal check as handled without running it. Nothing is
+    /// sent and nothing is notified: a skipped run is not a run.
+    private func skipDueWork(now: Date) {
+        for objective in dueObjectives(now: now) {
+            guard let index = objectives.firstIndex(where: { $0.id == objective.id }) else { continue }
+            objectives[index].lastCheckedAt = now
+            try? store?.save(objectives[index])
+        }
+        for due in RoutineScheduler().due(routines: routines, now: now) {
+            guard let index = routines.firstIndex(where: { $0.id == due.routine.id }) else { continue }
+            routines[index].lastFiredAt = due.scheduledFor
+            try? store?.save(routines[index])
+        }
     }
 
     func addBot(name: String, engine: EngineID, job: String = "", folder: String? = nil,
@@ -1144,12 +1797,15 @@ final class AppModel {
             name: name, engine: engine,
             personaPrompt: job.isEmpty ? nil : job)
         bot.folder = folder
+        if let folder { noteSection(folder) }
         bot.avatarHue = distinctHue(near: bot.avatarHue)
         bot.avatarShape = shape
         bot.avatarColour = colour
         bots.append(bot)
         try? store?.save(bot.record(sortIndex: bots.count - 1))
-        selectedBotID = bot.id
+        // Opened, not just selected: selecting no longer moves the window off a page that is
+        // not a chat (see RootView.followSelection), and a bot you just made is one you want.
+        open(bot.id)
     }
 
     /// Clones a bot's setup, not its history.
@@ -1168,10 +1824,15 @@ final class AppModel {
         copy.toolAllowlist = bot.toolAllowlist
         copy.folder = bot.folder
         copy.avatarHue = distinctHue(near: copy.avatarHue)
+        // The face and role someone picked are part of the setup, not the history.
+        copy.avatarShape = bot.avatarShape
+        copy.avatarColour = bot.avatarColour
+        copy.role = bot.role
+        copy.onlyBupsyApps = bot.onlyBupsyApps
 
         bots.append(copy)
         try? store?.save(copy.record(sortIndex: bots.count - 1))
-        selectedBotID = copy.id
+        open(copy.id)
     }
 
     // MARK: - Group threads
@@ -1199,11 +1860,13 @@ final class AppModel {
     }
 
     @discardableResult
-    func createGroup(name: String, members: [Bot], lead: Bot?) -> ChatGroup? {
+    func createGroup(name: String, members: [Bot], lead: Bot?,
+                     turnLimit: Int = GroupRouting.defaultTurnLimit) -> ChatGroup? {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, members.count >= 2 else { return nil }
         let record = GroupRecord(name: trimmed, leadBotID: (lead ?? members.first)?.id.rawValue,
-                                 sortIndex: groups.count)
+                                 sortIndex: groups.count,
+                                 turnLimit: GroupRouting.effectiveTurnLimit(turnLimit))
         try? store?.save(record)
         try? store?.setMembers(ofGroup: record.id, to: members.map(\.id.rawValue))
         let group = ChatGroup(record: record, members: members.map(\.id.rawValue))
@@ -1218,11 +1881,23 @@ final class AppModel {
         try? store?.save(groups[index].record(sortIndex: index))
     }
 
+    /// How many bot turns the group takes, with nobody speaking, before it checks with you.
+    /// Applies from the next turn, including to a chain already running.
+    func setTurnLimit(_ limit: Int, for group: ChatGroup) {
+        guard let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[index].turnLimit = GroupRouting.effectiveTurnLimit(limit)
+        try? store?.save(groups[index].record(sortIndex: index))
+    }
+
     /// Deletes the conversation, never the bots in it.
     func deleteGroup(_ group: ChatGroup) {
         try? store?.deleteGroup(id: group.id)
         groups.removeAll { $0.id == group.id }
         groupThreads[group.id] = nil
+        // Its side threads go too, so an approval nobody can reach no longer makes a bot wave.
+        for key in Array(groupSideThreads.keys) where key.hasSuffix("|\(group.id)") {
+            groupSideThreads[key] = nil
+        }
     }
 
     func markGroupRead(_ group: ChatGroup) {
@@ -1289,19 +1964,27 @@ final class AppModel {
     /// a group conversation is supposed to fix, not reproduce.
     private func runTurns(in group: ChatGroup, queue: [GroupRouting.Member], taken: Int) {
         let thread = groupThread(for: group)
-        guard let next = queue.first else {
+        // Paused: bots do not hand work on to each other. The first turn is your own message,
+        // which still goes; the ones after it wait for you.
+        guard let next = queue.first, !(isPaused && taken > 0) else {
             thread.speaking = nil
             return
         }
         let rest = Array(queue.dropFirst())
 
-        guard taken < GroupRouting.maxBotTurnsPerMessage else {
+        // The group's own limit, read fresh so a change made mid-chain applies to the next turn.
+        let limit = groups.first(where: { $0.id == group.id })?.turnLimit ?? group.turnLimit
+        guard !GroupRouting.shouldPause(afterTaking: taken, limit: limit) else {
+            // Pause rather than run on: the bots don't keep each other going on your quota. The
+            // note makes the group read as waiting on you until you say something.
             thread.speaking = nil
-            appendGroupMessage(GroupMessageRecord(
-                groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
-                text: "Stopped after \(GroupRouting.maxBotTurnsPerMessage) replies so the bots "
-                    + "don't keep each other going on your quota. Mention one to carry on."),
-                to: group)
+            // Once is enough: a late turn from a bot that was busy elsewhere can arrive here too.
+            if thread.messages.last?.isPauseNote != true {
+                appendGroupMessage(GroupMessageRecord(
+                    groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "Bupsy",
+                    text: GroupMessageRecord.pauseNote(after: GroupRouting.effectiveTurnLimit(limit))),
+                    to: group)
+            }
             return
         }
         guard let bot = bots.first(where: { $0.id.rawValue == next.id }) else {
@@ -1339,8 +2022,8 @@ final class AppModel {
             // it is free — said in the thread, so silence never reads as being ignored.
             thread.speaking = nil
             appendGroupMessage(GroupMessageRecord(
-                groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
-                text: "\(bot.name) is finishing something in another chat — it'll reply here next."),
+                groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "Bupsy",
+                text: "\(bot.name) is finishing something in another chat. It'll reply here next."),
                 to: group)
             waitingForBot[bot.id, default: []].append { [weak self] in
                 self?.runTurns(in: group, queue: [next], taken: taken)
@@ -1422,25 +2105,61 @@ final class AppModel {
     /// told its job sets its own name and role with update_me — the job itself still waits for
     /// the person's yes. Returns the new bot's id so the caller can open it.
     @discardableResult
-    func quickCreateBot(engine: EngineID = .claude) -> BotID? {
+    func quickCreateBot(engine: EngineID? = nil) -> BotID? {
         var name = "New bot"
         var counter = 2
         while isNameTaken(name) { name = "New bot \(counter)"; counter += 1 }
-        addBot(name: name, engine: engine)
+        addBot(name: name, engine: engine ?? defaultNewBotEngine)
         guard let bot = bots.first(where: { $0.name == name }) else { return nil }
+        greet(bot)
+        return bot.id
+    }
 
-        let others = bots.filter { $0.id != bot.id && !$0.hidden }.map { bot -> String in
-            bot.personaPrompt.map { "\(bot.name) (\($0))" } ?? bot.name
+    /// The engine a new bot starts on, wherever it is made: the first engine that is signed in
+    /// and able to run, or Claude Code when both are (or neither is). A bot made before any
+    /// sign-in still exists; it asks for one when it first runs.
+    var defaultNewBotEngine: EngineID {
+        let ready = EngineID.supported.filter { engineStatus[$0]?.isUsable == true }
+        if ready.isEmpty || ready.contains(.claude) { return .claude }
+        return ready[0]
+    }
+
+    /// A new bot's first words, run in its own chat with the prompt hidden.
+    ///
+    /// With no job it says hi and asks what it is for, then sets its own job with update_me
+    /// (which still waits for the person's yes). With a job, one the person just picked, the job
+    /// is saved and the bot says hi and confirms it in its own words. A bot still called
+    /// "New bot" also names itself; one the person named keeps its name.
+    func greet(_ bot: Bot, job: String? = nil) {
+        let trimmedJob = job?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedJob.isEmpty, bot.personaPrompt != trimmedJob { setJob(bot, trimmedJob) }
+        guard let current = bots.first(where: { $0.id == bot.id }) else { return }
+
+        let others = bots.filter { $0.id != current.id && !$0.hidden }.map { other -> String in
+            other.personaPrompt.map { "\(other.name) (\($0))" } ?? other.name
         }
         let roster = others.isEmpty ? "You are the first bot." : "The other bots are: \(others.joined(separator: "; "))."
-        _ = startRun(
-            "You have just been created in bupsy, the person's roster of AI bots. \(roster) "
-                + "Greet the person — not the other bots; they cannot see this — in two short "
-                + "sentences, and ask what job they want you for. If the "
-                + "roster already covers something, say so. Once they tell you, use the update_me "
-                + "tool to set a short name, a one- or two-word role tag, and your job.",
-            bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: nil, hidesPrompt: true)
-        return bot.id
+        let unnamed = current.name.hasPrefix("New bot")
+        let intro = "You have just been created in Bupsy, the person's roster of AI bots. \(roster) "
+            + "Greet the person, not the other bots (they cannot see this), in two short sentences. "
+        let prompt: String
+        if trimmedJob.isEmpty {
+            prompt = intro
+                + "Ask what job they want you for. If the roster already covers something, say so. "
+                + (unnamed
+                    ? "Once they tell you, use the update_me tool to set a short name, a one- or two-word role tag, and your job."
+                    : "Your name is \(current.name); keep it. Once they tell you, use the update_me tool to set a one- or two-word role tag and your job.")
+        } else {
+            prompt = intro
+                + "The person made you for this job: \(trimmedJob). Say hi and confirm the job in "
+                + "your own words. If the roster already covers part of it, say so. "
+                + (unnamed
+                    ? "Use the update_me tool to set a short name and a one- or two-word role tag that fit the job. "
+                    : "Your name is \(current.name); keep it. Use the update_me tool to set a one- or two-word role tag that fits the job. ")
+                + "Your job is already saved, so don't change it."
+        }
+        _ = startRun(prompt, bot: current, thread: thread(for: current.id), groupID: nil,
+                     onFinish: nil, hidesPrompt: true)
     }
 
     /// A job a bot proposed for itself, waiting on the person.
@@ -1457,7 +2176,7 @@ final class AppModel {
         let thread = thread(for: bot.id)
         if let name {
             if isNameTaken(name, except: bot.id) {
-                thread.entries.append(TranscriptEntry(kind: .note("Couldn't rename to “\(name)” — another bot has that name.")))
+                thread.entries.append(TranscriptEntry(kind: .note("Couldn't rename to “\(name)”. Another bot has that name.")))
             } else if name != bot.name {
                 let old = bot.name
                 rename(bot, to: name)
@@ -1486,9 +2205,19 @@ final class AppModel {
 
     private func receiveQuestion(from senderID: String, question: String, options: [String]) {
         guard let bot = bots.first(where: { $0.id.rawValue == senderID }) else { return }
+        // A question with no words cannot be shown as a card, but the bot is still waiting. Say
+        // so where the person will look, so a reply is what unblocks it.
+        guard !question.isEmpty else {
+            thread(for: bot.id).entries.append(TranscriptEntry(kind: .note(
+                "\(bot.name) asked you something but the question was empty. Reply to tell it what to do.")))
+            notifier.needsApproval(bot: bot.name, tool: "a question",
+                                   summary: "Asked you something. Reply to tell it what to do.",
+                                   botID: bot.id)
+            return
+        }
         thread(for: bot.id).entries.append(TranscriptEntry(kind: .question(BotQuestion(
             id: UUID().uuidString, question: question, options: options))))
-        notifier.needsApproval(bot: bot.name, tool: "a question", summary: question)
+        notifier.needsApproval(bot: bot.name, tool: "a question", summary: question, botID: bot.id)
     }
 
     /// Sends the person's answer as their next message — what the bot stopped to wait for.
@@ -1545,10 +2274,13 @@ final class AppModel {
             return
         }
         let selected = selectedBotID
+        let request = navigationRequest
         addBot(name: creation.name, engine: creation.from.engine, job: creation.job,
                folder: creation.from.folder)
         // addBot opens the new bot; a request from the background should not pull you away.
+        // Both put back in the same turn, so the root view never sees the open request.
         selectedBotID = selected
+        navigationRequest = request
         guard var created = bots.first(where: { $0.name == creation.name }) else { return }
         if let role = creation.role {
             setRole(created, role)
@@ -1656,12 +2388,15 @@ final class AppModel {
     private func handOver(_ text: String, from sender: Bot, to recipient: Bot) {
         let key = "\(sender.id.rawValue)>\(recipient.id.rawValue)"
         let recent = (autoRuns[key] ?? []).filter { $0 > Date().addingTimeInterval(-600) }
-        guard running[recipient.id] == nil, recent.count < Self.autoRunsPerPair else {
+        guard !isPaused, running[recipient.id] == nil, recent.count < Self.autoRunsPerPair else {
             append(message: text, from: sender, to: recipient)
-            if recent.count >= Self.autoRunsPerPair {
+            if isPaused {
                 thread(for: recipient.id).entries.append(TranscriptEntry(kind: .note(
-                    "\(sender.name) and \(recipient.name) have handed work back and forth a lot — "
-                        + "this one is waiting for you.")))
+                    "Bots are paused, so this one is waiting for you.")))
+            } else if recent.count >= Self.autoRunsPerPair {
+                thread(for: recipient.id).entries.append(TranscriptEntry(kind: .note(
+                    "\(sender.name) and \(recipient.name) have handed work back and forth a lot. "
+                        + "This one is waiting for you.")))
             }
             return
         }
@@ -1853,6 +2588,8 @@ final class AppModel {
     func toggleHidden(_ bot: Bot) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         bots[index].hidden.toggle()
+        // Moves the selection only. The window follows it only while it is showing that bot's
+        // chat (RootView.followSelection), so hiding a bot from Team leaves you on Team.
         if bots[index].hidden, selectedBotID == bot.id {
             selectedBotID = bots.first { !$0.hidden }?.id
         }
@@ -1918,19 +2655,86 @@ final class AppModel {
 
     // MARK: - Folders
 
-    /// The folders in use, in the order their first bot appears.
+    /// Every section, empty ones included, in the order they were made.
     ///
-    /// Derived rather than stored. A folder exists exactly as long as something is in it, so
-    /// there is no way to end up with an empty folder nobody can see or delete — the failure mode
-    /// of every "create a folder, then put things in it" design.
-    var folders: [String] {
+    /// Stored, so a section stays when its last bot leaves and can be made before its first. Kept
+    /// in the app's own defaults, a JSON array of names, beside the sidebar's folds
+    /// (`SidebarFolds`). A bot's section is still the string on the bot; this list only says
+    /// which sections exist. Change it through `addSection`, `renameFolder` and `deleteSection`.
+    private(set) var sectionNames: [String] = []
+
+    private static let sectionsKey = "bupsy.sections"
+
+    /// Reads the stored list. With none stored yet (every install before sections were kept),
+    /// it is seeded from the bots' own sections, so nothing on screen moves. Any section a bot
+    /// is in but the list lacks is added, so the two can never disagree about what exists.
+    private func loadSections() {
+        let stored = AppHome.defaults.string(forKey: Self.sectionsKey)
+            .flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONDecoder().decode([String].self, from: $0) }
+        var names = stored ?? []
+        for bot in bots {
+            if let folder = bot.folder, !folder.isEmpty, !names.contains(folder) {
+                names.append(folder)
+            }
+        }
+        sectionNames = names
+        if stored != names { saveSections() }
+    }
+
+    private func saveSections() {
+        guard let data = try? JSONEncoder().encode(sectionNames),
+              let json = String(data: data, encoding: .utf8) else { return }
+        AppHome.defaults.set(json, forKey: Self.sectionsKey)
+    }
+
+    /// Adds a section to the list if it is new. New sections go at the end.
+    private func noteSection(_ name: String) {
+        guard !name.isEmpty, !sectionNames.contains(name) else { return }
+        sectionNames.append(name)
+        saveSections()
+    }
+
+    /// Makes a section, empty or not. Returns the trimmed name, or nil when it was blank.
+    @discardableResult
+    func addSection(_ name: String) -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        noteSection(trimmed)
+        return trimmed
+    }
+
+    /// Sections in the order these bots first appear in them, then the sections none of them
+    /// is in (empty ones, say), in the order they were made. The order a list showed before
+    /// sections were stored is kept; a new section joins at the end.
+    func sectionOrder(for members: [Bot]) -> [String] {
         var seen: [String] = []
-        for bot in bots where !bot.pinned && !bot.hidden {
+        for bot in members {
             if let folder = bot.folder, !folder.isEmpty, !seen.contains(folder) {
                 seen.append(folder)
             }
         }
+        for name in sectionNames where !seen.contains(name) {
+            seen.append(name)
+        }
         return seen
+    }
+
+    /// The sidebar's sections, empty ones included. Pinned and hidden bots do not set the order,
+    /// since the sidebar lists them elsewhere.
+    var folders: [String] {
+        sectionOrder(for: bots.filter { !$0.pinned && !$0.hidden })
+    }
+
+    /// Every section, for pickers and Move to menus: a section holding only pinned or hidden
+    /// bots is still one you can move a bot into.
+    var allSections: [String] {
+        sectionOrder(for: bots)
+    }
+
+    /// Whether a section by this name exists, with or without bots.
+    func sectionExists(_ name: String) -> Bool {
+        sectionNames.contains(name) || bots.contains { $0.folder == name }
     }
 
     /// Bots with no folder. Shown first, above the named folders, because filing is optional.
@@ -1948,26 +2752,44 @@ final class AppModel {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         let trimmed = folder?.trimmingCharacters(in: .whitespaces)
         bots[index].folder = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        if let filed = bots[index].folder { noteSection(filed) }
         persistOrder()
     }
 
-    /// Renames a folder everywhere at once, since the folder *is* the string on each bot.
+    /// Renames a folder everywhere at once, since the folder *is* the string on each bot. A name
+    /// another section already has merges the two: the list keeps that one, in its place.
     func renameFolder(_ old: String, to new: String) {
         let trimmed = new.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, trimmed != old else { return }
         for index in bots.indices where bots[index].folder == old {
             bots[index].folder = trimmed
         }
+        if sectionNames.contains(trimmed) {
+            sectionNames.removeAll { $0 == old }
+        } else if let position = sectionNames.firstIndex(of: old) {
+            sectionNames[position] = trimmed
+        } else {
+            sectionNames.append(trimmed)
+        }
+        saveSections()
         persistOrder()
     }
 
     /// Empties a folder rather than deleting its bots. Deleting a container should never delete
-    /// the things inside it — that is how people lose work they did not mean to.
+    /// the things inside it. That is how people lose work they did not mean to. The section
+    /// itself stays, empty; `deleteSection` is what removes it.
     func dissolveFolder(_ folder: String) {
         for index in bots.indices where bots[index].folder == folder {
             bots[index].folder = nil
         }
         persistOrder()
+    }
+
+    /// Removes a section. Its bots move to Unassigned; no bot, chat or routine is deleted.
+    func deleteSection(_ name: String) {
+        dissolveFolder(name)
+        sectionNames.removeAll { $0 == name }
+        saveSections()
     }
 
     /// Writes every bot back with its current position, which is what both folder membership and
@@ -2004,7 +2826,7 @@ final class AppModel {
 
     func copyTranscript(of bot: Bot) {
         let thread = thread(for: bot.id)
-        var lines = ["\(bot.name) — \(bot.engine.displayName)", ""]
+        var lines = ["\(bot.name), on \(bot.engine.displayName)", ""]
 
         for entry in thread.entries {
             switch entry.kind {
@@ -2020,7 +2842,7 @@ final class AppModel {
                 case .expired: "denied, nobody answered"
                 case nil: "waiting"
                 }
-                lines.append("  [approval: \(approval.summary) — \(decision)]")
+                lines.append("  [approval: \(approval.summary), \(decision)]")
             case .failure(let failure): lines.append("  [failed: \(failure.message)]")
             default: continue
             }
@@ -2046,6 +2868,11 @@ final class AppModel {
         bots.removeAll { $0.id == bot.id }
         threads[bot.id] = nil
         try? store?.deleteBot(id: bot.id.rawValue)
-        if selectedBotID == bot.id { selectedBotID = bots.first?.id }
+        // Selection only, as in toggleHidden: deleting from Team must not throw you into another
+        // bot's chat. A visible bot is preferred so the sidebar has something to highlight; with
+        // none left the selection is nil and the window shows the empty roster.
+        if selectedBotID == bot.id {
+            selectedBotID = bots.first { !$0.hidden }?.id ?? bots.first?.id
+        }
     }
 }

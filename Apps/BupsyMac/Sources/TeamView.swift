@@ -1,5 +1,6 @@
 import BupsyKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The whole team at once: one column per section, a card per bot.
 ///
@@ -12,14 +13,19 @@ struct TeamView: View {
 
     let onOpen: (BotID) -> Void
 
-    @State private var isAddingBot = false
-    @State private var isAddingToSection = false
-    @State private var addingToSection: String?
-    @State private var botsBeforeAdding: Set<BotID> = []
+    /// The full creator, with the section it was opened from. See `TeamCreatorRequest`.
+    @State private var settingUp: TeamCreatorRequest?
     @State private var isAddingSection = false
+    /// A new section with this bot already picked, from the card's "New section…".
+    @State private var sectionFor: Bot?
     @State private var renamingBot: Bot?
+    /// Set to ask before deleting. Owned here, not by the card's menu, which is gone on click.
+    @State private var deletingBot: Bot?
     /// The column a dragged card is over, so it can light up. "" is Unassigned.
     @State private var dropTarget: String?
+    /// The section being renamed or deleted from a column's menu.
+    @State private var renamingSection: TeamSectionRename?
+    @State private var deletingSection: String?
 
     init(onOpen: @escaping (BotID) -> Void = { _ in }) {
         self.onOpen = onOpen
@@ -31,14 +37,9 @@ struct TeamView: View {
     /// sits in the sidebar, not which section it belongs to.
     private var visibleBots: [Bot] { model.bots.filter { !$0.hidden } }
 
+    /// Every section, empty ones included, so a column stays when its last bot leaves.
     private var sections: [String] {
-        var seen: [String] = []
-        for bot in visibleBots {
-            if let folder = bot.folder, !folder.isEmpty, !seen.contains(folder) {
-                seen.append(folder)
-            }
-        }
-        return seen
+        model.sectionOrder(for: visibleBots)
     }
 
     private func members(of section: String?) -> [Bot] {
@@ -47,11 +48,11 @@ struct TeamView: View {
     }
 
     private var workingCount: Int {
-        visibleBots.filter { model.isRunning($0.id) && !model.isWaitingForApproval($0.id) }.count
+        visibleBots.filter { model.mood(for: $0) == .working }.count
     }
 
     private var needsYouCount: Int {
-        visibleBots.filter { model.isWaitingForApproval($0.id) }.count
+        visibleBots.filter { model.needsYou($0) }.count
     }
 
     private var summary: String {
@@ -67,14 +68,20 @@ struct TeamView: View {
     var body: some View {
         VStack(spacing: 0) {
             Topbar(trail: ["Team"]) {
+                // One height for the whole row: the topbar's actions are page actions, 44pt, so
+                // the pink one does not stand taller than the grey ones beside it.
                 HStack(spacing: Theme.Space.snug) {
                     if !visibleBots.isEmpty {
                         Button { isAddingSection = true } label: {
-                            Label("New section", systemImage: "folder.fill")
+                            Label("New section", systemImage: "rectangle.stack")
                         }
-                        .buttonStyle(QuietButton(compact: true))
+                        .buttonStyle(QuietButton())
                     }
-                    Button { isAddingBot = true } label: {
+                    Button { settingUp = TeamCreatorRequest(section: nil) } label: {
+                        Label("Set up a bot yourself", systemImage: "slider.horizontal.3")
+                    }
+                    .buttonStyle(QuietButton())
+                    Button(action: quickCreate) {
                         Label("New bot", systemImage: "plus")
                     }
                     .buttonStyle(PrimaryButton())
@@ -82,38 +89,68 @@ struct TeamView: View {
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.page - 8) {
+                VStack(alignment: .leading, spacing: Theme.Space.pageSide) {
                     header
-                    if visibleBots.isEmpty {
-                        EmptyState(title: "No bots yet",
-                                   message: "Make one and it shows up here, ready to file into a section.") {
-                            Button { isAddingBot = true } label: {
-                                Label("New bot", systemImage: "plus")
+                    if visibleBots.isEmpty && !model.bots.isEmpty {
+                        // Every bot is hidden from the sidebar, not gone: say so, and offer them back.
+                        EmptyState(title: "All your bots are hidden",
+                                   message: "They're still here, with their chats and routines. Show them to put them back in the sidebar and on this page.") {
+                            Button {
+                                for bot in model.bots where bot.hidden { model.toggleHidden(bot) }
+                            } label: {
+                                Label("Show them", systemImage: "eye")
                             }
                             .buttonStyle(PrimaryButton())
+                        }
+                        .padding(.top, Theme.Space.page)
+                    } else if visibleBots.isEmpty {
+                        EmptyState(title: "No bots yet",
+                                   message: "Make one and it shows up here, ready to file into a section.") {
+                            HStack(spacing: Theme.Space.snug) {
+                                Button(action: quickCreate) {
+                                    Label("New bot", systemImage: "plus")
+                                }
+                                .buttonStyle(PrimaryButton())
+                                Button { settingUp = TeamCreatorRequest(section: nil) } label: {
+                                    Label("Set up a bot yourself", systemImage: "slider.horizontal.3")
+                                }
+                                .buttonStyle(QuietButton())
+                            }
                         }
                         .padding(.top, Theme.Space.page)
                     } else {
                         board
                     }
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, Theme.Space.pageSide)
                 .padding(.top, Theme.Space.section)
                 .padding(.bottom, Theme.Space.page)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .sheet(isPresented: $isAddingBot) { BotCreatorSheet() }
-        .background {
-            Color.clear.sheet(isPresented: $isAddingToSection, onDismiss: { fileNewBots() }) {
-                BotCreatorSheet()
-            }
+        .sheet(item: $settingUp) { request in
+            BotCreatorSheet(section: request.section)
         }
         .background {
             Color.clear.sheet(isPresented: $isAddingSection) { TeamNewSectionSheet() }
         }
         .background {
+            Color.clear.sheet(item: $sectionFor) { TeamNewSectionSheet(preselected: $0.id) }
+        }
+        .background {
             Color.clear.sheet(item: $renamingBot) { BotCreatorSheet(editing: $0) }
+        }
+        .background {
+            Color.clear.confirmsBotDeletion($deletingBot) { model.deleteBot($0) }
+        }
+        .background {
+            Color.clear.sheet(item: $renamingSection) { RenameFolderSheet(folder: $0.name) }
+        }
+        .background {
+            Color.clear.confirmsSectionDeletion($deletingSection) { section in
+                model.deleteSection(section)
+                SidebarFolds.unfold(section)
+            }
         }
     }
 
@@ -146,12 +183,12 @@ struct TeamView: View {
     private var pills: some View {
         HStack(spacing: Theme.Space.snug) {
             if workingCount > 0 {
-                TeamPill(text: "\(workingCount) working", tone: palette.success)
+                Badge(text: "\(workingCount) working", tone: .success, dot: true)
             }
             if needsYouCount > 0 {
-                TeamPill(text: "\(needsYouCount) needs you", tone: palette.primary)
+                Badge(text: "\(needsYouCount) needs you", tone: .primary, dot: true)
             }
-            TeamPill(text: summary, tone: nil)
+            Badge(text: summary, tone: .neutral)
         }
         .fixedSize()
     }
@@ -176,36 +213,47 @@ struct TeamView: View {
         let title = section ?? "Unassigned"
         let key = section ?? ""
         let targeted = dropTarget == key
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: Theme.Space.compact) {
             HStack(spacing: Theme.Space.snug) {
-                Image(systemName: section == nil ? "tray.fill" : "folder.fill")
+                // Sections wear the section icon everywhere; a folder means a working folder.
+                Image(systemName: section == nil ? "tray" : "rectangle.stack")
                     .font(.system(size: Theme.scaled(13)))
                     .foregroundStyle(palette.mutedForeground)
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(Theme.Typography.heading)
                     .foregroundStyle(palette.foreground)
                     .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
                 Text("\(bots.count)")
                     .font(Theme.Typography.caption)
                     .monospacedDigit()
                     .foregroundStyle(palette.mutedForeground)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(palette.background, in: .rect(cornerRadius: 6))
+                    .padding(.horizontal, Theme.Space.tight)
+                    .padding(.vertical, Theme.Space.hairline)
+                    .background(palette.background, in: .rect(cornerRadius: Theme.Radius.sm))
+                    .accessibilityLabel(bots.count == 1 ? "1 bot" : "\(bots.count) bots")
                 Spacer(minLength: 0)
                 Button { startAdding(to: section) } label: {
                     Image(systemName: "plus")
                         .font(.system(size: Theme.scaled(13)))
-                        .foregroundStyle(palette.mutedForeground)
-                        .frame(width: 28, height: 28)
+                        .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                         .contentShape(.rect)
                 }
                 .buttonStyle(SidebarIconButtonStyle())
-                .help(section.map { "New bot in \($0)" } ?? "New bot")
+                .help(section.map { "Set up a bot yourself in \($0)" } ?? "Set up a bot yourself")
+                .accessibilityLabel(section.map { "Set up a bot yourself in \($0)" } ?? "Set up a bot yourself")
             }
-            .padding(.horizontal, 4)
-            .padding(.top, 2)
-            .padding(.bottom, 4)
+            .padding(.horizontal, Theme.Space.xs)
+            .padding(.top, Theme.Space.hairline)
+            .padding(.bottom, Theme.Space.xs)
+            .contextMenu {
+                if let section {
+                    Button("Rename section…") { renamingSection = TeamSectionRename(name: section) }
+                    Divider()
+                    Button("Delete section…", role: .destructive) { deletingSection = section }
+                }
+            }
 
             if bots.isEmpty {
                 emptyColumn(title: title, section: section)
@@ -215,23 +263,27 @@ struct TeamView: View {
                         bot: bot,
                         sections: sections,
                         onOpen: { onOpen(bot.id) },
-                        onRename: { renamingBot = bot })
-                    .draggable(bot.id.rawValue)
+                        onRename: { renamingBot = bot },
+                        onDelete: { deletingBot = bot },
+                        onNewSection: { sectionFor = bot })
+                    // A typed reference, not the id as plain text: dropped on a text field, a
+                    // string payload pasted the raw id into it.
+                    .draggable(TeamBotDrag(id: bot.id.rawValue))
                 }
             }
         }
         .padding(Theme.Space.step)
         .frame(maxWidth: .infinity, minHeight: 260, alignment: .top)
         .background(targeted ? palette.cardHover : palette.card,
-                    in: .rect(cornerRadius: 14, style: .continuous))
+                    in: .rect(cornerRadius: Theme.Radius.card, style: .continuous))
         .overlay {
             if targeted {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                     .strokeBorder(palette.primary.opacity(0.6), lineWidth: 1.5)
             }
         }
-        .dropDestination(for: String.self) { items, _ in
-            move(items, to: section)
+        .dropDestination(for: TeamBotDrag.self) { items, _ in
+            move(items.map(\.id), to: section)
         } isTargeted: { inside in
             if inside {
                 dropTarget = key
@@ -242,22 +294,21 @@ struct TeamView: View {
     }
 
     private func emptyColumn(title: String, section: String?) -> some View {
-        EmptyState(
-            title: section == nil ? "Every bot is in a section" : "No bots in \(title) yet",
+        // Hidden bots still belong here, so it is not empty, and deleting it would move them.
+        let onlyHidden = section != nil && model.bots.contains { $0.folder == section && $0.hidden }
+        return EmptyState(
+            title: section == nil ? "Every bot is in a section"
+                : onlyHidden ? "Its bots are hidden" : "No bots in \(title) yet",
             message: section == nil
                 ? "Drag a bot here to take it out of its section."
                 : "Drag a bot here, or make one that starts in this section.",
+            mood: .sleeping,
             faceSize: 52
         ) {
             Button { startAdding(to: section) } label: {
-                Label("Add a bot", systemImage: "plus")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(palette.foreground)
-                    .padding(.horizontal, Theme.Space.step)
-                    .frame(height: 32)
-                    .contentShape(.rect)
+                Label("Set up a bot yourself", systemImage: "plus")
             }
-            .buttonStyle(SidebarIconButtonStyle())
+            .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .md))
         }
         .frame(maxWidth: .infinity, minHeight: 180)
         .overlay {
@@ -277,12 +328,13 @@ struct TeamView: View {
             .foregroundStyle(palette.mutedForeground)
             .frame(maxWidth: .infinity, minHeight: 260)
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                     .strokeBorder(palette.border, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .help("Make a new section")
     }
 
     // MARK: Actions
@@ -300,31 +352,40 @@ struct TeamView: View {
         return moved
     }
 
-    /// Opens the new-bot sheet, and files whatever it made into `section` once it closes.
+    /// Opens the full creator with its Section field already set to `section`, so the form shows
+    /// where the bot lands.
     private func startAdding(to section: String?) {
-        guard let section else {
-            isAddingBot = true
-            return
-        }
-        botsBeforeAdding = Set(model.bots.map(\.id))
-        addingToSection = section
-        isAddingToSection = true
+        settingUp = TeamCreatorRequest(section: section)
     }
 
-    private func fileNewBots() {
-        defer {
-            addingToSection = nil
-            botsBeforeAdding = []
-        }
-        guard let section = addingToSection else { return }
-        for bot in model.bots where !botsBeforeAdding.contains(bot.id) {
-            model.setFolder(bot, section)
-        }
+    /// "New bot": made at once, and it asks what it is for.
+    private func quickCreate() {
+        if let id = model.quickCreateBot(engine: model.defaultNewBotEngine) { onOpen(id) }
     }
 }
 
 // MARK: - A bot's card
 
+/// A bot being dragged between Team columns.
+///
+/// Its own type rather than the id as a `String`: a string drag is plain text to every other
+/// drop target, so a card dropped on a text field pasted the raw id into it.
+struct TeamBotDrag: Codable, Sendable, Transferable {
+    let id: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .bupsyBotReference)
+    }
+}
+
+extension UTType {
+    /// A Bupsy bot, by id. Only ever dragged within the app. Computed, so no global state.
+    static var bupsyBotReference: UTType { UTType(exportedAs: "si.bupsy.mac.bot-reference") }
+}
+
+/// One bot on the board. The whole card opens the chat: by click, by Return or Space once it
+/// has keyboard focus, or by VoiceOver's default action. Its menu is the same `BotMenu` the
+/// sidebar row uses.
 struct TeamBotCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
@@ -332,43 +393,41 @@ struct TeamBotCard: View {
     let sections: [String]
     let onOpen: () -> Void
     let onRename: () -> Void
+    /// Asks the board to confirm. The menu cannot host the dialog: it closes on click.
+    let onDelete: () -> Void
+    /// Opens the new-section sheet with this bot picked.
+    let onNewSection: () -> Void
     @State private var hovering = false
 
     init(bot: Bot, sections: [String], onOpen: @escaping () -> Void,
-         onRename: @escaping () -> Void) {
+         onRename: @escaping () -> Void, onDelete: @escaping () -> Void,
+         onNewSection: @escaping () -> Void = {}) {
         self.bot = bot
         self.sections = sections
         self.onOpen = onOpen
         self.onRename = onRename
+        self.onDelete = onDelete
+        self.onNewSection = onNewSection
     }
 
-    private var mood: BotMood {
-        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
-        if model.isRunning(bot.id) { return .working }
-        return .idle
-    }
+    private var mood: BotMood { model.mood(for: bot) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.step) {
             HStack(spacing: Theme.Space.step) {
-                BotFace(bot: bot, mood: mood, size: 44)
+                // A board of idle faces holds still; only a bot with something going on moves.
+                BotFace(bot: bot, mood: mood, size: Theme.Size.tile, still: mood == .idle || mood == .sleeping)
                     .overlay(alignment: .bottomTrailing) { statusDot }
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                     HStack(spacing: Theme.Space.tight) {
                         Text(bot.name)
                             .font(.system(size: Theme.scaled(14), weight: .medium))
                             .foregroundStyle(palette.foreground)
                             .lineLimit(1)
                         if let role = bot.role, !role.isEmpty {
-                            Text(role)
-                                .font(.system(size: Theme.scaled(10)))
-                                .foregroundStyle(palette.mutedForeground)
-                                .lineLimit(1)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(palette.card, in: .rect(cornerRadius: 6))
-                                .fixedSize()
+                            RoleTag(text: role)
                         }
                     }
                     Text(status)
@@ -399,46 +458,41 @@ struct TeamBotCard: View {
         .onHover { hovering = $0 }
         .onTapGesture(perform: onOpen)
         .help("Open \(bot.name)")
+        // Reachable without a mouse: Tab lands on the card, Return or Space opens it.
+        .focusable()
+        .onKeyPress(.return) { onOpen(); return .handled }
+        .onKeyPress(.space) { onOpen(); return .handled }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibleName)
+        .accessibilityValue(status)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onOpen() }
+    }
+
+    private var accessibleName: String {
+        guard let role = bot.role, !role.isEmpty else { return bot.name }
+        return "\(bot.name), \(role)"
     }
 
     private var menu: some View {
         Menu {
-            Section("Move to") {
-                ForEach(sections, id: \.self) { section in
-                    Button {
-                        model.setFolder(bot, section)
-                    } label: {
-                        Label(section, systemImage: bot.folder == section ? "checkmark" : "folder")
-                    }
-                }
-                Button {
-                    model.setFolder(bot, nil)
-                } label: {
-                    Label("Unassigned", systemImage: (bot.folder ?? "").isEmpty ? "checkmark" : "tray")
-                }
-            }
-            Divider()
-            Button { model.togglePin(bot) } label: {
-                Label(bot.pinned ? "Unpin" : "Pin to top", systemImage: bot.pinned ? "pin.slash" : "pin")
-            }
-            Button(action: onRename) { Label("Rename", systemImage: "pencil") }
-            Button { model.shuffleFace(bot) } label: { Label("Shuffle face", systemImage: "sparkles") }
-            Button(action: onOpen) { Label("Open chat", systemImage: "bubble.left") }
-            Divider()
-            Button(role: .destructive) { model.deleteBot(bot) } label: {
-                Label("Delete bot", systemImage: "trash")
-            }
+            BotMenu(bot: bot,
+                    onOpen: onOpen,
+                    onNewFolder: onNewSection,
+                    onRename: onRename,
+                    onDelete: onDelete)
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: Theme.scaled(13), weight: .semibold))
                 .foregroundStyle(palette.mutedForeground)
-                .frame(width: 28, height: 28)
+                .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                 .contentShape(.rect)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .help("\(bot.name) options")
+        .accessibilityLabel("\(bot.name) options")
     }
 
     private func chip(_ text: String) -> some View {
@@ -447,8 +501,8 @@ struct TeamBotCard: View {
             .foregroundStyle(palette.mutedForeground)
             .lineLimit(1)
             .padding(.horizontal, Theme.Space.snug)
-            .padding(.vertical, 2)
-            .background(palette.card, in: .rect(cornerRadius: 6))
+            .padding(.vertical, Theme.Space.hairline)
+            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.sm))
     }
 
     /// What it is doing, in one line. Never blank: an empty line makes a card look broken.
@@ -460,8 +514,12 @@ struct TeamBotCard: View {
         case .working:
             return preview.map { "Working: \($0)" } ?? "Working"
         case .failed:
-            return preview ?? "Last run failed"
-        case .idle, .done, .sleeping:
+            return "Last run failed"
+        case .done:
+            return preview.map { "Done: \($0)" } ?? "Done"
+        case .sleeping:
+            return model.isPaused ? "Paused" : "Asleep"
+        case .idle:
             if let preview { return preview }
             if let job = bot.personaPrompt?.split(separator: "\n").first, !job.isEmpty {
                 return String(job)
@@ -470,7 +528,17 @@ struct TeamBotCard: View {
         }
     }
 
+    /// The line of text. Red text uses the readable red, not the fill red.
     private var statusColour: Color {
+        switch mood {
+        case .waitingForYou: palette.foreground
+        case .working: palette.success
+        case .failed: palette.destructiveText
+        case .idle, .done, .sleeping: palette.mutedForeground
+        }
+    }
+
+    private var dotColour: Color {
         switch mood {
         case .waitingForYou: palette.primary
         case .working: palette.success
@@ -481,9 +549,9 @@ struct TeamBotCard: View {
 
     @ViewBuilder
     private var statusDot: some View {
-        if mood == .working || mood == .waitingForYou {
+        if mood == .working || mood == .waitingForYou || mood == .failed {
             Circle()
-                .fill(mood == .working ? palette.success : palette.primary)
+                .fill(dotColour)
                 .frame(width: 10, height: 10)
                 .overlay(Circle().stroke(palette.background, lineWidth: 2))
                 .offset(x: 2, y: 2)
@@ -510,9 +578,9 @@ struct TeamBotCard: View {
     }
 }
 
-/// A quiet pill with an optional coloured dot, for the page header's counts.
+/// A quiet pill with an optional coloured dot. Kept for older call sites; it draws a `Badge`,
+/// the app's one status pill.
 struct TeamPill: View {
-    @Environment(\.palette) private var palette
     let text: String
     let tone: Color?
 
@@ -522,28 +590,29 @@ struct TeamPill: View {
     }
 
     var body: some View {
-        HStack(spacing: 5) {
-            if let tone {
-                Circle().fill(tone).frame(width: 5, height: 5)
-            }
-            Text(text)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(tone ?? palette.mutedForeground)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, Theme.Space.snug)
-        .frame(height: 26)
-        .background((tone ?? palette.foreground).opacity(tone == nil ? 0.05 : 0.12),
-                    in: .rect(cornerRadius: 6))
+        Badge(text: text, tone: tone, dot: tone != nil)
     }
+}
+
+/// Which section the full creator was opened from, nil for none. Its own type so one
+/// `.sheet(item:)` covers both the toolbar button and each column's "+".
+struct TeamCreatorRequest: Identifiable {
+    let id = UUID()
+    let section: String?
+}
+
+/// A section to rename from a column's menu. Its own type because `.sheet(item:)` needs
+/// `Identifiable`, which `String` is not.
+struct TeamSectionRename: Identifiable {
+    let name: String
+    var id: String { name }
 }
 
 // MARK: - New section
 
-/// Makes a section by moving bots into it.
+/// Makes a section, and moves bots into it if any are picked.
 ///
-/// A section exists exactly as long as a bot is in it, so making one and filling it are the same
-/// action: pick a name and at least one bot.
+/// A section stays until it is deleted, so it can start empty and be filled later.
 struct TeamNewSectionSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
@@ -551,6 +620,8 @@ struct TeamNewSectionSheet: View {
     let preselected: BotID?
     @State private var name = ""
     @State private var chosen: Set<BotID> = []
+    /// Saved into the sidebar's folded sections (`SidebarFolds`) when the section is created.
+    @State private var foldByDefault = false
 
     init(preselected: BotID? = nil) {
         self.preselected = preselected
@@ -560,12 +631,12 @@ struct TeamNewSectionSheet: View {
     private var trimmed: String { name.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
-        SheetFrame(title: "New section", icon: "folder.fill",
+        SheetFrame(title: "New section", icon: "rectangle.stack",
                    subtitle: "A sidebar group for bots that work on the same thing.",
                    width: 480, primaryVerb: "create") {
-            Field(label: "Name", hint: "A section stays in the sidebar while it has bots in it.") {
+            Field(label: "Name", hint: "A section stays in the sidebar until you delete it, even when it's empty.") {
                 TextField("", text: $name, prompt: Text("Clients"))
-                    .textFieldStyle(BupsyFieldStyle())
+                    .bupsyField()
                     .onSubmit(commit)
             }
 
@@ -594,22 +665,50 @@ struct TeamNewSectionSheet: View {
                     RoundedRectangle(cornerRadius: Theme.Radius.base).strokeBorder(palette.border)
                 }
             }
+
+            foldRow
         } actions: {
             Button("Cancel") { dismiss() }
                 .buttonStyle(QuietButton())
             Button("Create section", action: commit)
                 .buttonStyle(PrimaryButton())
                 .keyboardShortcut(.defaultAction)
-                .disabled(trimmed.isEmpty || chosen.isEmpty)
+                .disabled(trimmed.isEmpty)
         }
         .onAppear {
             if let preselected { chosen.insert(preselected) }
         }
     }
 
+    /// Folded, the section header still shows how many bots it holds, in pink when one of them
+    /// needs you, so folding it hides nothing urgent.
+    private var foldRow: some View {
+        HStack(spacing: Theme.Space.snug) {
+            VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                Text("Fold it in the sidebar by default")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                Text("Bots that need you still show their count when it's folded.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: Theme.Space.snug)
+            Toggle("Fold it in the sidebar by default", isOn: $foldByDefault)
+                .labelsHidden()
+                .bupsySwitch()
+        }
+        .padding(.horizontal, Theme.Space.step)
+        .padding(.vertical, Theme.Space.step)
+        .background(palette.background, in: .rect(cornerRadius: Theme.Radius.base))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.base).strokeBorder(palette.border)
+        }
+    }
+
     private var countLine: String {
         switch chosen.count {
-        case 0: "Pick at least one"
+        case 0: "Optional. You can add bots later"
         case 1: "1 bot moves here"
         default: "\(chosen.count) bots move here"
         }
@@ -623,7 +722,7 @@ struct TeamNewSectionSheet: View {
             return isIn ? "Moves from \(current)" : "In \(current)"
         }()
         return HStack(spacing: Theme.Space.snug) {
-            BotFace(bot: bot, mood: .idle, size: 26)
+            BotFace(bot: bot, mood: .idle, size: 26, still: true)
             Text(bot.name)
                 .font(Theme.Typography.body)
                 .foregroundStyle(palette.foreground)
@@ -635,25 +734,33 @@ struct TeamNewSectionSheet: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            Toggle("", isOn: Binding(
+            Toggle("Move \(bot.name) here", isOn: Binding(
                 get: { chosen.contains(bot.id) },
                 set: { on in
                     if on { chosen.insert(bot.id) } else { chosen.remove(bot.id) }
                 }
             ))
             .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            .bupsySwitch()
         }
         .padding(.horizontal, Theme.Space.step)
-        .frame(height: 44)
+        .frame(height: Theme.Size.controlLg)
         .contentShape(.rect)
     }
 
     private func commit() {
-        guard !trimmed.isEmpty, !chosen.isEmpty else { return }
+        guard !trimmed.isEmpty else { return }
+        let isNew = !model.sectionExists(trimmed)
+        model.addSection(trimmed)
         for bot in model.bots where chosen.contains(bot.id) {
             model.setFolder(bot, trimmed)
+        }
+        // The same store the sidebar's fold caret writes. Off leaves an existing section's fold
+        // alone and only makes sure a brand new one starts open.
+        if foldByDefault {
+            SidebarFolds.fold(trimmed)
+        } else if isNew {
+            SidebarFolds.unfold(trimmed)
         }
         dismiss()
     }

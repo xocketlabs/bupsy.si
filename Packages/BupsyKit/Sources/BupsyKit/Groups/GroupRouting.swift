@@ -13,12 +13,32 @@ public enum GroupRouting {
         public init(id: String, name: String) { self.id = id; self.name = name }
     }
 
-    /// The most bot replies one message of yours can set off, counting hand-offs between bots.
+    /// The most bot replies one message of yours can ever set off, counting hand-offs between
+    /// bots, whatever a group is set to.
     ///
     /// Without a ceiling two bots that each end by @mentioning the other would talk forever, on
-    /// the person's own subscription, with nobody watching. Six is enough for a real hand-off chain
-    /// and small enough that a runaway is noticed rather than discovered on a usage page.
-    public static let maxBotTurnsPerMessage = 6
+    /// the person's own subscription, with nobody watching. Each group picks its own, smaller or
+    /// equal, number from `turnLimitChoices`; this is the hard stop behind all of them, so a
+    /// damaged or hand-edited row can never mean "never check with me".
+    public static let maxBotTurnsPerMessage = 10
+
+    /// What a group can be set to check with the person after, as the New group sheet offers it.
+    public static let turnLimitChoices = [3, 5, 10]
+
+    /// The setting for a new group, and for every group made before the setting existed.
+    public static let defaultTurnLimit = 5
+
+    /// The turn limit a group actually runs with: what it stored, kept between one turn and the
+    /// hard ceiling.
+    public static func effectiveTurnLimit(_ stored: Int) -> Int {
+        min(max(stored, 1), maxBotTurnsPerMessage)
+    }
+
+    /// Whether the group must pause and check with the person before another bot turn, having
+    /// taken `taken` turns since they last spoke.
+    public static func shouldPause(afterTaking taken: Int, limit stored: Int) -> Bool {
+        taken >= effectiveTurnLimit(stored)
+    }
 
     /// Members @mentioned in `text`, in the order they first appear, each once.
     ///

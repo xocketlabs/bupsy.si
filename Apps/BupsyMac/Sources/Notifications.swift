@@ -21,37 +21,75 @@ final class Notifier {
         authorised = (try? await centre.requestAuthorization(options: [.alert, .sound])) ?? false
     }
 
-    func needsApproval(bot: String, tool: String, summary: String) {
+    /// - Parameter approvalID: the gate request's id, when the caller has it. With it, Allow and
+    ///   Deny on the banner answer exactly that request; without it they match on bot, tool and
+    ///   summary, which is what the banner showed.
+    /// - Parameter botID: carried in the banner so a press finds the bot by id, not by a name
+    ///   that may have changed since, and so a click can open the right bot.
+    func needsApproval(bot: String, tool: String, summary: String, approvalID: String? = nil,
+                       botID: BotID? = nil) {
+        // A bot's question with set answers comes through here too, as "a question". Allow and
+        // Deny mean nothing for it, so it gets a plain banner that opens the app.
+        let isToolRequest = tool != "a question"
+        var info: [String: String] = [:]
+        if isToolRequest {
+            info = [ApprovalNotificationActions.botKey: bot,
+                    ApprovalNotificationActions.toolKey: tool,
+                    ApprovalNotificationActions.summaryKey: summary]
+            if let approvalID { info[ApprovalNotificationActions.approvalKey] = approvalID }
+        }
+        // One banner per request, so answering it in the app can take exactly that banner away.
         post(
-            id: "approval-\(bot)-\(summary.hashValue)",
+            id: approvalID.map { Self.approvalIdentifier($0) } ?? "approval-\(bot)-\(summary.hashValue)",
             title: "\(bot) needs you",
             body: summary.isEmpty ? "Wants to use \(tool)" : summary,
-            sound: true
+            sound: true,
+            category: isToolRequest ? ApprovalNotificationActions.category : nil,
+            info: info,
+            botID: botID
         )
     }
 
-    func objectiveNeedsYou(bot: String, question: String) {
+    /// The notification identifier for one approval request.
+    static func approvalIdentifier(_ approvalID: String) -> String { "approval-\(approvalID)" }
+
+    /// Takes away the banner for a request that was answered, or that can no longer be answered,
+    /// so Allow on a stale banner is never offered.
+    func clearApproval(_ approvalID: String) {
+        let ids = [Self.approvalIdentifier(approvalID)]
+        let centre = UNUserNotificationCenter.current()
+        centre.removeDeliveredNotifications(withIdentifiers: ids)
+        centre.removePendingNotificationRequests(withIdentifiers: ids)
+    }
+
+    func objectiveNeedsYou(bot: String, question: String, botID: BotID? = nil) {
         post(id: "objective-\(bot)-\(question.hashValue)",
-             title: "\(bot) needs you", body: question, sound: true)
+             title: "\(bot) needs you", body: question, sound: true, botID: botID)
     }
 
     /// A routine finished. Quiet, because this is information rather than a request.
-    func routineFinished(bot: String, routine: String, summary: String?) {
+    func routineFinished(bot: String, routine: String, summary: String?, botID: BotID? = nil) {
         post(
             id: "routine-\(bot)-\(routine)",
             title: "\(bot) finished \(routine)",
             body: summary ?? "Open Bupsy to see what it did.",
-            sound: false
+            sound: false,
+            botID: botID
         )
     }
 
-    func failed(bot: String, reason: String) {
-        post(id: "failed-\(bot)", title: "\(bot) stopped", body: reason, sound: false)
+    func failed(bot: String, reason: String, botID: BotID? = nil) {
+        post(id: "failed-\(bot)", title: "\(bot) stopped", body: reason, sound: false, botID: botID)
     }
 
-    private func post(id: String, title: String, body: String, sound: Bool) {
+    private func post(id: String, title: String, body: String, sound: Bool,
+                      category: String? = nil, info: [String: String] = [:],
+                      botID: BotID? = nil) {
         // You are looking at the app; a banner over it is noise.
         guard !NSApp.isActive else { return }
+        var info = info
+        // Every banner says which bot it is about, so a click can open that bot.
+        if let botID { info[ApprovalNotificationActions.botIDKey] = botID.rawValue }
 
         Task {
             await requestAuthorizationIfNeeded()
@@ -61,12 +99,133 @@ final class Notifier {
             content.title = title
             content.body = String(body.prefix(240))
             if sound { content.sound = .default }
+            if let category { content.categoryIdentifier = category }
+            if !info.isEmpty { content.userInfo = info }
 
             // A stable id per cause, so ten tool calls in one run replace each other rather than
             // stacking ten banners.
             try? await UNUserNotificationCenter.current().add(
                 UNNotificationRequest(identifier: id, content: content, trigger: nil))
         }
+    }
+}
+
+/// Allow and Deny on an approval banner, answered without opening the window.
+///
+/// The buttons call `AppModel.decide`, the same path the in-app approval card, the attention
+/// inbox and the menu bar use, so a decision made from a banner is recorded, audited and shown
+/// in the thread exactly like one made anywhere else. If the request was already answered or
+/// timed out by the time the button is pressed, nothing matches and nothing happens.
+@MainActor
+final class ApprovalNotificationActions: NSObject, UNUserNotificationCenterDelegate {
+    static let category = "bupsy.approval"
+    static let allowAction = "bupsy.approval.allow"
+    static let denyAction = "bupsy.approval.deny"
+    static let botKey = "bot"
+    static let toolKey = "tool"
+    static let summaryKey = "summary"
+    static let approvalKey = "approval"
+    static let botIDKey = "botID"
+
+    private weak var model: AppModel?
+    /// A press that arrived before the model was attached, as at a launch the banner caused.
+    private var waiting: [(action: String, info: [String: String])] = []
+
+    override init() {
+        super.init()
+        // Set as early as possible: a press on a banner that launched the app is delivered to
+        // whichever delegate is set when it finishes launching.
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    /// Registers the category and starts answering. Registering needs no permission, so this is
+    /// safe at launch; the permission prompt still waits for the first notification.
+    func attach(to model: AppModel) {
+        self.model = model
+        let allow = UNNotificationAction(identifier: Self.allowAction, title: "Allow", options: [])
+        let deny = UNNotificationAction(identifier: Self.denyAction, title: "Deny", options: [.destructive])
+        let category = UNNotificationCategory(identifier: Self.category, actions: [allow, deny],
+                                              intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+        let pending = waiting
+        waiting = []
+        for item in pending { handle(action: item.action, info: item.info) }
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        // Copied out as plain strings here, so nothing that is not Sendable crosses to the main
+        // actor.
+        let action = response.actionIdentifier
+        var info: [String: String] = [:]
+        for (key, value) in response.notification.request.content.userInfo {
+            if let key = key as? String, let value = value as? String { info[key] = value }
+        }
+        Task { @MainActor in
+            self.handle(action: action, info: info)
+        }
+        completionHandler()
+    }
+
+    private func handle(action: String, info: [String: String]) {
+        if action == UNNotificationDefaultActionIdentifier {
+            openBot(info: info)
+            return
+        }
+        guard action == Self.allowAction || action == Self.denyAction else { return }
+        guard let model else {
+            waiting.append((action: action, info: info))
+            return
+        }
+        // By id: a bot renamed after the banner went out is still the same bot. The name is only
+        // a fallback for a banner posted before ids were included.
+        let byID = info[Self.botIDKey].flatMap { id in model.bots.first { $0.id.rawValue == id } }
+        let byName = info[Self.botKey].flatMap { name in model.bots.first { $0.name == name } }
+        guard let bot = byID ?? (info[Self.botIDKey] == nil ? byName : nil),
+              let approval = Self.pending(for: bot, info: info, in: model)
+        else { return }
+        model.decide(approval, allow: action == Self.allowAction, for: bot)
+    }
+
+    /// A click on the banner itself: the window comes forward (reopened if it was closed) on the
+    /// bot the banner was about. Every banner carries the bot's id; the name is the fallback for
+    /// one posted before ids were included.
+    private func openBot(info: [String: String]) {
+        guard let model else {
+            waiting.append((action: UNNotificationDefaultActionIdentifier, info: info))
+            return
+        }
+        let byID = info[Self.botIDKey].flatMap { id in model.bots.first { $0.id.rawValue == id } }
+        let byName = info[Self.botKey].flatMap { name in model.bots.first { $0.name == name } }
+        model.showMainWindow()
+        if let bot = byID ?? (info[Self.botIDKey] == nil ? byName : nil) {
+            model.open(bot.id)
+        }
+    }
+
+    /// The undecided request the banner was about: by id when it carried one, otherwise the one
+    /// with the same tool and summary, in the bot's own thread or its thread inside a group.
+    private static func pending(for bot: Bot, info: [String: String], in model: AppModel) -> PendingApproval? {
+        var candidates: [PendingApproval] = []
+        for entry in model.thread(for: bot.id).entries {
+            if case .approval(let approval) = entry.kind, approval.decided == nil {
+                candidates.append(approval)
+            }
+        }
+        for group in model.groups {
+            for (member, approval) in model.pendingApprovals(in: group) where member.id == bot.id {
+                candidates.append(approval)
+            }
+        }
+        if let id = info[approvalKey] {
+            return candidates.first { $0.id == id }
+        }
+        let tool = info[toolKey] ?? ""
+        let summary = info[summaryKey] ?? ""
+        return candidates.first { $0.tool == tool && $0.summary == summary }
     }
 }
 

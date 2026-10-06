@@ -32,31 +32,39 @@ struct BotFace: View {
     /// A face someone picked. nil falls back to the default shape.
     var chosenShape: BotShape?
     var chosenColour: Int?
+    /// One frame, no timeline. For faces that are on screen but not the point: an idle bot in a
+    /// list costs nothing this way, where 30 frames a second each adds up across a roster.
+    var still = false
+    /// Set where the face is drawn outside the view tree (an image render), whose environment
+    /// would otherwise always read as light.
+    var scheme: ColorScheme?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
 
     /// The face a bot actually wears, its chosen one if it has one.
-    init(bot: Bot, mood: BotMood, size: CGFloat = 26) {
+    init(bot: Bot, mood: BotMood, size: CGFloat = 26, still: Bool = false) {
         self.hue = bot.avatarHue
         self.mood = mood
         self.size = size
         self.chosenShape = bot.avatarShape
         self.chosenColour = bot.avatarColour
+        self.still = still
     }
 
     init(hue: Double, mood: BotMood, size: CGFloat = 26,
-         shape: BotShape? = nil, colour: Int? = nil) {
+         shape: BotShape? = nil, colour: Int? = nil, still: Bool = false) {
         self.hue = hue
         self.mood = mood
         self.size = size
         self.chosenShape = shape
         self.chosenColour = colour
+        self.still = still
     }
 
     var body: some View {
         Group {
-            if reduceMotion {
+            if reduceMotion || still {
                 Canvas { context, canvas in draw(in: &context, size: canvas, time: 0.4) }
             } else {
                 TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
@@ -138,12 +146,13 @@ struct BotFace: View {
 
         let tint = BotShape.rgbPalette[(chosenColour ?? Self.derivedColour(forHue: hue))
                                        % BotShape.rgbPalette.count]
-        let ink = MascotInk(body: tint, dark: colorScheme == .dark)
+        let ink = MascotInk(body: tint, dark: (scheme ?? colorScheme) == .dark)
         let motion = MascotMotion(mood: mood, time: time + phase * 10)
         // Under 56pt the extras (sparks, z's, sweat, the ground shadow) turn to noise.
         let mini = unit < 56
 
-        MascotDrawing(shape: shape, mood: mood, ink: ink, motion: motion, mini: mini)
+        MascotDrawing(shape: shape, mood: mood, ink: ink, motion: motion, mini: mini,
+                      pointsPerUnit: scale)
             .draw(in: &context)
     }
 }
@@ -310,6 +319,15 @@ private struct MascotDrawing {
     let ink: MascotInk
     let motion: MascotMotion
     let mini: Bool
+    /// On-screen points per drawing unit, so mini faces can keep thin parts visible.
+    var pointsPerUnit: CGFloat = 1
+
+    /// A width in drawing units that is never thinner than `minimum` points on screen. At
+    /// sidebar size the design's widths come out under a point and the part disappears.
+    private func atLeast(_ units: CGFloat, points minimum: CGFloat) -> CGFloat {
+        guard mini, pointsPerUnit > 0 else { return units }
+        return max(units, minimum / pointsPerUnit)
+    }
 
     private func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x, y: y) }
 
@@ -487,8 +505,15 @@ private struct MascotDrawing {
         case .failed:
             for cx: CGFloat in [46, 74] {
                 context.fill(ellipse(cx, 63, 12, 12), with: .color(.white))
-                context.stroke(rotated(spiral(cx - 0.6, 63), motion.spin, about: pt(cx, 63)),
-                               with: .color(ink.pupil), style: round(2.2))
+                if mini {
+                    // A spiral smudges into a grey dot this small; a cross still reads as "oops".
+                    let width = atLeast(3.4, points: 1.1)
+                    context.stroke(line([pt(cx - 5, 58), pt(cx + 5, 68)]), with: .color(ink.pupil), style: round(width))
+                    context.stroke(line([pt(cx + 5, 58), pt(cx - 5, 68)]), with: .color(ink.pupil), style: round(width))
+                } else {
+                    context.stroke(rotated(spiral(cx - 0.6, 63), motion.spin, about: pt(cx, 63)),
+                                   with: .color(ink.pupil), style: round(2.2))
+                }
             }
         case .idle, .working, .waitingForYou:
             let look: CGPoint = switch mood {
@@ -638,8 +663,9 @@ private struct MascotDrawing {
         let sleepy = mood == .sleeping
         let antenna = sleepy ? quad(pt(60, 31), pt(63, 19), pt(76, 21)) : quad(pt(60, 31), pt(57, 20), pt(65, 13))
         let bulbAt = sleepy ? pt(78, 22) : pt(66, 12)
-        fig.stroke(antenna, with: .color(ink.dark), style: round(3.2))
-        let bulb = ellipse(bulbAt.x, bulbAt.y, 5.6, 5.6)
+        fig.stroke(antenna, with: .color(ink.dark), style: round(atLeast(3.2, points: 1.1)))
+        let bulbRadius = atLeast(5.6, points: 1.6)
+        let bulb = ellipse(bulbAt.x, bulbAt.y, bulbRadius, bulbRadius)
         fig.drawLayer { layer in
             layer.opacity = motion.bulbOpacity
             layer.fill(bulb, with: .color(bulbColour))
@@ -674,12 +700,16 @@ private struct MascotDrawing {
 enum MentionFaces {
     private static var cache: [String: NSImage] = [:]
 
-    static func image(for bot: Bot, size: CGFloat) -> NSImage? {
+    /// `scheme` nil follows the app's current appearance. An image render has no view tree to
+    /// read it from, so without this every mention face came out in its light colours.
+    static func image(for bot: Bot, size: CGFloat, scheme: ColorScheme? = nil) -> NSImage? {
         let shape = bot.avatarShape ?? BotFace.derivedShape(forHue: bot.avatarHue)
         let colour = bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue)
-        let key = "\(shape.rawValue)-\(colour)-\(size)"
+        let resolved = scheme ?? StillBotFace.appScheme
+        let key = "\(shape.rawValue)-\(colour)-\(size)-\(resolved == .dark ? "dark" : "light")"
         if let cached = cache[key] { return cached }
-        let renderer = ImageRenderer(content: StillBotFace(shape: shape, colour: colour, size: size))
+        let renderer = ImageRenderer(content: StillBotFace(shape: shape, colour: colour, size: size,
+                                                           scheme: resolved))
         renderer.scale = 2
         guard let cg = renderer.cgImage else { return nil }
         let image = NSImage(cgImage: cg, size: NSSize(width: size, height: size))
@@ -690,17 +720,48 @@ enum MentionFaces {
 
 /// A face held still at one moment, for the app icon and other one-off renders, where a
 /// `TimelineView` has no timeline to run on.
+///
+/// The face's `draw` runs outside the tree here, so its own environment is never filled in. The
+/// colour scheme is passed explicitly: `scheme` when given (image renders), otherwise this view's
+/// own environment, which is real because this view is in the tree.
 struct StillBotFace: View {
     let shape: BotShape
     let colour: Int
     var size: CGFloat
     var mood: BotMood = .idle
     var at: TimeInterval = 0.4
+    var scheme: ColorScheme?
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    init(shape: BotShape, colour: Int, size: CGFloat, mood: BotMood = .idle,
+         at: TimeInterval = 0.4, scheme: ColorScheme? = nil) {
+        self.shape = shape
+        self.colour = colour
+        self.size = size
+        self.mood = mood
+        self.at = at
+        self.scheme = scheme
+    }
+
+    private var face: BotFace {
+        var face = BotFace(hue: 0.5, mood: mood, size: size, shape: shape, colour: colour, still: true)
+        face.scheme = scheme ?? colorScheme
+        return face
+    }
 
     var body: some View {
-        let face = BotFace(hue: 0.5, mood: mood, size: size, shape: shape, colour: colour)
-        Canvas { context, canvas in face.draw(in: &context, size: canvas, time: at) }
+        let face = self.face
+        let time = at
+        Canvas { context, canvas in face.draw(in: &context, size: canvas, time: time) }
             .frame(width: size, height: size)
+    }
+
+    /// The app's appearance right now, for renders made outside any window.
+    @MainActor
+    static var appScheme: ColorScheme {
+        let match = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
+        return match == .darkAqua ? .dark : .light
     }
 }
 
@@ -730,63 +791,49 @@ enum BotShape: String, CaseIterable, Sendable {
     static let palette: [Color] = rgbPalette.map(\.color)
 }
 
-/// Dotted orbs for "thinking", the most-seen animation in the app. Kept small and quiet.
-struct ThinkingOrbs: View {
-    var hue: Double = 0.58
-    var dotSize: CGFloat = 5
-    var count: Int = 3
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: dotSize * 0.6) {
-                ForEach(0..<count, id: \.self) { index in
-                    let phase = time * 2.2 - Double(index) * 0.55
-                    let lift = CGFloat(sin(phase)) * dotSize * 0.42
-                    Circle()
-                        .fill(Color(hue: hue, saturation: 0.45, brightness: 0.95))
-                        .frame(width: dotSize, height: dotSize)
-                        .opacity(0.35 + 0.65 * (0.5 + 0.5 * sin(phase)))
-                        .offset(y: -lift)
-                }
-            }
-        }
-        .frame(height: dotSize * 2)
-        .accessibilityLabel("Thinking")
-    }
-}
-
 /// A calm, breathing glow around the composer while a bot works, in the app's accent.
+///
+/// Under Reduce Motion it holds still: a plain accent border that says the same thing without
+/// pulsing.
 struct BorderBeam: ViewModifier {
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var hue: Double = 0.58
-    var cornerRadius: CGFloat = 10
+    var cornerRadius: CGFloat = Theme.Radius.lg
     var period: Double = 2.4
+    /// Drawn only while true. The modifier itself stays applied either way, so turning it on
+    /// and off never changes the identity of the view it decorates (which took focus out of the
+    /// composer every time a run started or ended).
+    var active: Bool = true
 
     func body(content: Content) -> some View {
         content.overlay {
-            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-                let phase = timeline.date.timeIntervalSinceReferenceDate
-                    .truncatingRemainder(dividingBy: period) / period
-                // 0 to 1 to 0, eased, so it lingers at the ends of the breath.
-                let breath = 0.5 - 0.5 * cos(phase * 2 * .pi)
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(palette.primary.opacity(0.35 + 0.45 * breath), lineWidth: 1.5)
-                    .shadow(color: palette.primary.opacity(0.18 + 0.27 * breath), radius: 4 + 6 * breath)
+            if active {
+                if reduceMotion {
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(palette.primary.opacity(0.6), lineWidth: 1.5)
+                        .allowsHitTesting(false)
+                } else {
+                    TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                        let phase = timeline.date.timeIntervalSinceReferenceDate
+                            .truncatingRemainder(dividingBy: period) / period
+                        // 0 to 1 to 0, eased, so it lingers at the ends of the breath.
+                        let breath = 0.5 - 0.5 * cos(phase * 2 * .pi)
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .strokeBorder(palette.primary.opacity(0.35 + 0.45 * breath), lineWidth: 1.5)
+                            .shadow(color: palette.primary.opacity(0.18 + 0.27 * breath), radius: 4 + 6 * breath)
+                    }
+                    .allowsHitTesting(false)
+                }
             }
-            .allowsHitTesting(false)
         }
     }
 }
 
 extension View {
-    /// Applies the beam only while active, so an idle composer costs no animation frames.
-    @ViewBuilder
-    func borderBeam(hue: Double, active: Bool, cornerRadius: CGFloat = 10) -> some View {
-        if active {
-            modifier(BorderBeam(hue: hue, cornerRadius: cornerRadius))
-        } else {
-            self
-        }
+    /// Always applies the beam and lets `active` decide whether it draws. An idle composer still
+    /// costs no animation frames: the timeline only exists while active.
+    func borderBeam(hue: Double, active: Bool, cornerRadius: CGFloat = Theme.Radius.lg) -> some View {
+        modifier(BorderBeam(hue: hue, cornerRadius: cornerRadius, active: active))
     }
 }

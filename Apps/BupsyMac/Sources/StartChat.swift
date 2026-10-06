@@ -21,6 +21,14 @@ struct StartChatPalette: View {
 
     @State private var query = ""
     @State private var highlighted = 0
+    /// Worked out once per change of what was typed, not on every read: the list, its height,
+    /// the arrow keys and Return all read it, and each read used to walk every thread again.
+    @State private var rows: [PaletteItem] = []
+    /// True when what was typed matched nothing and the only row is "Make a bot called ...".
+    @State private var matchesNothing = false
+    /// The full bot creator, opened from "Make a bot called ..." with the name filled in.
+    @State private var isCreatingNamed = false
+    @State private var namedDraft = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,11 +40,27 @@ struct StartChatPalette: View {
                 hints
             }
         }
-        .frame(width: 640)
+        .frame(maxWidth: .infinity)
         .background(palette.popover, in: .rect(cornerRadius: Theme.Radius.bubble))
         .clipShape(.rect(cornerRadius: Theme.Radius.bubble))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.bubble).strokeBorder(palette.border))
         .shadow(color: .black.opacity(0.18), radius: 32, y: 14)
+        .onAppear(perform: refreshRows)
+        .onChange(of: query) { refreshRows() }
+        .onChange(of: model.bots.count) { refreshRows() }
+        .onChange(of: model.groups.count) { refreshRows() }
+        // Hung on the palette, which stays up behind it, so the sheet is not torn down with it.
+        // Closing the creator, by saving or cancelling, closes the palette too.
+        .sheet(isPresented: $isCreatingNamed, onDismiss: onDismiss) {
+            BotCreatorSheet(name: namedDraft)
+        }
+    }
+
+    private func refreshRows() {
+        let (items, nothing) = buildRows()
+        rows = items
+        matchesNothing = nothing
+        if !rows.indices.contains(highlighted) { highlighted = 0 }
     }
 
     private var needle: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
@@ -48,7 +72,7 @@ struct StartChatPalette: View {
                 .foregroundStyle(palette.mutedForeground)
             PaletteField(
                 text: $query,
-                placeholder: searchFirst ? "Search bots, groups and messages" : "Start a chat, or search...",
+                placeholder: searchFirst ? "Search bots, groups and messages" : "Start a chat, or search…",
                 fontSize: Theme.scaled(15),
                 onSubmit: activate,
                 onMove: move,
@@ -60,9 +84,12 @@ struct StartChatPalette: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: Theme.scaled(13)))
                         .foregroundStyle(palette.mutedForeground)
+                        .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .help("Clear")
+                .accessibilityLabel("Clear search")
             }
             Keycap("esc")
         }
@@ -74,25 +101,11 @@ struct StartChatPalette: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                        if index == 0 || rows[index - 1].section != row.section {
-                            Text(row.section)
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(palette.mutedForeground)
-                                .padding(.horizontal, 10)
-                                .padding(.top, index == 0 ? Theme.Space.snug : Theme.Space.step)
-                                .padding(.bottom, 4)
-                        }
-                        PaletteRow(row: row, needle: needle, highlighted: index == highlighted) {
-                            choose(row)
-                        }
-                        .id(row.id)
-                        .onHover { if $0 { highlighted = index } }
-                    }
-                    if rows.isEmpty {
+                    if matchesNothing {
                         // A napping grey bot: nothing found is not an error.
                         HStack(spacing: Theme.Space.step) {
-                            BotFace(hue: 0, mood: .sleeping, size: 48, shape: .bup, colour: 0)
+                            BotFace(hue: 0, mood: .sleeping, size: 48, shape: .bup, colour: 0,
+                                    still: true)
                                 .saturation(0)
                                 .opacity(0.7)
                                 .accessibilityHidden(true)
@@ -101,11 +114,27 @@ struct StartChatPalette: View {
                                 .foregroundStyle(palette.mutedForeground)
                             Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 20)
+                        .padding(.horizontal, Theme.Space.compact)
+                        .padding(.vertical, Theme.Space.snug)
+                    }
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        if index == 0 || rows[index - 1].section != row.section {
+                            Text(row.section)
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(palette.mutedForeground)
+                                .padding(.horizontal, Theme.Space.compact)
+                                .padding(.top, index == 0 ? Theme.Space.snug : Theme.Space.step)
+                                .padding(.bottom, Theme.Space.xs)
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        PaletteRow(row: row, needle: needle, highlighted: index == highlighted) {
+                            choose(row)
+                        }
+                        .id(row.id)
+                        .onHover { if $0 { highlighted = index } }
                     }
                 }
-                .padding(8)
+                .padding(Theme.Space.snug)
             }
             .frame(height: listHeight)
             .onChange(of: highlighted) { _, index in
@@ -120,21 +149,22 @@ struct StartChatPalette: View {
         guard !rows.isEmpty else { return 104 }
         let sections = Set(rows.map(\.section)).count
         let height = rows.reduce(0) { $0 + ($1.isMessage ? 62 : 58) } + CGFloat(sections) * 30 + 16
+            + (matchesNothing ? 72 : 0)
         return min(height, 420)
     }
 
     private var hints: some View {
         HStack(spacing: Theme.Space.gutter) {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 Keycap("↑")
                 Keycap("↓")
                 Text("to move")
             }
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 Keycap("Return")
                 Text("to open")
             }
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 Keycap("Esc")
                 Text("to close")
             }
@@ -143,10 +173,10 @@ struct StartChatPalette: View {
         .font(Theme.Typography.caption)
         .foregroundStyle(palette.mutedForeground)
         .padding(.horizontal, Theme.Space.gutter)
-        .padding(.vertical, 10)
+        .padding(.vertical, Theme.Space.compact)
     }
 
-    private var rows: [PaletteItem] {
+    private func buildRows() -> ([PaletteItem], Bool) {
         let needle = self.needle
         var items: [PaletteItem] = []
         let create: [PaletteItem] = [
@@ -171,7 +201,7 @@ struct StartChatPalette: View {
 
         if needle.isEmpty {
             items += searchFirst ? chats + create : create + chats
-            return items
+            return (items, false)
         }
 
         items += chats.filter { $0.title.lowercased().contains(needle) }
@@ -194,11 +224,31 @@ struct StartChatPalette: View {
                                             title: bot.name, subtitle: PlainPreview.of(text)))
             }
         }
-        items += messages.sorted {
-            if case .message(_, let a) = $0.kind, case .message(_, let b) = $1.kind { return a > b }
-            return false
-        }.prefix(12)
-        return items
+        // Group chats too: a message said in a group is as findable as one said to a bot.
+        for group in model.groups {
+            var count = 0
+            for message in model.groupThread(for: group).messages.reversed() {
+                guard count < 3 else { break }
+                guard message.author != GroupMessageRecord.systemAuthor,
+                      message.text.lowercased().contains(needle) else { continue }
+                count += 1
+                let who = message.isFromUser ? "You" : message.authorName
+                messages.append(PaletteItem(kind: .groupMessage(group, message.at), section: "Messages",
+                                            title: "\(who) in \(group.name)",
+                                            subtitle: PlainPreview.of(message.text)))
+            }
+        }
+        items += messages.sorted { ($0.messageDate ?? .distantPast) > ($1.messageDate ?? .distantPast) }
+            .prefix(12)
+        if items.isEmpty {
+            // Nothing by that name: offer to make one, in the full creator, already named.
+            let name = query.trimmingCharacters(in: .whitespaces)
+            items.append(PaletteItem(kind: .createNamed(name), section: "Create",
+                                     title: "Make a bot called \"\(name)\"",
+                                     subtitle: "Set up a bot yourself, with this name filled in"))
+            return (items, true)
+        }
+        return (items, false)
     }
 
     private func move(_ delta: Int) {
@@ -216,8 +266,11 @@ struct StartChatPalette: View {
         case .create: onCreate()
         case .createManually: onCreateManually()
         case .createGroup: onCreateGroup()
+        case .createNamed(let name):
+            namedDraft = name
+            isCreatingNamed = true
         case .bot(let bot), .message(let bot, _): onPick(bot.id)
-        case .group(let group): onPickGroup(group.id)
+        case .group(let group), .groupMessage(let group, _): onPickGroup(group.id)
         }
     }
 }
@@ -230,13 +283,25 @@ struct PaletteItem: Identifiable {
         case bot(Bot)
         case group(ChatGroup)
         case message(Bot, Date)
+        case groupMessage(ChatGroup, Date)
+        case createNamed(String)
     }
     let kind: Kind
     var section: String
     var title: String
     var subtitle: String
 
-    var isMessage: Bool { if case .message = kind { return true } else { return false } }
+    var isMessage: Bool { messageDate != nil }
+
+    var isCreateNamed: Bool { if case .createNamed = kind { return true } else { return false } }
+
+    /// When the message was said, for either kind of message row.
+    var messageDate: Date? {
+        switch kind {
+        case .message(_, let at), .groupMessage(_, let at): return at
+        default: return nil
+        }
+    }
 
     var id: String {
         switch kind {
@@ -246,6 +311,8 @@ struct PaletteItem: Identifiable {
         case .bot(let bot): "bot-" + bot.id.rawValue
         case .group(let group): "group-" + group.id
         case .message(let bot, let at): "msg-\(bot.id.rawValue)-\(at.timeIntervalSince1970)"
+        case .groupMessage(let group, let at): "gmsg-\(group.id)-\(at.timeIntervalSince1970)"
+        case .createNamed: "create-named"
         }
     }
 }
@@ -261,9 +328,10 @@ private struct PaletteRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Theme.Space.step) {
-                icon.frame(width: 36, height: 36)
-                VStack(alignment: .leading, spacing: 1) {
-                    if case .message(_, let at) = row.kind {
+                icon.frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                    if let at = row.messageDate {
                         // Who said it and when, then the words, with the match marked.
                         Text("\(row.title), \(Theme.stamp(at))")
                             .font(Theme.Typography.label)
@@ -293,30 +361,35 @@ private struct PaletteRow: View {
                         .foregroundStyle(palette.mutedForeground)
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, Theme.Space.compact)
             .padding(.vertical, Theme.Space.snug)
             .background(highlighted ? palette.card : .clear, in: .rect(cornerRadius: Theme.Radius.base))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(highlighted ? .isSelected : [])
     }
 
     @ViewBuilder private var icon: some View {
         switch row.kind {
         case .bot(let bot), .message(let bot, _):
-            BotFace(bot: bot, mood: mood(for: bot), size: 36)
-        case .group(let group):
+            // A palette of breathing faces is noise: only the highlighted row or a bot with
+            // something going on moves.
+            let botMood = mood(for: bot)
+            BotFace(bot: bot, mood: botMood, size: 36, still: botMood == .idle && !highlighted)
+        case .group(let group), .groupMessage(let group, _):
             StackedFaces(bots: model.bots.filter { group.memberIDs.contains($0.id) }, size: 30)
-        case .create, .createGroup, .createManually:
-            let symbol = row.kind == .create ? "plus" : (row.kind == .createGroup ? "person.2.fill" : "gearshape.fill")
+        case .create, .createGroup, .createManually, .createNamed:
+            let symbol = row.kind == .createGroup ? "person.2.fill"
+                : (row.kind == .createManually ? "gearshape.fill" : "plus")
             Image(systemName: symbol)
                 .font(.system(size: Theme.scaled(13), weight: .medium))
                 .foregroundStyle(palette.foreground)
-                .frame(width: 36, height: 36)
+                .frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
                 .background {
                     ZStack {
                         RoundedRectangle(cornerRadius: Theme.Radius.base).fill(palette.card)
-                        if row.kind == .create {
+                        if row.kind == .create || row.isCreateNamed {
                             // The one thing the palette is mostly opened for gets the accent.
                             RoundedRectangle(cornerRadius: Theme.Radius.base).fill(palette.primary.opacity(0.16))
                         }
@@ -327,15 +400,14 @@ private struct PaletteRow: View {
 
     /// The face matches what the bot is up to, so the list doubles as a glance at the team.
     private func mood(for bot: Bot) -> BotMood {
-        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
-        return model.thread(for: bot.id).isRunning ? .working : .idle
+        model.mood(for: bot)
     }
 
     /// For a long message, the part around the match. The start of a paragraph rarely is.
     private func snippet(_ text: String) -> String {
         guard row.isMessage, !needle.isEmpty, let range = text.lowercased().range(of: needle) else { return text }
         let start = text.index(range.lowerBound, offsetBy: -40, limitedBy: text.startIndex) ?? text.startIndex
-        return (start == text.startIndex ? "" : "...") + text[start...]
+        return (start == text.startIndex ? "" : "…") + text[start...]
     }
 
     /// The matched part, washed in the accent like a highlighter.
@@ -509,8 +581,8 @@ struct JobChangeSheet: View {
 
 /// The palette's text field, in AppKit.
 ///
-/// A SwiftUI `TextField` inside an overlay never received focus on macOS — neither set in
-/// `onAppear` nor deferred — so the palette opened with the *window* as first responder and
+/// A SwiftUI `TextField` inside an overlay never received focus on macOS (neither set in
+/// `onAppear` nor deferred), so the palette opened with the *window* as first responder and
 /// typing, Enter and the arrow keys all did nothing. This field takes focus itself the moment it
 /// lands in a window, and routes ↑ ↓ ↩ Esc through AppKit's own command handling, which is what
 /// those keys are actually delivered as.

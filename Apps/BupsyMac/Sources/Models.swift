@@ -152,7 +152,6 @@ struct TranscriptEntry: Identifiable, Sendable {
         /// Something bupsy itself records in the thread — "Named itself Researcher". Never a
         /// bot's words, so it is drawn as a quiet line, not a bubble.
         case note(String)
-        case limits(RateLimit)
         case failure(EngineFailure)
         case finished(Outcome)
     }
@@ -382,6 +381,8 @@ struct ChatGroup: Identifiable, Hashable, Sendable {
     var memberIDs: [BotID]
     var pinned: Bool
     var lastReadAt: Date?
+    /// Bot turns in a row, with nobody speaking, before the group pauses and checks with you.
+    var turnLimit: Int
 
     init(record: GroupRecord, members: [String]) {
         id = record.id
@@ -390,11 +391,12 @@ struct ChatGroup: Identifiable, Hashable, Sendable {
         memberIDs = members.map { BotID($0) }
         pinned = record.pinned
         lastReadAt = record.lastReadAt
+        turnLimit = GroupRouting.effectiveTurnLimit(record.turnLimit)
     }
 
     func record(sortIndex: Int) -> GroupRecord {
         GroupRecord(id: id, name: name, leadBotID: leadBotID?.rawValue, sortIndex: sortIndex,
-                    pinned: pinned, lastReadAt: lastReadAt)
+                    pinned: pinned, lastReadAt: lastReadAt, turnLimit: turnLimit)
     }
 }
 
@@ -416,10 +418,26 @@ final class GroupThread {
         let text = PlainPreview.of(last.text)
         return last.isFromUser ? "You: \(text)" : "\(last.authorName): \(text)"
     }
+
+    /// The group paused after its turn limit and nobody has spoken since: it is waiting on you.
+    /// Read from the thread itself, so it survives a relaunch with no extra state to keep.
+    var isWaitingOnYou: Bool {
+        speaking == nil && messages.last?.isPauseNote == true
+    }
 }
 
 extension GroupMessageRecord {
     /// Notes from bupsy itself — "stopped after six replies" — shown centred, never as a bot.
     static let systemAuthor = "system"
     var isSystem: Bool { author == Self.systemAuthor }
+
+    private static let pausePrefix = "Paused after "
+
+    /// The note posted when a group reaches its turn limit.
+    static func pauseNote(after turns: Int) -> String {
+        "\(pausePrefix)\(turns) turns. Say something to keep going."
+    }
+
+    /// Whether this is that note, so the group can show as waiting on you.
+    var isPauseNote: Bool { isSystem && text.hasPrefix(Self.pausePrefix) }
 }

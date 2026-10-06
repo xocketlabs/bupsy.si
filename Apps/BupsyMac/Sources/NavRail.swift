@@ -1,4 +1,5 @@
 import BupsyKit
+import Combine
 import SwiftUI
 
 /// The nav rail, laid out like the agndex dashboard sidebar.
@@ -13,30 +14,32 @@ import SwiftUI
 struct NavRail: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Binding var destination: Destination
     /// Owned by the app rather than the rail: the palette opens over the conversation, which the
     /// rail does not contain.
     var onStartChat: () -> Void = {}
     var onSearch: () -> Void = {}
-    @State private var isAddingBot = false
-    @State private var isAddingGroup = false
-    @State private var isSearching = false
+    /// The one sheet the rail has up, if any. One `.sheet(item:)` for all of them: several
+    /// chained `.sheet`s on one view and SwiftUI silently drops all but one.
+    @State private var sheet: RailSheet?
     @State private var showsYouMenu = false
-    @State private var query = ""
-    @State private var renamingFolder: FolderName?
-    @State private var filingBot: Bot?
-    @State private var renamingBot: Bot?
-    @State private var renamingGroup: ChatGroup?
-    /// Sections folded shut in this session. Not saved: a fold is a moment's tidying, not a
-    /// setting.
-    @State private var collapsed: Set<String> = []
-    /// The section a bot made from its "+" should land in, and which bots existed before, so the
-    /// new one can be told apart when the sheet closes.
-    @State private var addingToSection: String?
-    @State private var isAddingToSection = false
-    @State private var botsBeforeAdding: Set<BotID> = []
-    @FocusState private var searchFocused: Bool
+    @State private var hoveringAccount = false
+    /// Set to ask before deleting. Owned here, not by the context menu, which is gone on click.
+    @State private var deletingBot: Bot?
+    @State private var deletingGroup: ChatGroup?
+    /// The section the person picked "Delete section…" for, until they confirm.
+    @State private var deletingSection: String?
+    /// The engine the person picked "Sign out" for, until they confirm.
+    @State private var signingOut: EngineID?
+    /// True after a sign-in or sign-out was started from the You menu, so a failure is shown here
+    /// and not also over the main window when it was started from Settings.
+    @State private var awaitingAccount = false
+    /// Sections folded shut, kept across launches. A JSON array of section keys, shared with the
+    /// New section sheet's "Fold it in the sidebar by default". See `SidebarFolds`.
+    @AppStorage(SidebarFolds.key, store: AppHome.defaults) private var foldedJSON = "[]"
 
     enum Destination: Hashable {
         case bot(BotID)
@@ -50,17 +53,45 @@ struct NavRail: View {
         case groups
     }
 
+    /// Every sheet the rail presents.
+    enum RailSheet: Identifiable {
+        case addBot
+        /// A new bot with its Section field already set to this section.
+        case addBotToSection(String)
+        case renameFolder(String)
+        case fileBot(Bot)
+        case editBot(Bot)
+        case customModel(Bot)
+        case addGroup
+        case renameGroup(ChatGroup)
+        case shortcuts
+
+        var id: String {
+            switch self {
+            case .addBot: "add-bot"
+            case .addBotToSection(let section): "add-bot-to-section-" + section
+            case .renameFolder(let name): "rename-folder-" + name
+            case .fileBot(let bot): "file-bot-" + bot.id.rawValue
+            case .editBot(let bot): "edit-bot-" + bot.id.rawValue
+            case .customModel(let bot): "custom-model-" + bot.id.rawValue
+            case .addGroup: "add-group"
+            case .renameGroup(let group): "rename-group-" + group.id
+            case .shortcuts: "shortcuts"
+            }
+        }
+    }
+
     /// Keys for the fixed collapsible sections, kept apart from section names people type.
     private static let groupsKey = "\u{1}groups"
     private static let unassignedKey = "\u{1}unassigned"
+    /// The Hidden section is folded unless this key is in the folded set: folded by default.
+    private static let hiddenOpenKey = "\u{1}hidden-open"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
                 .padding(.bottom, Theme.Space.gutter)
-            if isSearching {
-                searchField.padding(.bottom, Theme.Space.snug)
-            }
+            pausedBanner
             places
                 .padding(.bottom, Theme.Space.snug)
 
@@ -71,33 +102,116 @@ struct NavRail: View {
                 .padding(.top, Theme.Space.snug)
         }
         .padding(.horizontal, Theme.Space.snug)
-        // Clears the title bar and its window buttons.
-        .padding(.top, 30)
+        // The window keeps its standard title bar, so the rail already starts below the window
+        // buttons. A second title bar's worth of padding here pushed the brand down twice.
+        .padding(.top, Theme.Space.gutter)
         .padding(.bottom, Theme.Space.snug)
         .frame(width: 276)
         .background(palette.sidebar)
-        .sheet(isPresented: $isAddingBot) { BotCreatorSheet() }
-        .sheet(item: $renamingFolder) { RenameFolderSheet(folder: $0.id) }
-        .sheet(item: $filingBot) { NewFolderSheet(bot: $0) }
-        .sheet(item: $renamingBot) { BotCreatorSheet(editing: $0) }
-        // On its own empty view: two sheets on one view and SwiftUI silently drops one.
+        // Cmd 1 to 9, registered once here rather than on the rows, so they follow the order the
+        // list shows and keep working while a section is folded.
+        .background { numberShortcuts }
+        .sheet(item: sheetBinding) { item in
+            switch item {
+            case .addBot: BotCreatorSheet()
+            case .addBotToSection(let section): BotCreatorSheet(section: section)
+            case .renameFolder(let name): RenameFolderSheet(folder: name)
+            case .fileBot(let bot): NewFolderSheet(bot: bot)
+            case .editBot(let bot): BotCreatorSheet(editing: bot)
+            case .customModel(let bot): CustomModelSheet(bot: bot)
+            case .addGroup: NewGroupSheet(onCreated: { group in destination = .group(group.id) })
+            case .renameGroup(let group): RenameGroupSheet(group: group)
+            case .shortcuts: KeyboardShortcutsSheet()
+            }
+        }
+        // Each on its own empty view: two dialogs on one view and SwiftUI silently drops one.
         .background {
-            Color.clear.sheet(item: Binding(get: { model.customModelBot },
-                                            set: { model.customModelBot = $0 })) {
-                CustomModelSheet(bot: $0)
+            Color.clear.confirmsBotDeletion($deletingBot) { bot in
+                model.deleteBot(bot)
             }
         }
         .background {
-            Color.clear.sheet(isPresented: $isAddingToSection, onDismiss: { fileNewBots() }) {
-                BotCreatorSheet()
+            Color.clear.confirmsGroupDeletion($deletingGroup) { group in
+                if destination == .group(group.id) {
+                    destination = .groups
+                }
+                model.deleteGroup(group)
             }
         }
         .background {
-            Color.clear.sheet(isPresented: $isAddingGroup) {
-                NewGroupSheet(onCreated: { group in destination = .group(group.id) })
+            Color.clear.confirmsSectionDeletion($deletingSection) { section in
+                model.deleteSection(section)
+                SidebarFolds.unfold(section)
             }
         }
-        .sheet(item: $renamingGroup) { RenameGroupSheet(group: $0) }
+        .background {
+            Color.clear.confirmsSignOut($signingOut, onConfirm: { awaitingAccount = true })
+        }
+        .background {
+            Color.clear.alert(
+                "That didn't work",
+                isPresented: Binding(
+                    get: { awaitingAccount && model.accountProblem != nil },
+                    set: { shown in
+                        if !shown {
+                            awaitingAccount = false
+                            model.accountProblem = nil
+                        }
+                    })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(model.accountProblem ?? "")
+            }
+        }
+        // Help > Keyboard shortcuts (Cmd /) lives on the app; the sheet hangs here.
+        .onReceive(NotificationCenter.default.publisher(for: .bupsyShowKeyboardShortcuts)) { _ in
+            showsYouMenu = false
+            sheet = .shortcuts
+        }
+    }
+
+    /// The rail's own sheet, or else the custom-model sheet the model asks for (opened from the
+    /// bot page's menu as well as the rail's, so the request lives on the model).
+    private var sheetBinding: Binding<RailSheet?> {
+        Binding(
+            get: { sheet ?? model.customModelBot.map { RailSheet.customModel($0) } },
+            set: { newValue in
+                if let newValue {
+                    sheet = newValue
+                } else if sheet != nil {
+                    sheet = nil
+                } else {
+                    model.customModelBot = nil
+                }
+            })
+    }
+
+    /// The bots in the order the list shows them: pinned, then each section in order, then the
+    /// unassigned ones. Hidden bots are left out. Folding a section does not change it.
+    private var visibleOrder: [Bot] {
+        model.pinnedBots + model.folders.flatMap { model.bots(in: $0) } + model.ungroupedBots
+    }
+
+    /// Invisible buttons carrying Cmd 1 to Cmd 9 for the first nine bots in `visibleOrder`.
+    private var numberShortcuts: some View {
+        let order = Array(visibleOrder.prefix(9))
+        return ZStack {
+            ForEach(Array(order.enumerated()), id: \.element.id) { index, bot in
+                Button("Open \(bot.name)") { destination = .bot(bot.id) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            }
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// The folded set, read from and written back to the saved JSON.
+    private var collapsed: Set<String> {
+        get { SidebarFolds.decode(foldedJSON) }
+        nonmutating set { foldedJSON = SidebarFolds.encode(newValue) }
     }
 
     // MARK: - Header
@@ -113,76 +227,36 @@ struct NavRail: View {
 
             Spacer(minLength: Theme.Space.snug)
 
-            headerButton("magnifyingglass", help: "Search (Cmd F)") { onSearch() }
+            headerButton("magnifyingglass", label: "Search", help: "Search (Cmd F)") { onSearch() }
                 .keyboardShortcut("f", modifiers: .command)
 
-            headerButton("plus", help: "Start a chat (Cmd N)") { onStartChat() }
-                .keyboardShortcut("n", modifiers: .command)
+            headerButton("plus", label: "Start a chat", help: "Start a chat (Cmd N)") { onStartChat() }
         }
         .padding(.leading, Theme.Space.snug)
-        .padding(.trailing, 2)
+        .padding(.trailing, Theme.Space.hairline)
     }
 
+    /// The brand row's icon buttons: 32pt squares, as the board draws them.
     private func headerButton(
-        _ symbol: String, help: String, action: @escaping () -> Void
+        _ symbol: String, label: String, help: String, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: Theme.scaled(13), weight: .medium))
-                .foregroundStyle(palette.sidebarMutedForeground)
-                .frame(width: 28, height: 28)
+                .font(.system(size: Theme.scaled(14), weight: .medium))
+                .frame(width: Theme.Size.controlSm + Theme.Space.xs,
+                       height: Theme.Size.controlSm + Theme.Space.xs)
                 .contentShape(.rect)
         }
-        .buttonStyle(SidebarIconButtonStyle())
+        .buttonStyle(SidebarIconButtonStyle(radius: Theme.Radius.lg))
         .help(help)
-    }
-
-    private var searchField: some View {
-        HStack(spacing: Theme.Space.tight) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: Theme.scaled(10)))
-                .foregroundStyle(palette.sidebarMuted)
-            TextField("", text: $query, prompt: Text("Search bots"))
-                .textFieldStyle(.plain)
-                .font(Theme.Typography.body)
-                .foregroundStyle(palette.foreground)
-                .focused($searchFocused)
-                .onSubmit { selectFirstMatch() }
-            if !query.isEmpty {
-                Button { query = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: Theme.scaled(11)))
-                        .foregroundStyle(palette.sidebarMuted)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, Theme.Space.snug)
-        .frame(height: 30)
-        .background(palette.sidebarAccent, in: .rect(cornerRadius: Theme.Radius.control))
-        // Escape closes the field rather than only clearing it, so the shortcut that opened it
-        // also puts things back exactly as they were.
-        .onExitCommand {
-            isSearching = false
-            query = ""
-        }
-    }
-
-    /// Enter in the search field opens the one you were looking for, rather than making you
-    /// reach for the mouse to finish a keyboard gesture.
-    private func selectFirstMatch() {
-        if let first = ranked.first {
-            destination = .bot(first.bot.id)
-            isSearching = false
-            query = ""
-        }
+        .accessibilityLabel(label)
     }
 
     // MARK: - Fixed places
 
     /// "Waiting on you" and "Team": always in the same spot, so they can be found without looking.
     private var places: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Theme.Space.hairline) {
             let waiting = model.attentionItems.count
             SidebarNavRow(icon: "hand.raised.fill", label: "Waiting on you",
                           selected: destination == .attention,
@@ -197,62 +271,70 @@ struct NavRail: View {
     private var conversations: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-                if searching {
-                    results
-                } else {
-                    if !model.pinnedBots.isEmpty {
-                        VStack(alignment: .leading, spacing: 2) {
-                            sectionHeader("Pinned")
-                            ForEach(model.pinnedBots) { row(for: $0) }
-                        }
+                if !model.pinnedBots.isEmpty {
+                    VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                        sectionHeader("Pinned")
+                        ForEach(model.pinnedBots) { row(for: $0) }
                     }
+                }
 
-                    ForEach(model.folders, id: \.self) { folder in
-                        let members = model.bots(in: folder)
-                        if !members.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                sectionHeader(folder, key: folder, members: members,
-                                              addHelp: "New bot in \(folder)",
-                                              onAdd: { startAdding(to: folder) })
-                                    .contextMenu {
-                                        Button("Rename section…") {
-                                            renamingFolder = FolderName(folder)
-                                        }
-                                        // Named for what it does. "Delete folder" would read as
-                                        // deleting the bots inside it, which it never does.
-                                        Button("Move these bots to Unassigned") {
-                                            model.dissolveFolder(folder)
-                                        }
-                                    }
-                                if !collapsed.contains(folder) {
-                                    ForEach(members) { row(for: $0) }
+                // Every section, empty ones too: a section stays until it is deleted.
+                ForEach(model.folders, id: \.self) { folder in
+                    let members = model.bots(in: folder)
+                    VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                        sectionHeader(folder, key: folder, members: members,
+                                      addHelp: "Set up a bot yourself in \(folder)",
+                                      onAdd: { startAdding(to: folder) })
+                            .contextMenu {
+                                Button("Rename section…") {
+                                    sheet = .renameFolder(folder)
+                                }
+                                // Named for what it does: the bots leave, the section stays.
+                                Button("Move these bots to Unassigned") {
+                                    model.dissolveFolder(folder)
+                                }
+                                .disabled(!model.bots.contains { $0.folder == folder })
+                                Divider()
+                                // Asks first. Its bots move to Unassigned; nothing is deleted
+                                // but the section.
+                                Button("Delete section…", role: .destructive) {
+                                    deletingSection = folder
                                 }
                             }
-                        }
-                    }
-
-                    groupsSection
-
-                    let loose = model.ungroupedBots
-                    if !loose.isEmpty {
-                        VStack(alignment: .leading, spacing: 2) {
-                            // Only headed once anything above has a heading: with no sections
-                            // these are simply the list.
-                            if !model.folders.isEmpty || !model.groups.isEmpty
-                                || !model.pinnedBots.isEmpty {
-                                sectionHeader(model.folders.isEmpty ? "Bots" : "Unassigned",
-                                              key: Self.unassignedKey, members: loose,
-                                              addHelp: "New bot",
-                                              onAdd: { startAdding(to: nil) })
-                            }
-                            if !collapsed.contains(Self.unassignedKey) {
-                                ForEach(loose) { row(for: $0) }
+                        if !collapsed.contains(folder) {
+                            if members.isEmpty {
+                                emptySectionRow(folder)
+                            } else {
+                                ForEach(members) { row(for: $0) }
                             }
                         }
                     }
-
-                    if model.bots.isEmpty { empty }
                 }
+
+                groupsSection
+
+                let loose = model.ungroupedBots
+                if !loose.isEmpty {
+                    VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                        // Only headed once anything else in the list has a heading: with no
+                        // sections these are simply the list. The Groups header counts even
+                        // with no groups in it, or these bots would read as its groups.
+                        if !model.folders.isEmpty || showsGroupsSection
+                            || !model.pinnedBots.isEmpty || !hiddenBots.isEmpty {
+                            sectionHeader(model.folders.isEmpty ? "Bots" : "Unassigned",
+                                          key: Self.unassignedKey, members: loose,
+                                          addHelp: "Set up a bot yourself",
+                                          onAdd: { startAdding(to: nil) })
+                        }
+                        if !collapsed.contains(Self.unassignedKey) {
+                            ForEach(loose) { row(for: $0) }
+                        }
+                    }
+                }
+
+                hiddenSection
+
+                if model.bots.isEmpty { empty }
             }
             .padding(.top, Theme.Space.snug)
             .padding(.bottom, Theme.Space.snug)
@@ -261,32 +343,66 @@ struct NavRail: View {
         .frame(maxHeight: .infinity)
     }
 
-    /// Group chats: always present once there are bots to put in one, so its "+" is findable.
+    private var showsGroupsSection: Bool {
+        !model.groups.isEmpty || model.bots.count >= 2
+    }
+
+    private var hiddenBots: [Bot] { model.bots.filter(\.hidden) }
+
+    /// Bots taken out of the sidebar, folded at the bottom so they can be put back. Only there
+    /// when something is hidden.
     @ViewBuilder
-    private var groupsSection: some View {
-        if !model.groups.isEmpty || model.bots.count >= 2 {
-            VStack(alignment: .leading, spacing: 2) {
-                sectionHeader("Groups", key: Self.groupsKey, members: [],
-                              count: model.groups.count,
-                              addHelp: "New group chat",
-                              onAdd: { isAddingGroup = true },
-                              onTitle: { destination = .groups })
-                if !collapsed.contains(Self.groupsKey) {
-                    ForEach(model.groups) { group in
-                        GroupRow(group: group,
-                                 selected: destination == .group(group.id),
-                                 action: { destination = .group(group.id) })
-                        .contextMenu {
-                            Button("Open chat") { destination = .group(group.id) }
-                            Button("Rename group…") { renamingGroup = group }
-                            Divider()
-                            // The conversation only. Its bots are untouched.
-                            Button("Delete group", role: .destructive) {
-                                if destination == .group(group.id) {
-                                    destination = .groups
-                                }
-                                model.deleteGroup(group)
+    private var hiddenSection: some View {
+        let hidden = hiddenBots
+        if !hidden.isEmpty {
+            let isOpen = collapsed.contains(Self.hiddenOpenKey)
+            VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                SidebarSectionHeader(
+                    title: "Hidden",
+                    collapsible: true,
+                    collapsed: !isOpen,
+                    count: isOpen ? nil : hidden.count,
+                    countIsUrgent: false,
+                    addHelp: "",
+                    onToggle: {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+                            var folded = collapsed
+                            if folded.contains(Self.hiddenOpenKey) {
+                                folded.remove(Self.hiddenOpenKey)
+                            } else {
+                                folded.insert(Self.hiddenOpenKey)
                             }
+                            collapsed = folded
+                        }
+                    },
+                    onAdd: nil,
+                    onTitle: nil)
+                if isOpen {
+                    ForEach(hidden) { bot in
+                        HStack(spacing: Theme.Space.hairline) {
+                            BotRow(
+                                bot: bot,
+                                preview: model.thread(for: bot.id).preview,
+                                mood: mood(for: bot),
+                                selected: destination == .bot(bot.id),
+                                unread: model.isUnread(bot),
+                                action: { destination = .bot(bot.id) })
+                            Button { model.toggleHidden(bot) } label: {
+                                Image(systemName: "eye")
+                                    .font(.system(size: Theme.scaled(11), weight: .medium))
+                                    .foregroundStyle(palette.sidebarMuted)
+                                    .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(SidebarIconButtonStyle())
+                            .help("Show in sidebar")
+                            .accessibilityLabel("Show \(bot.name) in sidebar")
+                        }
+                        .contextMenu {
+                            Button("Show in sidebar") { model.toggleHidden(bot) }
+                            Button("Open chat") { destination = .bot(bot.id) }
+                            Divider()
+                            Button("Delete bot…", role: .destructive) { deletingBot = bot }
                         }
                     }
                 }
@@ -294,58 +410,51 @@ struct NavRail: View {
         }
     }
 
-    private var searching: Bool {
-        !query.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    /// Search results are a flat ranked list, not the same folders with gaps in them.
+    /// Group chats: always present once there are bots to put in one, so its "+" is findable.
     @ViewBuilder
-    private var results: some View {
-        let hits = ranked
-        if hits.isEmpty {
-            noMatches
-        } else {
-            VStack(alignment: .leading, spacing: 2) {
-                sectionHeader(hits.count == 1 ? "1 result" : "\(hits.count) results")
-                ForEach(hits) { hit in
-                    row(for: hit.bot, matchedOn: hit.matchedPreview ? hit.bot.id : nil)
+    private var groupsSection: some View {
+        if showsGroupsSection {
+            VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                sectionHeader("Groups", key: Self.groupsKey, members: [],
+                              count: model.groups.count,
+                              urgent: groupsNeedYou,
+                              addHelp: "New group chat",
+                              onAdd: { sheet = .addGroup },
+                              onTitle: { destination = .groups })
+                if !collapsed.contains(Self.groupsKey) {
+                    ForEach(model.groups) { group in
+                        GroupRow(group: group,
+                                 selected: destination == .group(group.id),
+                                 action: { destination = .group(group.id) })
+                        .contextMenu {
+                            GroupMenu(group: group,
+                                      onOpen: { destination = .group(group.id) },
+                                      onRename: { sheet = .renameGroup(group) },
+                                      onDelete: { deletingGroup = group })
+                        }
+                    }
                 }
             }
         }
     }
 
-    /// Name matches first, then matches on what the bot said, each ordered by how early the
-    /// match lands in the string.
-    private var ranked: [SearchHit] {
-        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return [] }
-
-        return model.bots.compactMap { bot -> SearchHit? in
-            let name = bot.name.lowercased()
-            if let position = name.range(of: needle)?.lowerBound {
-                return SearchHit(bot: bot, rank: 0,
-                                 offset: name.distance(from: name.startIndex, to: position),
-                                 matchedPreview: false)
-            }
-            let preview = (model.thread(for: bot.id).preview ?? "").lowercased()
-            if let position = preview.range(of: needle)?.lowerBound {
-                return SearchHit(bot: bot, rank: 1,
-                                 offset: preview.distance(from: preview.startIndex, to: position),
-                                 matchedPreview: true)
-            }
-            return nil
+    /// A group paused at its turn limit, or holding an approval a member raised in it, is
+    /// waiting on you: the folded Groups count turns pink for it, as a bot folder's does.
+    private var groupsNeedYou: Bool {
+        model.groups.contains { group in
+            model.groupThread(for: group).isWaitingOnYou || !model.pendingApprovals(in: group).isEmpty
         }
-        .sorted { ($0.rank, $0.offset) < ($1.rank, $1.offset) }
     }
 
     /// A small uppercase label. With a key it folds; with `onAdd` it carries a "+" on the right.
     private func sectionHeader(
         _ text: String, key: String? = nil, members: [Bot] = [], count: Int? = nil,
+        urgent urgentOverride: Bool? = nil,
         addHelp: String = "", onAdd: (() -> Void)? = nil, onTitle: (() -> Void)? = nil
     ) -> some View {
         let isCollapsed = key.map { collapsed.contains($0) } ?? false
         let shown = count ?? members.count
-        let urgent = members.contains { model.isWaitingForApproval($0.id) }
+        let urgent = urgentOverride ?? members.contains { model.needsYou($0) }
         return SidebarSectionHeader(
             title: text,
             collapsible: key != nil,
@@ -356,8 +465,10 @@ struct NavRail: View {
             addHelp: addHelp,
             onToggle: {
                 guard let key else { return }
-                withAnimation(.easeOut(duration: 0.15)) {
-                    if collapsed.contains(key) { collapsed.remove(key) } else { collapsed.insert(key) }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+                    var folded = collapsed
+                    if folded.contains(key) { folded.remove(key) } else { folded.insert(key) }
+                    collapsed = folded
                 }
             },
             onAdd: onAdd,
@@ -365,68 +476,105 @@ struct NavRail: View {
         )
     }
 
-    private func row(for bot: Bot, matchedOn previewOf: BotID? = nil) -> some View {
+    private func row(for bot: Bot) -> some View {
         BotRow(
             bot: bot,
             preview: model.thread(for: bot.id).preview,
             mood: mood(for: bot),
             selected: destination == .bot(bot.id),
             unread: model.isUnread(bot),
-            // Says *why* a bot is in the results when the name does not contain what you typed.
-            matchedOnMessage: previewOf == bot.id,
             action: { destination = .bot(bot.id) }
         )
-        // The shortcut goes on the row *before* the context menu, never after: applied after, it
-        // propagated into every button inside the menu, Delete bot included.
-        .keyboardShortcut(shortcut(for: bot), modifiers: .command)
+        // Cmd 1 to 9 are not on the rows: see `numberShortcuts`.
         .contextMenu {
-            Button("Open chat") { destination = .bot(bot.id) }
-            Divider()
             BotMenu(bot: bot,
-                    onNewFolder: { filingBot = bot },
-                    onRename: { renamingBot = bot })
+                    onOpen: { destination = .bot(bot.id) },
+                    onNewFolder: { sheet = .fileBot(bot) },
+                    onRename: { sheet = .editBot(bot) },
+                    onDelete: { deletingBot = bot })
         }
     }
 
-    /// Opens the new-bot sheet, and files whatever it made into `section` once it closes.
+    /// Opens the creator with its Section field already set to `section`, so what you see in the
+    /// form is where the bot lands.
     private func startAdding(to section: String?) {
-        guard let section else {
-            isAddingBot = true
-            return
-        }
-        botsBeforeAdding = Set(model.bots.map(\.id))
-        addingToSection = section
-        isAddingToSection = true
-    }
-
-    private func fileNewBots() {
-        defer {
-            addingToSection = nil
-            botsBeforeAdding = []
-        }
-        guard let section = addingToSection else { return }
-        for bot in model.bots where !botsBeforeAdding.contains(bot.id) {
-            model.setFolder(bot, section)
+        if let section {
+            sheet = .addBotToSection(section)
+        } else {
+            sheet = .addBot
         }
     }
 
+    /// A section with nothing listed under it: a quiet line and a way to add a bot. Its bots may
+    /// all be pinned or hidden, which is listed elsewhere, so the line says which.
+    private func emptySectionRow(_ folder: String) -> some View {
+        let filedElsewhere = model.bots.contains { $0.folder == folder }
+        return HStack(spacing: Theme.Space.snug) {
+            Text(filedElsewhere ? "Its bots are pinned or hidden" : "No bots yet")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.sidebarMutedForeground)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button { startAdding(to: folder) } label: {
+                Label("Add", systemImage: "plus")
+            }
+            .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
+            .help("Set up a bot yourself in \(folder)")
+            .accessibilityLabel("Set up a bot yourself in \(folder)")
+        }
+        .padding(.leading, Theme.Space.step)
+        .padding(.trailing, Theme.Space.xs)
+        .frame(minHeight: Theme.Size.controlSm)
+    }
+
+    /// While bots are paused: one quiet line saying what that means, and the way back. Paused
+    /// is a choice, not a fault, so it wears the rail's own fill rather than a warning colour.
+    @ViewBuilder
+    private var pausedBanner: some View {
+        if model.isPaused {
+            HStack(alignment: .top, spacing: Theme.Space.snug) {
+                Image(systemName: "pause.circle.fill")
+                    .font(.system(size: Theme.scaled(13)))
+                    .foregroundStyle(palette.sidebarMutedForeground)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                    Text("Bots are paused. Routines and goals won't start on their own.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.foreground)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button { model.resumeAll() } label: {
+                        Label("Resume", systemImage: "play.fill")
+                    }
+                    .buttonStyle(BupsyButtonStyle(kind: .secondary, size: .sm))
+                    .help("Let routines, goals and folder watches start on their own again")
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(Theme.Space.compact)
+            .background(palette.sidebarAccent, in: .rect(cornerRadius: Theme.Radius.lg))
+            .padding(.bottom, Theme.Space.step)
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    /// No second mascot here: the page beside it already has one. A heading and a line of how,
+    /// as the board shows.
     private var empty: some View {
-        EmptyState(title: "No bots yet", message: "Press Cmd N to make your first one.", faceSize: 52)
-    }
-
-    private var noMatches: some View {
-        Text("Nothing matches “\(query)”")
-            .font(Theme.Typography.caption)
-            .foregroundStyle(palette.sidebarMuted)
-            .padding(.horizontal, Theme.Space.snug)
-            .padding(.top, Theme.Space.snug)
+        VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+            sectionHeader("Bots")
+            Text("No bots yet. Cmd N makes one.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.foreground)
+                .padding(.horizontal, Theme.Space.snug)
+                .padding(.vertical, Theme.Space.xs)
+        }
     }
 
     // MARK: - Below the list
 
     /// The machinery, pinned under the list and set apart from the bots by a rule.
     private var setup: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Theme.Space.hairline) {
             Rectangle()
                 .fill(palette.border)
                 .frame(height: 1)
@@ -447,44 +595,112 @@ struct NavRail: View {
         Button { showsYouMenu.toggle() } label: {
             footerLabel
                 .contentShape(.rect)
-                .padding(.vertical, 6)
-                .background(showsYouMenu ? palette.sidebarAccent : .clear,
-                            in: .rect(cornerRadius: Theme.Radius.base))
+                .padding(.vertical, Theme.Space.snug)
+                .background(showsYouMenu || hoveringAccount ? palette.sidebarAccent : .clear,
+                            in: .rect(cornerRadius: Theme.Radius.lg))
         }
         .buttonStyle(.plain)
+        .onHover { hoveringAccount = $0 }
+        .help("Settings, appearance and sign-in")
+        .accessibilityLabel("\(accountName), \(engineSummary)")
+        .accessibilityHint("Opens settings, appearance and sign-in")
+        // The board's order. Apps is one click away under Setup, so it is not repeated here;
+        // Permissions is, because this menu is the only way to it.
         .popover(isPresented: $showsYouMenu, arrowEdge: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                youMenuItem("hand.raised", "Permissions") { destination = .permissions }
+            VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                youMenuItem("gearshape", "Settings", shortcut: "Cmd ,") { openSettings() }
                 youMenuItem("display", "Machines") { destination = .machines }
-                youMenuItem("square.grid.2x2", "Apps") { destination = .connectors }
                 youMenuItem("chart.bar", "Usage") { destination = .usage }
-                Rectangle().fill(palette.border).frame(height: 1).padding(.vertical, 4)
-                HStack(spacing: Theme.Space.snug) {
-                    Image(systemName: "circle.lefthalf.filled").frame(width: 16)
-                    Text("Appearance")
-                    Spacer(minLength: 0)
-                    Text(model.appearance.label)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.mutedForeground)
+                youMenuItem("hand.raised", "Permissions") { destination = .permissions }
+                appearanceItem
+                youMenuItem("keyboard", "Keyboard shortcuts", shortcut: "Cmd /") {
+                    // After the popover has gone: a sheet asked for while it is still closing
+                    // is dropped.
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(250))
+                        sheet = .shortcuts
+                    }
                 }
-                .font(Theme.Typography.body)
-                .foregroundStyle(palette.foreground)
-                .padding(.horizontal, Theme.Space.snug)
-                .padding(.top, 2)
-                Picker("", selection: Binding(get: { model.appearance }, set: { model.appearance = $0 })) {
-                    ForEach(AppModel.Appearance.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, Theme.Space.snug)
-                .padding(.bottom, 4)
+                accountItems
             }
-            .padding(6)
-            .frame(width: 240)
+            .padding(Theme.Space.tight)
+            .frame(width: 260)
         }
     }
 
-    private func youMenuItem(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
+    /// Appearance as a row with its current value, opening the three choices. The same
+    /// preference as Settings > Appearance; both write `model.appearance`.
+    private var appearanceItem: some View {
+        Menu {
+            ForEach(AppModel.Appearance.allCases, id: \.self) { option in
+                Button {
+                    model.appearance = option
+                } label: {
+                    if option == model.appearance {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: Theme.Space.snug) {
+                Image(systemName: "circle.lefthalf.filled")
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(width: 16)
+                Text("Appearance")
+                    .foregroundStyle(palette.foreground)
+                Spacer(minLength: 0)
+                Text(model.appearance.label)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: Theme.scaled(9), weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground)
+            }
+            .font(Theme.Typography.body)
+            .padding(.horizontal, Theme.Space.snug)
+            .frame(height: 30)
+            .contentShape(.rect)
+        }
+        .menuStyle(.button)
+        .buttonStyle(MenuRowStyle())
+        .menuIndicator(.hidden)
+    }
+
+    /// Sign out of each engine that is signed in, or sign in to one that is not. Both open the
+    /// engine's own command in Terminal; Bupsy never handles the sign-in itself.
+    @ViewBuilder
+    private var accountItems: some View {
+        let engines = EngineID.supported.filter { model.engineStatus[$0] != nil }
+        if !engines.isEmpty {
+            Rectangle().fill(palette.border).frame(height: 1).padding(.vertical, Theme.Space.xs)
+            ForEach(engines, id: \.self) { engine in
+                if model.isSignedIn(engine) {
+                    youMenuItem("rectangle.portrait.and.arrow.right", "Sign out of \(engine.displayName)…",
+                                help: "Opens Terminal and runs \(engine.displayName)'s own sign-out command") {
+                        // After the popover has gone: a dialog asked for while it is still
+                        // closing is dropped, the same as the shortcuts sheet.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(250))
+                            signingOut = engine
+                        }
+                    }
+                } else {
+                    youMenuItem("person.crop.circle.badge.plus", "Sign in to \(engine.displayName)…",
+                                help: "Opens Terminal and runs \(engine.displayName)'s own sign-in") {
+                        awaitingAccount = true
+                        model.openSignIn(for: engine)
+                    }
+                }
+            }
+        }
+    }
+
+    private func youMenuItem(
+        _ symbol: String, _ title: String, shortcut: String? = nil, help: String? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
         Button {
             showsYouMenu = false
             action()
@@ -494,7 +710,13 @@ struct NavRail: View {
                     .foregroundStyle(palette.mutedForeground)
                     .frame(width: 16)
                 Text(title)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
+                if let shortcut {
+                    Text(shortcut)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                }
             }
             .font(Theme.Typography.body)
             .foregroundStyle(palette.foreground)
@@ -503,35 +725,55 @@ struct NavRail: View {
             .contentShape(.rect)
         }
         .buttonStyle(MenuRowStyle())
+        .help(help ?? "")
     }
 
+    /// Your name and initials, as the board's account row shows them. Taken from the Mac's own
+    /// account, the only name the app has; "You" when that is blank.
     private var footerLabel: some View {
         HStack(spacing: Theme.Space.snug) {
-            RoundedRectangle(cornerRadius: Theme.Radius.control)
+            RoundedRectangle(cornerRadius: Theme.Radius.lg)
                 .fill(palette.sidebarAccent)
-                .frame(width: 32, height: 32)
+                .frame(width: Theme.Size.controlSm + Theme.Space.xs,
+                       height: Theme.Size.controlSm + Theme.Space.xs)
                 .overlay {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: Theme.scaled(12)))
-                        .foregroundStyle(palette.mutedForeground)
+                    Text(accountInitials)
+                        .font(Theme.Typography.body)
+                        .fontWeight(.medium)
+                        .foregroundStyle(palette.foreground)
                 }
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 0) {
-                Text("You")
+                Text(accountName)
                     .font(Theme.Typography.body)
                     .fontWeight(.semibold)
                     .foregroundStyle(palette.foreground)
+                    .lineLimit(1)
                 // The engines, because that is the only account this app has any notion of.
                 Text(engineSummary)
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.sidebarMuted)
+                    .foregroundStyle(palette.sidebarMutedForeground)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.down")
                 .font(.system(size: Theme.scaled(10), weight: .semibold))
-                .foregroundStyle(palette.sidebarMutedForeground)
+                .foregroundStyle(palette.sidebarMuted)
         }
         .padding(.horizontal, Theme.Space.snug)
+    }
+
+    private var accountName: String {
+        let name = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "You" : name
+    }
+
+    /// Up to two initials, from the first and last words of the name.
+    private var accountInitials: String {
+        let words = accountName.split(whereSeparator: { $0 == " " })
+        let picked = words.count > 1 ? [words[0], words[words.count - 1]] : Array(words.prefix(1))
+        let letters = picked.compactMap { $0.first }.map { String($0).uppercased() }
+        return letters.isEmpty ? "?" : letters.joined()
     }
 
     private var engineSummary: String {
@@ -543,24 +785,30 @@ struct NavRail: View {
         return answered ? "No engine signed in" : "Checking sign-in…"
     }
 
-    /// Cmd 1 to Cmd 9 for the first nine bots, in the order they appear.
-    private func shortcut(for bot: Bot) -> KeyEquivalent {
-        guard let index = model.bots.firstIndex(where: { $0.id == bot.id }), index < 9 else {
-            // No shortcut rather than a wrong one: KeyEquivalent has no "none", so a bot past
-            // the ninth gets a key nobody presses.
-            return KeyEquivalent("\u{0}")
-        }
-        return KeyEquivalent(Character("\(index + 1)"))
-    }
-
+    /// One truth for the face and the dot: the model's mood, so the sidebar, Team, the menu bar
+    /// and Waiting on you never disagree about who needs you.
     private func mood(for bot: Bot) -> BotMood {
-        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
-        if model.isRunning(bot.id) { return .working }
-        return .idle
+        model.mood(for: bot)
     }
 }
 
 // MARK: - Sidebar pieces
+
+/// The ink and fill every sidebar row shares, from the board's `.bp-nav`: muted text at 80% that
+/// comes up to full on hover, ink for the current row and for a row that needs you, and an accent
+/// fill under the current row (at 60% under the pointer). Pure, so bot, group and place rows
+/// cannot drift apart again.
+enum SidebarRowInk {
+    static func text(selected: Bool, hovering: Bool, needs: Bool, palette: Palette.Scheme) -> Color {
+        if selected || needs { return palette.foreground }
+        return palette.sidebarMutedForeground.opacity(hovering ? 1 : 0.8)
+    }
+
+    static func fill(selected: Bool, hovering: Bool, palette: Palette.Scheme) -> Color {
+        if selected { return palette.sidebarAccent }
+        return hovering ? palette.sidebarAccent.opacity(0.6) : Color.clear
+    }
+}
 
 /// A fixed place in the sidebar: an icon, a label, and a count when there is one.
 struct SidebarNavRow: View {
@@ -585,31 +833,35 @@ struct SidebarNavRow: View {
     }
 
     var body: some View {
+        let needs = countIsUrgent && count > 0
         Button(action: action) {
-            HStack(spacing: Theme.Space.step) {
+            HStack(spacing: Theme.Space.compact) {
                 Image(systemName: icon)
                     .font(.system(size: Theme.scaled(13)))
-                    .foregroundStyle(selected ? palette.foreground : palette.sidebarMutedForeground)
                     .frame(width: 20)
                 Text(label)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(palette.foreground)
+                    .fontWeight(selected ? .medium : .regular)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if count > 0 {
                     SidebarCount(value: count, urgent: countIsUrgent)
                 }
             }
+            .foregroundStyle(SidebarRowInk.text(selected: selected, hovering: hovering, needs: needs,
+                                                palette: palette))
             .padding(.horizontal, Theme.Space.step)
-            .frame(height: 36)
+            .frame(height: Theme.Size.row)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? palette.sidebarAccent
-                                 : (hovering ? palette.sidebarAccent.opacity(0.55) : .clear),
-                        in: .rect(cornerRadius: Theme.Radius.control))
+            .background(SidebarRowInk.fill(selected: selected, hovering: hovering, palette: palette),
+                        in: .rect(cornerRadius: Theme.Radius.lg))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .accessibilityLabel(label)
+        .accessibilityValue(count > 0 ? (countIsUrgent ? "\(count) waiting" : "\(count)") : "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -622,13 +874,14 @@ struct SidebarCount: View {
 
     var body: some View {
         Text("\(value)")
-            .font(.system(size: Theme.scaled(10), weight: .semibold))
+            .font(Theme.Typography.caption.weight(.medium))
             .monospacedDigit()
-            .foregroundStyle(urgent ? palette.onPrimary : palette.sidebarMutedForeground)
-            .padding(.horizontal, 5)
-            .frame(minWidth: 18, minHeight: 18)
-            .background(urgent ? palette.primary : palette.foreground.opacity(0.07),
-                        in: .rect(cornerRadius: 5))
+            .foregroundStyle(urgent ? palette.onPrimary : palette.foreground)
+            .padding(.horizontal, Theme.Space.tight)
+            .frame(minWidth: 20, minHeight: 20)
+            .background(urgent ? palette.primary : palette.sidebarBadge,
+                        in: .rect(cornerRadius: Theme.Radius.sm))
+            .accessibilityLabel(urgent ? "\(value) need you" : "\(value)")
     }
 }
 
@@ -646,27 +899,34 @@ struct SidebarSectionHeader: View {
     /// When set, the title goes somewhere and only the caret folds.
     let onTitle: (() -> Void)?
 
+    /// The smallest target the caret and "+" may have.
+    private let hitTarget: CGFloat = 24
+
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Space.xs) {
             if collapsible {
                 Button(action: onToggle) {
-                    Image(systemName: "triangle.fill")
-                        .font(.system(size: 6))
-                        .rotationEffect(.degrees(collapsed ? 90 : 180))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: Theme.scaled(9), weight: .semibold))
+                        .rotationEffect(.degrees(collapsed ? -90 : 0))
                         .foregroundStyle(palette.sidebarMutedForeground)
-                        .frame(width: 12, height: 18)
+                        .frame(width: hitTarget, height: hitTarget)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                // A 24pt target that keeps the caret where the 12pt one sat.
+                .padding(.horizontal, -Theme.Space.tight)
                 .help(collapsed ? "Show \(title)" : "Fold \(title)")
+                .accessibilityLabel(collapsed ? "Show \(title)" : "Fold \(title)")
+                .accessibilityValue(collapsed ? "Folded" : "Open")
             }
 
             Button(action: { (onTitle ?? onToggle)() }) {
-                HStack(spacing: 6) {
+                HStack(spacing: Theme.Space.tight) {
                     Text(title.uppercased())
-                        .font(Theme.Typography.badge)
-                        .tracking(0.7)
-                        .foregroundStyle(palette.sidebarMuted)
+                        .font(Theme.Typography.caption.weight(.medium))
+                        .tracking(0.6)
+                        .foregroundStyle(palette.sidebarMutedForeground)
                         .lineLimit(1)
                     if let count {
                         SidebarCount(value: count, urgent: countIsUrgent)
@@ -676,6 +936,7 @@ struct SidebarSectionHeader: View {
             }
             .buttonStyle(.plain)
             .disabled(!collapsible && onTitle == nil)
+            .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: 0)
 
@@ -683,29 +944,53 @@ struct SidebarSectionHeader: View {
                 Button(action: onAdd) {
                     Image(systemName: "plus")
                         .font(.system(size: Theme.scaled(11), weight: .medium))
-                        .foregroundStyle(palette.sidebarMuted)
-                        .frame(width: 22, height: 22)
+                        .frame(width: hitTarget, height: hitTarget)
                         .contentShape(.rect)
                 }
                 .buttonStyle(SidebarIconButtonStyle())
                 .help(addHelp)
+                .accessibilityLabel(addHelp.isEmpty ? "Add" : addHelp)
             }
         }
-        .padding(.leading, collapsible ? 4 : Theme.Space.snug)
-        .padding(.trailing, 4)
-        .frame(height: 26)
+        .padding(.leading, collapsible ? Theme.Space.xs : Theme.Space.snug)
+        .padding(.trailing, Theme.Space.xs)
+        .frame(height: Theme.Size.controlSm)
     }
 }
 
-/// A borderless icon button that shows a soft square under the pointer.
+/// A borderless icon button that shows a soft square under the pointer, and brings its icon up
+/// from muted to ink while it does.
+///
+/// The drawing lives in `SidebarIconButtonBody`, a view, so it can read the palette and hold its
+/// hover state; a style's own `@State` and environment are not reliably kept.
 struct SidebarIconButtonStyle: ButtonStyle {
-    @Environment(\.palette) private var palette
-    @State private var hovering = false
+    var radius: CGFloat
+
+    init(radius: CGFloat = Theme.Radius.md) {
+        self.radius = radius
+    }
 
     func makeBody(configuration: Configuration) -> some View {
+        SidebarIconButtonBody(configuration: configuration, radius: radius)
+    }
+}
+
+struct SidebarIconButtonBody: View {
+    @Environment(\.palette) private var palette
+    let configuration: ButtonStyleConfiguration
+    let radius: CGFloat
+    @State private var hovering = false
+
+    init(configuration: ButtonStyleConfiguration, radius: CGFloat) {
+        self.configuration = configuration
+        self.radius = radius
+    }
+
+    var body: some View {
+        let lit = hovering || configuration.isPressed
         configuration.label
-            .background((hovering || configuration.isPressed) ? palette.sidebarAccent : .clear,
-                        in: .rect(cornerRadius: 6))
+            .foregroundStyle(lit ? palette.foreground : palette.sidebarMutedForeground)
+            .background(lit ? palette.sidebarAccent : Color.clear, in: .rect(cornerRadius: radius))
             .onHover { hovering = $0 }
     }
 }
@@ -713,8 +998,9 @@ struct SidebarIconButtonStyle: ButtonStyle {
 /// One bot in the list: face, name, role tag.
 ///
 /// One line, as the dashboard sidebar draws it. What it last said is still there, as the row's
-/// tooltip and in search, but the list itself reads as a column of faces: the state lives on the
-/// face (a dot for working or needs you), not in a second line of text.
+/// tooltip, but the list itself reads as a column of faces: the state lives on the
+/// face (a dot for working or needs you), not in a second line of text. VoiceOver gets the same
+/// state in words, since the dot is colour only.
 struct BotRow: View {
     @Environment(\.palette) private var palette
 
@@ -723,42 +1009,38 @@ struct BotRow: View {
     let mood: BotMood
     let selected: Bool
     var unread = false
-    var matchedOnMessage = false
     let action: () -> Void
 
     @State private var hovering = false
 
     init(bot: Bot, preview: String?, mood: BotMood, selected: Bool, unread: Bool = false,
-         matchedOnMessage: Bool = false, action: @escaping () -> Void) {
+         action: @escaping () -> Void) {
         self.bot = bot
         self.preview = preview
         self.mood = mood
         self.selected = selected
         self.unread = unread
-        self.matchedOnMessage = matchedOnMessage
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: Theme.Space.step) {
-                BotFace(bot: bot, mood: mood, size: Theme.scaled(22))
+            HStack(spacing: Theme.Space.compact) {
+                // Still when idle or asleep and not selected: a sidebar of faces all breathing at 30fps is
+                // noise and battery. The face is 22pt, so the frame is too (no overhang).
+                BotFace(bot: bot, mood: mood, size: Theme.scaled(22),
+                        still: (mood == .idle || mood == .sleeping) && !selected)
                     .overlay(alignment: .bottomTrailing) { statusDot }
-                    .frame(width: 20)
+                    .frame(width: Theme.scaled(22), height: Theme.scaled(22))
 
                 Text(bot.name)
                     .font(Theme.Typography.body)
-                    .fontWeight(unread || selected ? .semibold : .regular)
-                    .foregroundStyle(palette.foreground)
+                    .fontWeight(unread || selected ? .medium : .regular)
+                    .foregroundStyle(SidebarRowInk.text(selected: selected, hovering: hovering,
+                                                        needs: mood == .waitingForYou || unread,
+                                                        palette: palette))
                     .lineLimit(1)
                     .layoutPriority(1)
-
-                if matchedOnMessage {
-                    Image(systemName: "text.quote")
-                        .font(.system(size: Theme.scaled(9)))
-                        .foregroundStyle(palette.sidebarMuted)
-                        .help("Matched on what \(bot.name) said")
-                }
 
                 Spacer(minLength: 0)
 
@@ -772,22 +1054,49 @@ struct BotRow: View {
                 if let role = bot.role, !role.isEmpty { RoleTag(text: role) }
             }
             .padding(.horizontal, Theme.Space.step)
-            .frame(height: 36)
+            .frame(height: Theme.Size.row)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(background, in: .rect(cornerRadius: Theme.Radius.control))
+            .background(SidebarRowInk.fill(selected: selected, hovering: hovering, palette: palette),
+                        in: .rect(cornerRadius: Theme.Radius.lg))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(helpText)
+        // Name, then role, then state: not the face's mood first, as the combined children read.
+        .accessibilityLabel(accessibleName)
+        .accessibilityValue(accessibleState)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var accessibleName: String {
+        guard let role = bot.role, !role.isEmpty else { return bot.name }
+        return "\(bot.name), \(role)"
+    }
+
+    /// What the dot and the weight say, in words. Empty for an idle bot with nothing new.
+    private var accessibleState: String {
+        var parts: [String] = []
+        switch mood {
+        case .waitingForYou: parts.append("Needs you")
+        case .working: parts.append("Working")
+        case .failed: parts.append("Last run failed")
+        case .done: parts.append("Done")
+        case .sleeping: parts.append("Asleep")
+        case .idle: break
+        }
+        if unread { parts.append("Unread") }
+        return parts.joined(separator: ", ")
     }
 
     private var helpText: String {
         switch mood {
         case .waitingForYou: "\(bot.name) needs you"
         case .working: preview.map { "Working. \($0)" } ?? "\(bot.name) is working"
-        case .failed: preview ?? "Last run failed"
-        case .idle, .done, .sleeping: preview ?? bot.name
+        case .failed: preview.map { "Last run failed. \($0)" } ?? "Last run failed"
+        case .done: preview.map { "Done. \($0)" } ?? "\(bot.name) is done"
+        case .sleeping: "\(bot.name) is asleep"
+        case .idle: preview ?? bot.name
         }
     }
 
@@ -810,75 +1119,77 @@ struct BotRow: View {
         default: palette.success
         }
     }
-
-    private var background: Color {
-        if selected { return palette.sidebarAccent }
-        return hovering ? palette.sidebarAccent.opacity(0.55) : .clear
-    }
 }
-
 
 /// Renames a folder across every bot filed under it.
 ///
 /// The folder *is* the string on each bot, so renaming is a bulk edit rather than a record
 /// update. Done here rather than inline in the context menu because a text field inside a menu
 /// cannot take focus on macOS.
+///
+/// The count is every bot filed here, pinned and hidden ones too, since the rename moves them
+/// all. A name another section already has merges the two, so the sheet says so and the button
+/// says Merge rather than letting it happen silently.
 struct RenameFolderSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let folder: String
     @State private var name = ""
 
+    init(folder: String) {
+        self.folder = folder
+    }
+
+    private var trimmed: String { name.trimmingCharacters(in: .whitespaces) }
+
+    private var memberCount: Int { model.bots.filter { $0.folder == folder }.count }
+
+    /// The other section the new name already belongs to, if any.
+    private var mergeTarget: String? {
+        guard !trimmed.isEmpty, trimmed != folder else { return nil }
+        return model.sectionExists(trimmed) ? trimmed : nil
+    }
+
+    private var hint: String {
+        let moving = memberCount == 1 ? "1 bot moves" : "\(memberCount) bots move"
+        if let target = mergeTarget {
+            if memberCount == 0 {
+                return "There's already a section called \(target). The two become one."
+            }
+            return "There's already a section called \(target). \(moving) into it and the two become one."
+        }
+        return memberCount == 0 ? "No bots in it yet." : "\(moving) with it."
+    }
+
     var body: some View {
-        SheetFrame(title: "Rename section", icon: "rectangle.stack", width: 380, primaryVerb: "rename", hints: false) {
-            Field(label: "Name",
-                  hint: "\(model.bots(in: folder).count) bots move with it.") {
+        SheetFrame(title: "Rename section", icon: "rectangle.stack", width: 380,
+                   tone: mergeTarget == nil ? .primary : .warning,
+                   primaryVerb: mergeTarget == nil ? "rename" : "merge", hints: false) {
+            Field(label: "Name", hint: hint) {
                 TextField("", text: $name, prompt: Text(folder))
-                    .textFieldStyle(BupsyFieldStyle())
+                    .bupsyField()
                     .onSubmit(commit)
             }
         } actions: {
             Button("Cancel") { dismiss() }
                 .buttonStyle(QuietButton())
-            Button("Rename", action: commit)
+            Button(mergeTarget == nil ? "Rename" : "Merge sections", action: commit)
                 .buttonStyle(PrimaryButton())
                 .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(trimmed.isEmpty)
         }
         .onAppear { name = folder }
     }
 
     private func commit() {
-        model.renameFolder(folder, to: name)
+        guard !trimmed.isEmpty else { return }
+        model.renameFolder(folder, to: trimmed)
+        SidebarFolds.rename(folder, to: trimmed)
         dismiss()
     }
 }
 
-/// `sheet(item:)` needs an Identifiable. A wrapper rather than a retroactive conformance on
-/// String: that conformance would apply everywhere in the app and can quietly change which
-/// SwiftUI overload gets picked somewhere unrelated.
-/// One search result, with enough about *how* it matched to rank it and to explain itself.
-struct SearchHit: Identifiable {
-    let bot: Bot
-    /// 0 for a name match, 1 for a match on what the bot said.
-    let rank: Int
-    /// Where in the string the match started. Earlier reads as more relevant.
-    let offset: Int
-    let matchedPreview: Bool
-
-    var id: BotID { bot.id }
-}
-
-struct FolderName: Identifiable, Hashable {
-    let id: String
-    init(_ name: String) { id = name }
-}
-
-/// Files one bot into a folder that does not exist yet.
-///
-/// Creating the folder and putting something in it are the same action on purpose: a folder here
-/// exists exactly as long as a bot is in it, so there is no way to make an empty one and then
-/// wonder where it went.
+/// Files one bot into a section that does not exist yet.
 struct NewFolderSheet: View {
     let bot: Bot
 
@@ -890,114 +1201,130 @@ struct NewFolderSheet: View {
     }
 }
 
-/// Renames a bot, and edits what it is for.
-///
-/// Both in one place because they are the same thought — "this bot is actually for something
-/// else" — and splitting them across two menu items means doing half the edit and forgetting the
-/// rest.
-struct RenameBotSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let bot: Bot
-    @State private var name = ""
-    @State private var job = ""
-    @State private var role = ""
-    @State private var shape = BotShape.bup
-    @State private var colour = 0
-    /// Only a face someone actually changed is saved as a choice. Saving every bot's derived face
-    /// as "chosen" on an unrelated rename would quietly pin faces nobody picked.
-    @State private var faceChanged = false
-
-    var body: some View {
-        SheetFrame(title: "Edit bot", icon: "pencil", subtitle: "Its name, its job, and the face you'll know it by.",
-                   width: 460) {
-            HStack(spacing: Theme.Space.step) {
-                // The face shown live as you pick, so the sheet is a preview rather than a form.
-                BotFace(hue: bot.avatarHue, mood: .idle, size: 56, shape: shape, colour: colour)
-                VStack(alignment: .leading, spacing: 4) {
-                    TextField("", text: $name, prompt: Text(bot.name))
-                        .textFieldStyle(BupsyFieldStyle())
-                        .onSubmit(commit)
-                    if model.isNameTaken(name, except: bot.id) {
-                        Text("Another bot is already called that.")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
-            }
-
-            AvatarPicker(
-                shape: $shape, colour: $colour,
-                taken: Set(model.bots.filter { $0.id != bot.id }.map(\.effectiveShape)),
-                onChange: { faceChanged = true })
-
-            Field(label: "Role tag", hint: "A word or two shown beside its name, like PA or Finance.") {
-                TextField("", text: $role, prompt: Text("Optional"))
-                    .textFieldStyle(BupsyFieldStyle())
-            }
-
-            Field(label: "What's its job?",
-                  hint: "Takes effect on the next thing you say. It does not rewrite the thread.") {
-                TextField("", text: $job,
-                          prompt: Text("Research things and report back plainly."),
-                          axis: .vertical)
-                    .textFieldStyle(BupsyFieldStyle())
-                    .lineLimit(3...5)
-            }
-        } actions: {
-            Button("Cancel") { dismiss() }
-                .buttonStyle(QuietButton())
-            Button("Save", action: commit)
-                .buttonStyle(PrimaryButton())
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
-                          || model.isNameTaken(name, except: bot.id))
-        }
-        .onAppear {
-            let current = model.bots.first { $0.id == bot.id } ?? bot
-            name = current.name
-            job = current.personaPrompt ?? ""
-            role = current.role ?? ""
-            shape = current.effectiveShape
-            colour = current.avatarColour ?? BotFace.derivedColour(forHue: current.avatarHue)
-        }
-    }
-
-    private func commit() {
-        model.rename(bot, to: name)
-        model.setJob(bot, job)
-        model.setRole(bot, role)
-        if faceChanged { model.setAvatar(bot, shape: shape, colour: colour) }
-        dismiss()
-    }
-}
-
-/// A bot's role, as a small quiet chip beside its name.
+/// A bot's role, as a small quiet tag beside its name: the board's `.bp-nav-tag`. A role, not a
+/// status, so it stays its own small tag rather than a `Badge`.
 struct RoleTag: View {
     @Environment(\.palette) private var palette
     let text: String
 
     var body: some View {
         Text(text)
-            .font(.system(size: Theme.scaled(10), weight: .medium))
-            .foregroundStyle(palette.sidebarMuted)
+            .font(Theme.Typography.caption)
+            .foregroundStyle(palette.sidebarMutedForeground)
             .lineLimit(1)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(palette.foreground.opacity(0.07), in: .rect(cornerRadius: 4))
+            .padding(.horizontal, Theme.Space.tight)
+            .padding(.vertical, Theme.Space.hairline)
+            .background(palette.sidebarBadge, in: .rect(cornerRadius: Theme.Radius.sm))
             .fixedSize()
     }
 }
 
-/// A row in a small popover menu: highlights under the pointer, like a real menu item.
+/// A row in a small popover menu: highlights under the pointer, like a real menu item. Drawn by
+/// `MenuRowBody`, a view, so the palette and the hover state are read reliably.
 struct MenuRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        MenuRowBody(configuration: configuration)
+    }
+}
+
+struct MenuRowBody: View {
     @Environment(\.palette) private var palette
+    let configuration: ButtonStyleConfiguration
     @State private var hovering = false
 
-    func makeBody(configuration: Configuration) -> some View {
+    init(configuration: ButtonStyleConfiguration) {
+        self.configuration = configuration
+    }
+
+    var body: some View {
         configuration.label
-            .background((hovering || configuration.isPressed) ? palette.foreground.opacity(0.08) : .clear,
-                        in: .rect(cornerRadius: 6))
+            .background((hovering || configuration.isPressed) ? palette.foreground.opacity(0.08) : Color.clear,
+                        in: .rect(cornerRadius: Theme.Radius.sm))
             .onHover { hovering = $0 }
+    }
+}
+
+/// Which sidebar sections are folded, saved across launches.
+///
+/// One JSON-encoded array of section keys under `bupsy.foldedSections`, in the app's own
+/// defaults (`AppHome.defaults`, so a throwaway `BUPSY_HOME` run keeps its own). The sidebar
+/// reads and writes it with `@AppStorage`; the New section sheet adds to it when "Fold it in the
+/// sidebar by default" is on. Pure helpers, no state of their own.
+enum SidebarFolds {
+    static let key = "bupsy.foldedSections"
+
+    static func decode(_ json: String) -> Set<String> {
+        guard let data = json.data(using: .utf8),
+              let keys = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(keys)
+    }
+
+    static func encode(_ keys: Set<String>) -> String {
+        guard let data = try? JSONEncoder().encode(keys.sorted()),
+              let json = String(data: data, encoding: .utf8) else { return "[]" }
+        return json
+    }
+
+    /// Folds one section, from outside the sidebar.
+    static func fold(_ section: String) {
+        let defaults = AppHome.defaults
+        var keys = decode(defaults.string(forKey: key) ?? "[]")
+        keys.insert(section)
+        defaults.set(encode(keys), forKey: key)
+    }
+
+    /// Unfolds one section, from outside the sidebar.
+    static func unfold(_ section: String) {
+        let defaults = AppHome.defaults
+        var keys = decode(defaults.string(forKey: key) ?? "[]")
+        guard keys.remove(section) != nil else { return }
+        defaults.set(encode(keys), forKey: key)
+    }
+
+    /// Carries a fold over when a section is renamed, so renaming does not unfold it.
+    static func rename(_ old: String, to new: String) {
+        guard !new.isEmpty, new != old else { return }
+        let defaults = AppHome.defaults
+        var keys = decode(defaults.string(forKey: key) ?? "[]")
+        guard keys.remove(old) != nil else { return }
+        keys.insert(new)
+        defaults.set(encode(keys), forKey: key)
+    }
+}
+
+// MARK: - Asking before signing out
+
+extension View {
+    /// Asks before signing an engine out. Shared by the You menu and Settings, so both say the
+    /// same thing: the CLI's sign-out is not Bupsy's, it reaches every other use of that command
+    /// on this Mac too.
+    func confirmsSignOut(_ engine: Binding<EngineID?>, onConfirm: @escaping () -> Void = {}) -> some View {
+        modifier(SignOutConfirmation(engine: engine, onConfirm: onConfirm))
+    }
+}
+
+private struct SignOutConfirmation: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Binding var engine: EngineID?
+    let onConfirm: () -> Void
+
+    init(engine: Binding<EngineID?>, onConfirm: @escaping () -> Void) {
+        self._engine = engine
+        self.onConfirm = onConfirm
+    }
+
+    func body(content: Content) -> some View {
+        content.confirmsDeletion(
+            of: $engine,
+            title: { "Sign out of \($0.displayName)?" },
+            button: "Sign out",
+            message: {
+                "This signs the \($0.rawValue) command out everywhere on this Mac, not just in Bupsy."
+            },
+            perform: { engine in
+                onConfirm()
+                // Fire and forget: a failure to open Terminal lands in `accountProblem`.
+                model.openSignOut(for: engine)
+            })
     }
 }

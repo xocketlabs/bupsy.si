@@ -1,27 +1,43 @@
 import BupsyKit
 import SwiftUI
 
-// The bot list now lives in NavRail. What remains here is the right-click menu and the
-// new-bot sheet, both of which the rail uses.
+// The bot list now lives in NavRail. What remains here is the right-click menu, which the rail
+// uses, and the empty roster.
 
-/// Right-click. Everything here is also in the bot's profile, where it is visible rather than
-/// hidden. This is the shortcut, not the only route.
+/// The one menu for a bot, wherever it is offered: the sidebar row's right-click and the Team
+/// card's "..." button both build it from here, so the two can never drift apart.
+///
+/// The order follows the board: open, edit, face; where it lives; pin; stop and delete. The
+/// rarer settings (engine, model, trust, copying) sit one level down under More rather than
+/// making a seventeen-row menu. Everything here is also in the bot's profile, where it is
+/// visible rather than hidden. This is the shortcut, not the only route.
 struct BotMenu: View {
     @Environment(AppModel.self) private var model
     let bot: Bot
+    /// Opens the bot's chat. Nil where the menu sits on the chat already.
+    var onOpen: (() -> Void)? = nil
     /// Opens the "new folder" sheet. A closure rather than a binding because a context menu is
     /// torn down the instant it is clicked, so the sheet has to belong to the view behind it.
     var onNewFolder: () -> Void
     /// Same reason as `onNewFolder`: a context menu is gone the moment it is clicked, so the
     /// sheet has to belong to the view behind it.
     var onRename: () -> Void = {}
+    /// Asks before deleting. Same reason again: the confirmation has to live on the view behind
+    /// the menu, so the menu only says which bot.
+    var onDelete: () -> Void
 
     var body: some View {
-        Button("Pin to top", systemImage: bot.pinned ? "pin.slash" : "pin") {
-            model.togglePin(bot)
+        if let onOpen {
+            Button(action: onOpen) { Label("Open chat", systemImage: "bubble.left") }
         }
-        Menu("Move to") {
-            ForEach(model.folders, id: \.self) { folder in
+        // It opens the full editor, so it says so rather than promising only a new name.
+        Button(action: onRename) { Label("Edit bot…", systemImage: "pencil") }
+        Button { model.shuffleFace(bot) } label: { Label("Change face", systemImage: "sparkles") }
+
+        Divider()
+
+        Section("Move to") {
+            ForEach(model.allSections, id: \.self) { folder in
                 Button {
                     model.setFolder(bot, folder)
                 } label: {
@@ -31,149 +47,141 @@ struct BotMenu: View {
             Button {
                 model.setFolder(bot, nil)
             } label: {
-                Label("Unassigned",
-                      systemImage: (bot.folder ?? "").isEmpty ? "checkmark" : "tray")
+                Label("Unassigned", systemImage: (bot.folder ?? "").isEmpty ? "checkmark" : "tray")
+            }
+            Button(action: onNewFolder) { Label("New section…", systemImage: "plus") }
+        }
+
+        Divider()
+
+        Button { model.togglePin(bot) } label: {
+            Label(bot.pinned ? "Unpin" : "Pin to top", systemImage: bot.pinned ? "pin.slash" : "pin")
+        }
+
+        Menu {
+            Button("Mark as unread") { model.markUnread(bot) }
+            Divider()
+            Menu("Engine") {
+                ForEach(EngineID.supported, id: \.self) { engine in
+                    // A Toggle, so the menu draws its own checkmark and the other rows stay aligned.
+                    Toggle(isOn: Binding(
+                        get: { bot.engine == engine },
+                        set: { if $0 { model.setEngine(bot, engine) } })) {
+                        Text(engine.displayName)
+                    }
+                }
+            }
+            Menu("Model") { ModelMenuItems(bot: bot) }
+            Menu("Trust") {
+                ForEach(Autonomy.allCases, id: \.self) { level in
+                    Toggle(isOn: Binding(
+                        get: { bot.autonomy == level },
+                        set: { if $0 { model.setAutonomy(bot, level) } })) {
+                        Text(level.trustLabel)
+                    }
+                }
             }
             Divider()
-            Button("Create section…", action: onNewFolder)
-        }
-        Button("Mark as unread") { model.markUnread(bot) }
-        Divider()
-        Button("Rename bot…", action: onRename)
-        Button("Shuffle face") { model.shuffleFace(bot) }
-        Menu("Engine") {
-            ForEach(EngineID.supported, id: \.self) { engine in
-                Button {
-                    model.setEngine(bot, engine)
-                } label: {
-                    Label(engine.displayName, systemImage: bot.engine == engine ? "checkmark" : "")
-                }
+            Button("Duplicate") { model.duplicate(bot) }
+            Button("Copy conversation") { model.copyTranscript(of: bot) }
+            // The engine's own resume handle. Useful when you want to pick a thread up in the CLI
+            // directly, which is a thing this app should never make harder.
+            Button("Copy conversation ID") { model.copyConversationID(of: bot) }
+            Divider()
+            // Not destructive, and worded so it cannot be mistaken for one.
+            Button(bot.hidden ? "Show in sidebar" : "Hide from sidebar") {
+                model.toggleHidden(bot)
             }
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
         }
-        Menu("Model") { ModelMenuItems(bot: bot) }
-        Menu("Trust") {
-            ForEach(Autonomy.allCases, id: \.self) { level in
-                Button {
-                    model.setAutonomy(bot, level)
-                } label: {
-                    Label(level.menuLabel, systemImage: bot.autonomy == level ? "checkmark" : "")
-                }
-            }
-        }
+
         Divider()
-        Button("Duplicate") { model.duplicate(bot) }
-        Button("Copy conversation") { model.copyTranscript(of: bot) }
-        // The engine's own resume handle. Useful when you want to pick a thread up in the CLI
-        // directly, which is a thing this app should never make harder.
-        Button("Copy conversation ID") { model.copyConversationID(of: bot) }
-        Divider()
-        // Not destructive, and worded so it cannot be mistaken for one.
-        Button(bot.hidden ? "Show in sidebar" : "Hide from sidebar") {
-            model.toggleHidden(bot)
+
+        // Only while it is doing something. Stops the run in progress; it does not hold the bot's
+        // routines, so it is called Stop rather than Pause.
+        if model.isRunning(bot.id) {
+            Button { model.stop(bot.id) } label: { Label("Stop", systemImage: "stop.fill") }
         }
-        Button("Delete bot", role: .destructive) { model.deleteBot(bot) }
+        Button(role: .destructive, action: onDelete) {
+            Label("Delete bot…", systemImage: "trash")
+        }
     }
 }
 
-struct NewBotSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.palette) private var palette
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-    @State private var engine = EngineID.claude
-    @State private var job = ""
-    @State private var shape = BotShape.bup
-    @State private var colour = 0
-    /// Until the face is touched, it follows the name: the automatic face, kept distinct from the
-    /// rest of the roster. Once someone picks, their pick stays put while they keep typing.
-    @State private var faceChosen = false
+// MARK: - Asking before deleting
 
-    var body: some View {
-        SheetFrame(title: "New bot", icon: "sparkles",
-                   subtitle: "It starts fully gated. It asks before doing anything beyond reading.",
-                   primaryVerb: "create") {
-            HStack(spacing: Theme.Space.step) {
-                BotFace(hue: previewHue, mood: .idle, size: 56,
-                        shape: faceChosen ? shape : nil, colour: faceChosen ? colour : nil)
-                VStack(alignment: .leading, spacing: Theme.Space.snug) {
-                    // Not "Scout": that is a starter bot's name, and suggesting it invited a
-                    // duplicate of a bot the person already has.
-                    TextField("", text: $name, prompt: Text("Give it a name"))
-                        .textFieldStyle(BupsyFieldStyle())
-                    if model.isNameTaken(name) {
-                        Text("You already have a bot called that.")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(palette.destructive)
-                    }
-                    Picker("", selection: $engine) {
-                        ForEach(EngineID.supported, id: \.self) {
-                            Text($0.displayName).tag($0)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-
-            AvatarPicker(
-                // Each setter seeds the *other* half from the automatic face before taking over.
-                // Without it, picking only a colour flipped the face to "chosen" with the shape
-                // still at its placeholder, so the bot jumped to a circle you never picked.
-                shape: Binding(
-                    get: { faceChosen ? shape : BotFace.derivedShape(forHue: previewHue) },
-                    set: { new in
-                        if !faceChosen {
-                            colour = BotFace.derivedColour(forHue: previewHue)
-                            faceChosen = true
-                        }
-                        shape = new
-                    }),
-                colour: Binding(
-                    get: { faceChosen ? colour : BotFace.derivedColour(forHue: previewHue) },
-                    set: { new in
-                        if !faceChosen {
-                            shape = BotFace.derivedShape(forHue: previewHue)
-                            faceChosen = true
-                        }
-                        colour = new
-                    }),
-                taken: Set(model.bots.map(\.effectiveShape)))
-
-            Field(label: "What's its job?",
-                  hint: "Written to the bot as standing instructions, every time you talk to it.") {
-                TextField("", text: $job,
-                          prompt: Text("What should it do? e.g. watch my inbox and flag anything urgent"),
-                          axis: .vertical)
-                    .textFieldStyle(BupsyFieldStyle())
-                    .lineLimit(3...5)
-            }
-        } actions: {
-            Button("Cancel") { dismiss() }
-                .buttonStyle(QuietButton())
-            Button("Create") {
-                model.addBot(
-                    name: name.trimmingCharacters(in: .whitespaces),
-                    engine: engine,
-                    job: job.trimmingCharacters(in: .whitespaces),
-                    shape: faceChosen ? shape : nil,
-                    colour: faceChosen ? colour : nil)
-                dismiss()
-            }
-            .buttonStyle(PrimaryButton())
-            .keyboardShortcut(.defaultAction)
-            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || model.isNameTaken(name))
+/// The one way Bupsy asks before deleting something. A confirmation dialog with a red button
+/// named for the action, and a message that says exactly what goes.
+///
+/// Hosted on a stable view, never inside a menu: a context menu is torn down the moment it is
+/// clicked, and a dialog attached to it would go with it. Set `item` to ask; it is cleared when
+/// the dialog closes, whichever button was pressed.
+extension View {
+    func confirmsDeletion<Item>(
+        of item: Binding<Item?>,
+        title: @escaping (Item) -> String,
+        button: String,
+        message: @escaping (Item) -> String,
+        perform: @escaping (Item) -> Void
+    ) -> some View {
+        let current = item.wrappedValue
+        return confirmationDialog(
+            current.map(title) ?? "",
+            isPresented: Binding(
+                get: { item.wrappedValue != nil },
+                set: { if !$0 { item.wrappedValue = nil } }),
+            titleVisibility: .visible,
+            presenting: current
+        ) { value in
+            Button(button, role: .destructive) { perform(value) }
+            Button("Cancel", role: .cancel) {}
+        } message: { value in
+            Text(message(value))
         }
     }
 
-    /// The face the bot will actually get, as you type its name.
-    ///
-    /// Run through the same "nobody else has this shape" step as creation. Previewing the raw
-    /// name-derived hue would show one character and then create a different one.
-    private var previewHue: Double {
-        var hash = 5381
-        for byte in name.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
-        let raw = name.isEmpty ? 0.55 : Double(abs(hash) % 360) / 360
-        return model.distinctHue(near: raw)
+    /// Asks before deleting a bot, in the same words wherever it is offered.
+    func confirmsBotDeletion(
+        _ bot: Binding<Bot?>, perform: @escaping (Bot) -> Void
+    ) -> some View {
+        confirmsDeletion(
+            of: bot,
+            title: { "Delete \($0.name)?" },
+            button: "Delete bot",
+            message: { _ in
+                "Its conversation, routines and folder watches are deleted too. This can't be undone."
+            },
+            perform: perform)
+    }
+
+    /// Asks before deleting a section, in the same words wherever it is offered. Only the
+    /// section goes: its bots move to Unassigned.
+    func confirmsSectionDeletion(
+        _ section: Binding<String?>, perform: @escaping (String) -> Void
+    ) -> some View {
+        confirmsDeletion(
+            of: section,
+            title: { "Delete the \($0) section?" },
+            button: "Delete section",
+            message: { _ in
+                "Its bots move to Unassigned. No bots, chats or routines are deleted."
+            },
+            perform: perform)
+    }
+
+    /// Asks before deleting a group chat, in the same words wherever it is offered.
+    func confirmsGroupDeletion(
+        _ group: Binding<ChatGroup?>, perform: @escaping (ChatGroup) -> Void
+    ) -> some View {
+        confirmsDeletion(
+            of: group,
+            title: { "Delete \($0.name)?" },
+            button: "Delete group",
+            message: { _ in
+                "Its conversation is deleted. The bots in it stay as they are. This can't be undone."
+            },
+            perform: perform)
     }
 }
 
@@ -194,15 +202,15 @@ struct RosterEmpty: View {
         RosterEmptyStarter(name: "Inbox", shape: .bear, colour: 6,
                            title: "Keep my inbox under a day old",
                            job: "Watch my inbox and flag anything urgent. Keep it under a day old.",
-                           meta: ["Works best with a mail app connected", "Asks before it acts"]),
+                           meta: ["Gmail through Executor", "Checks hourly on weekdays"]),
         RosterEmptyStarter(name: "Researcher", shape: .pill, colour: 1,
                            title: "Research a topic and send me a summary",
                            job: "Research the topics I give you and send me a short, plain summary with sources.",
-                           meta: ["Searches the web", "Reports back in its thread"]),
+                           meta: ["Searches the web", "Writes notes to its folder"]),
         RosterEmptyStarter(name: "Builder", shape: .cat, colour: 2,
                            title: "Fix my builds when CI goes red",
                            job: "When a build fails, find out why and propose a fix.",
-                           meta: ["Works in a repo folder", "Asks before running commands"]),
+                           meta: ["Watches a repo folder", "Asks before running commands"]),
     ]
 
     var body: some View {
@@ -210,11 +218,11 @@ struct RosterEmpty: View {
             Topbar(trail: ["Roster"]) { EmptyView() }
             GeometryReader { geometry in
                 ScrollView {
-                    VStack(spacing: 40) {
+                    VStack(spacing: Theme.Space.page) {
                         hero
                         starters
                     }
-                    .padding(32)
+                    .padding(Theme.Space.pageSide)
                     .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                 }
             }
@@ -240,7 +248,7 @@ struct RosterEmpty: View {
             }
             HStack(spacing: Theme.Space.snug) {
                 Button {
-                    model.quickCreateBot(engine: preferredEngine)
+                    model.quickCreateBot(engine: model.defaultNewBotEngine)
                 } label: {
                     Label("New bot", systemImage: "plus")
                 }
@@ -248,7 +256,7 @@ struct RosterEmpty: View {
                 Button {
                     settingUp = true
                 } label: {
-                    Label("Set it up yourself", systemImage: "slider.horizontal.3")
+                    Label("Set up a bot yourself", systemImage: "slider.horizontal.3")
                 }
                 .buttonStyle(QuietButton())
             }
@@ -267,11 +275,11 @@ struct RosterEmpty: View {
                 Button { start(starter) } label: {
                     CardRow {
                         StillBotFace(shape: starter.shape, colour: starter.colour, size: 40)
-                            .frame(width: 44, height: 44)
+                            .frame(width: Theme.Size.tile, height: Theme.Size.tile)
                             .background(BotShape.palette[starter.colour].opacity(0.14),
                                         in: .rect(cornerRadius: Theme.Radius.control))
                     } content: {
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: Theme.Space.xs) {
                             Text(starter.title)
                                 .font(Theme.Typography.body)
                                 .foregroundStyle(palette.foreground)
@@ -298,11 +306,6 @@ struct RosterEmpty: View {
         .frame(maxWidth: 560)
     }
 
-    /// The first engine that is signed in, so a starter bot can actually run.
-    private var preferredEngine: EngineID {
-        EngineID.supported.first { model.engineStatus[$0]?.isUsable == true } ?? .claude
-    }
-
     private func start(_ starter: RosterEmptyStarter) {
         var name = starter.name
         var counter = 2
@@ -310,8 +313,13 @@ struct RosterEmpty: View {
             name = "\(starter.name) \(counter)"
             counter += 1
         }
-        model.addBot(name: name, engine: preferredEngine, job: starter.job,
+        model.addBot(name: name, engine: model.defaultNewBotEngine, job: starter.job,
                      shape: starter.shape, colour: starter.colour)
+        // The same hello a one-click bot gives, told the job it was made for, so it confirms
+        // the job and asks what it needs rather than sitting silent.
+        if let bot = model.bots.first(where: { $0.name == name }) {
+            model.greet(bot, job: starter.job)
+        }
     }
 }
 

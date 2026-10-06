@@ -28,7 +28,7 @@ final class OutboxWatcher {
         case updateMe(from: String, name: String?, role: String?, job: String?)
     }
 
-    /// The roster `list_bots` reads, beside the outbox rather than in it — the outbox is drained
+    /// The roster `list_bots` reads, beside the outbox rather than in it, since the outbox is drained
     /// and emptied every second.
     static var rosterFile: URL {
         directory.deletingLastPathComponent().appendingPathComponent("roster.json")
@@ -58,6 +58,22 @@ final class OutboxWatcher {
         timer = nil
     }
 
+    /// The question as the card can show it. Two to four short answers become buttons; any
+    /// other number is folded into the text so nothing the bot offered is lost, and the person
+    /// answers in their own words. An empty question stays empty for the caller to explain.
+    static func normaliseQuestion(_ question: String?, options raw: Any?) -> (String, [String]) {
+        let text = (question ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let options = ((raw as? [Any]) ?? []).compactMap { item -> String? in
+            guard let option = item as? String else { return nil }
+            let trimmed = option.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if (2...4).contains(options.count) { return (text, options) }
+        guard !options.isEmpty, !text.isEmpty else { return (text, []) }
+        let listed = options.map { "- \($0)" }.joined(separator: "\n")
+        return ("\(text)\n\n\(listed)", [])
+    }
+
     private func drain() {
         let files = (try? FileManager.default.contentsOfDirectory(
             at: Self.directory, includingPropertiesForKeys: nil)) ?? []
@@ -81,9 +97,11 @@ final class OutboxWatcher {
             if payload["kind"] as? String == "update_me" {
                 onRequest(.updateMe(from: from, name: field("name"), role: field("role"), job: field("job")))
             } else if payload["kind"] as? String == "question" {
-                guard let question = payload["question"] as? String, !question.isEmpty,
-                      let options = payload["options"] as? [String], (2...4).contains(options.count)
-                else { continue }
+                // Never dropped: the bot has stopped to wait for an answer, and a question that
+                // vanished here leaves it waiting with nothing on screen. A shape the card cannot
+                // show as buttons arrives as a plain question answered in words instead.
+                let (question, options) = Self.normaliseQuestion(
+                    payload["question"] as? String, options: payload["options"])
                 onRequest(.question(from: from, question: question, options: options))
             } else if payload["kind"] as? String == "create_bot" {
                 guard let name = payload["name"] as? String, !name.isEmpty,

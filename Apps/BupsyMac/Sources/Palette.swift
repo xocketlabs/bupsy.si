@@ -45,9 +45,11 @@ enum Palette {
         /// `info` and `destructive` tuned for text: the raw tokens fail contrast on dark cards.
         let infoText: Color
         let destructiveText: Color
-
-        /// Readable text on top of `primary`.
-        var onPrimary: Color { .white }
+        /// Readable text on top of `primary`, per the design's `--primary-foreground`: near white
+        /// in light mode, near black in dark mode, where the pink is lighter.
+        let onPrimary: Color
+        /// A switch's track while it is off (the design's `--chart-4`). On is `foreground`.
+        let switchOff: Color
     }
 
     static let dark = Scheme(
@@ -70,7 +72,9 @@ enum Palette {
         success: rgb(51, 183, 95),
         warning: rgb(222, 144, 22),
         infoText: rgb(173, 144, 255),
-        destructiveText: rgb(255, 117, 110)
+        destructiveText: rgb(255, 117, 110),
+        onPrimary: rgb(23, 23, 23),
+        switchOff: rgb(82, 82, 82)
     )
 
     static let light = Scheme(
@@ -93,7 +97,9 @@ enum Palette {
         success: rgb(0, 124, 50),
         warning: rgb(162, 87, 0),
         infoText: rgb(129, 65, 238),
-        destructiveText: rgb(206, 28, 18)
+        destructiveText: rgb(206, 28, 18),
+        onPrimary: rgb(250, 250, 250),
+        switchOff: rgb(212, 212, 212)
     )
 
     static func scheme(for colorScheme: ColorScheme) -> Scheme {

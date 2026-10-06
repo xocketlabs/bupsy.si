@@ -37,9 +37,9 @@ public struct ClaudeAdapter: EngineAdapter {
     public var models: [ModelOption] {
         [
             ModelOption(id: nil, label: "Default", detail: "Whatever your CLI is set to"),
-            ModelOption(id: "opus", label: "Opus", detail: "Newest Opus — most capable", section: .latest),
-            ModelOption(id: "sonnet", label: "Sonnet", detail: "Newest Sonnet — balanced", section: .latest),
-            ModelOption(id: "haiku", label: "Haiku", detail: "Newest Haiku — fastest", section: .latest),
+            ModelOption(id: "opus", label: "Opus", detail: "Newest Opus, most capable", section: .latest),
+            ModelOption(id: "sonnet", label: "Sonnet", detail: "Newest Sonnet, balanced", section: .latest),
+            ModelOption(id: "haiku", label: "Haiku", detail: "Newest Haiku, fastest", section: .latest),
             ModelOption(id: "fable", label: "Fable", detail: "Newest Fable", section: .latest),
             ModelOption(id: "claude-opus-5-5", label: "Opus 5.5", section: .version),
             ModelOption(id: "claude-sonnet-5-5", label: "Sonnet 5.5", section: .version),
@@ -61,7 +61,7 @@ public struct ClaudeAdapter: EngineAdapter {
         let name = message.range(of: #""model":"([^"]+)""#, options: .regularExpression)
             .map { String(message[$0]).replacingOccurrences(of: "\"model\":", with: "")
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\"")) }
-        return "Your Claude Code doesn't know \(name ?? "this model") yet — it's probably older "
+        return "Your Claude Code doesn't know \(name ?? "this model") yet. It's probably older "
             + "than the model. Update it with `claude update`, or pick another model."
     }
 
@@ -69,7 +69,7 @@ public struct ClaudeAdapter: EngineAdapter {
         LoginCommand(
             command: "claude",
             hint: "Type /login and complete sign-in in your browser. "
-                + "bupsy never sees the result — only that it worked."
+                + "Bupsy never sees the result, only that it worked."
         )
     }
 
@@ -90,11 +90,15 @@ public struct ClaudeAdapter: EngineAdapter {
                 case .exit(let code):
                     if code == 0 && sawOutput { return .signedIn(method: .subscription) }
                     if Self.looksLikeSignedOut(stderr) { return .signedOut }
+                    // 127 is the shell's "command not found", from a host that runs through one.
+                    if code == 127 { return .notInstalled }
                     return .unknown(stderr.isEmpty ? "exit \(code)" : stderr)
                 default: break
                 }
             }
             return .unknown("probe ended without an exit status")
+        } catch HostError.binaryNotFound(_) {
+            return .notInstalled
         } catch {
             return .unknown(error.localizedDescription)
         }

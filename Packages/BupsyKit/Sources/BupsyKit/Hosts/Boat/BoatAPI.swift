@@ -66,6 +66,18 @@ public struct BoatAPI: @unchecked Sendable {
         return try await send("sandboxes/\(id)/fork", method: "POST", body: body).sandbox()
     }
 
+    /// Every machine on the account. Also the cheapest call that proves a key works, which is
+    /// what `checkKey` uses it for: nothing is created, started or billed.
+    public func list() async throws -> [Sandbox] {
+        try await send("sandboxes", method: "GET").sandboxes()
+    }
+
+    /// Throws the server's own error when boat.dev refuses the key. Called before a key is saved,
+    /// so a typo is caught on the spot rather than on the first machine someone tries to start.
+    public func checkKey() async throws {
+        _ = try await list()
+    }
+
     // MARK: - Work
 
     public func command(_ id: String, _ request: CommandRequest) async throws -> CommandResult {
@@ -153,6 +165,16 @@ public enum MachineSize: String, Sendable, Codable, CaseIterable {
     /// VM-second minimum. Arithmetic, not measured — spike 2c.
     public var alwaysOnMonthlyUSD: Double {
         (30.0 * 86_400.0 * rateMultiplier) / 2_000_000.0 * 20.0
+    }
+
+    /// Hours a day a machine that stops when idle is assumed to be awake, for the estimate below.
+    public static let assumedActiveHoursPerDay = 8.0
+
+    /// Rough monthly cost of a machine that stops when idle, assuming it is awake for
+    /// `assumedActiveHoursPerDay` hours a day. An estimate to show before anyone is billed, not a
+    /// measurement: the real figure depends entirely on how often something wakes it.
+    public var idleMonthlyUSD: Double {
+        alwaysOnMonthlyUSD * Self.assumedActiveHoursPerDay / 24.0
     }
 }
 
@@ -298,6 +320,20 @@ struct Envelope {
             state: source["state"] as? String,
             createdAt: source["createdAt"] as? String
         )
+    }
+
+    /// The machines in a list response, under `sandboxes`, `data` or `items`. Entries without an
+    /// id are skipped rather than failing the whole list, and a missing list reads as empty.
+    func sandboxes() -> [Sandbox] {
+        let list = (object["sandboxes"] as? [[String: Any]])
+            ?? (object["data"] as? [[String: Any]])
+            ?? (object["items"] as? [[String: Any]])
+            ?? []
+        return list.compactMap { source in
+            guard let id = source["id"] as? String else { return nil }
+            return Sandbox(id: id, state: source["state"] as? String,
+                           createdAt: source["createdAt"] as? String)
+        }
     }
 
     func decode<T: Decodable>(_ type: T.Type) throws -> T {
