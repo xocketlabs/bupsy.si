@@ -47,8 +47,8 @@ public struct CodexAdapter: EngineAdapter {
     public func loginCommand() -> LoginCommand {
         LoginCommand(
             command: "codex login --device-auth",
-            hint: "Complete the code in your browser. bupsy never sees the token — "
-                + "it stays in ~/.codex, owned by you and the CLI."
+            hint: "Complete the code in your browser. Bupsy never sees the token. "
+                + "It stays in ~/.codex, owned by you and the CLI."
         )
     }
 

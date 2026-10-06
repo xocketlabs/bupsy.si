@@ -49,7 +49,8 @@ private struct SettingsContent: View {
 
     private var appearance: some View {
         SettingsGroup(title: "Appearance") {
-            SettingRow(label: "Theme", value: model.appearance.label,
+            // "Appearance", the word the You menu uses for the same setting.
+            SettingRow(label: "Appearance", value: model.appearance.label,
                        icon: "circle.lefthalf.filled", showsDivider: false) {
                 ForEach(AppModel.Appearance.allCases, id: \.self) { option in
                     Button {
@@ -92,7 +93,7 @@ private struct SettingsContent: View {
                 .buttonStyle(QuietButton(compact: true))
                 .disabled(checking)
             }
-            .padding(.horizontal, 2)
+            .padding(.horizontal, Theme.Space.hairline)
             // A sign-in or sign-out that could not even open Terminal says so, rather than
             // leaving the button looking like it did nothing.
             if let problem = model.accountProblem {
@@ -100,7 +101,7 @@ private struct SettingsContent: View {
                     .font(Theme.Typography.caption)
                     .foregroundStyle(palette.destructiveText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, Theme.Space.hairline)
             }
             // Never hidden: each engine can also run on an API key, and saying so is part of not
             // restricting any of its sign-in methods.
@@ -109,7 +110,7 @@ private struct SettingsContent: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(palette.mutedForeground)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, Theme.Space.hairline)
         }
     }
 
@@ -125,12 +126,14 @@ private struct SettingsContent: View {
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: Theme.scaled(11), weight: .medium))
                     .foregroundStyle(palette.mutedForeground)
-                    .frame(width: 32, height: 32)
+                    .frame(width: Theme.Size.controlSm + Theme.Space.xs,
+                           height: Theme.Size.controlSm + Theme.Space.xs)
                     .background(palette.sidebar, in: .rect(cornerRadius: Theme.Radius.control))
                     .overlay {
                         RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(palette.border)
                     }
-                VStack(alignment: .leading, spacing: 2) {
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                     HStack(spacing: Theme.Space.tight) {
                         Text(engine.displayName)
                             .font(Theme.Typography.body.weight(.medium))
@@ -138,6 +141,8 @@ private struct SettingsContent: View {
                         Circle()
                             .fill(dotColour(status))
                             .frame(width: 6, height: 6)
+                            // Colour alone says ready or not; say it in words too.
+                            .accessibilityLabel(dotLabel(status))
                     }
                     Text(AppModel.accountStatusLine(status))
                         .font(Theme.Typography.caption)
@@ -164,6 +169,11 @@ private struct SettingsContent: View {
         }
     }
 
+    private func dotLabel(_ status: AuthStatus?) -> String {
+        guard let status else { return "Checking" }
+        return status.isUsable ? "Ready" : "Needs attention"
+    }
+
     private func dotColour(_ status: AuthStatus?) -> Color {
         guard let status else { return palette.mutedForeground }
         return status.isUsable ? palette.success : palette.warning
@@ -175,7 +185,8 @@ private struct SettingsContent: View {
         SettingsGroup(title: "About") {
             HStack(spacing: Theme.Space.gutter) {
                 BupsyIconMark(size: 56)
-                VStack(alignment: .leading, spacing: 2) {
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                     Text("Bupsy")
                         .font(Theme.Typography.heading)
                         .foregroundStyle(palette.foreground)

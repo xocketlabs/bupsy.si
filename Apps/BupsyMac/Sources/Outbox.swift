@@ -28,7 +28,7 @@ final class OutboxWatcher {
         case updateMe(from: String, name: String?, role: String?, job: String?)
     }
 
-    /// The roster `list_bots` reads, beside the outbox rather than in it — the outbox is drained
+    /// The roster `list_bots` reads, beside the outbox rather than in it, since the outbox is drained
     /// and emptied every second.
     static var rosterFile: URL {
         directory.deletingLastPathComponent().appendingPathComponent("roster.json")

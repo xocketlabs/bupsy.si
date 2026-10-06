@@ -72,7 +72,7 @@ struct StartChatPalette: View {
                 .foregroundStyle(palette.mutedForeground)
             PaletteField(
                 text: $query,
-                placeholder: searchFirst ? "Search bots, groups and messages" : "Start a chat, or search...",
+                placeholder: searchFirst ? "Search bots, groups and messages" : "Start a chat, or search…",
                 fontSize: Theme.scaled(15),
                 onSubmit: activate,
                 onMove: move,
@@ -84,9 +84,12 @@ struct StartChatPalette: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: Theme.scaled(13)))
                         .foregroundStyle(palette.mutedForeground)
+                        .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .help("Clear")
+                .accessibilityLabel("Clear search")
             }
             Keycap("esc")
         }
@@ -101,7 +104,8 @@ struct StartChatPalette: View {
                     if matchesNothing {
                         // A napping grey bot: nothing found is not an error.
                         HStack(spacing: Theme.Space.step) {
-                            BotFace(hue: 0, mood: .sleeping, size: 48, shape: .bup, colour: 0)
+                            BotFace(hue: 0, mood: .sleeping, size: 48, shape: .bup, colour: 0,
+                                    still: true)
                                 .saturation(0)
                                 .opacity(0.7)
                                 .accessibilityHidden(true)
@@ -110,7 +114,7 @@ struct StartChatPalette: View {
                                 .foregroundStyle(palette.mutedForeground)
                             Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, Theme.Space.compact)
                         .padding(.vertical, Theme.Space.snug)
                     }
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
@@ -118,9 +122,10 @@ struct StartChatPalette: View {
                             Text(row.section)
                                 .font(Theme.Typography.caption)
                                 .foregroundStyle(palette.mutedForeground)
-                                .padding(.horizontal, 10)
+                                .padding(.horizontal, Theme.Space.compact)
                                 .padding(.top, index == 0 ? Theme.Space.snug : Theme.Space.step)
-                                .padding(.bottom, 4)
+                                .padding(.bottom, Theme.Space.xs)
+                                .accessibilityAddTraits(.isHeader)
                         }
                         PaletteRow(row: row, needle: needle, highlighted: index == highlighted) {
                             choose(row)
@@ -129,7 +134,7 @@ struct StartChatPalette: View {
                         .onHover { if $0 { highlighted = index } }
                     }
                 }
-                .padding(8)
+                .padding(Theme.Space.snug)
             }
             .frame(height: listHeight)
             .onChange(of: highlighted) { _, index in
@@ -150,16 +155,16 @@ struct StartChatPalette: View {
 
     private var hints: some View {
         HStack(spacing: Theme.Space.gutter) {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 Keycap("↑")
                 Keycap("↓")
                 Text("to move")
             }
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 Keycap("Return")
                 Text("to open")
             }
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 Keycap("Esc")
                 Text("to close")
             }
@@ -168,7 +173,7 @@ struct StartChatPalette: View {
         .font(Theme.Typography.caption)
         .foregroundStyle(palette.mutedForeground)
         .padding(.horizontal, Theme.Space.gutter)
-        .padding(.vertical, 10)
+        .padding(.vertical, Theme.Space.compact)
     }
 
     private func buildRows() -> ([PaletteItem], Bool) {
@@ -323,8 +328,9 @@ private struct PaletteRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Theme.Space.step) {
-                icon.frame(width: 36, height: 36)
-                VStack(alignment: .leading, spacing: 1) {
+                icon.frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                     if let at = row.messageDate {
                         // Who said it and when, then the words, with the match marked.
                         Text("\(row.title), \(Theme.stamp(at))")
@@ -355,12 +361,13 @@ private struct PaletteRow: View {
                         .foregroundStyle(palette.mutedForeground)
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, Theme.Space.compact)
             .padding(.vertical, Theme.Space.snug)
             .background(highlighted ? palette.card : .clear, in: .rect(cornerRadius: Theme.Radius.base))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(highlighted ? .isSelected : [])
     }
 
     @ViewBuilder private var icon: some View {
@@ -378,7 +385,7 @@ private struct PaletteRow: View {
             Image(systemName: symbol)
                 .font(.system(size: Theme.scaled(13), weight: .medium))
                 .foregroundStyle(palette.foreground)
-                .frame(width: 36, height: 36)
+                .frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
                 .background {
                     ZStack {
                         RoundedRectangle(cornerRadius: Theme.Radius.base).fill(palette.card)
@@ -400,7 +407,7 @@ private struct PaletteRow: View {
     private func snippet(_ text: String) -> String {
         guard row.isMessage, !needle.isEmpty, let range = text.lowercased().range(of: needle) else { return text }
         let start = text.index(range.lowerBound, offsetBy: -40, limitedBy: text.startIndex) ?? text.startIndex
-        return (start == text.startIndex ? "" : "...") + text[start...]
+        return (start == text.startIndex ? "" : "…") + text[start...]
     }
 
     /// The matched part, washed in the accent like a highlighter.
@@ -574,8 +581,8 @@ struct JobChangeSheet: View {
 
 /// The palette's text field, in AppKit.
 ///
-/// A SwiftUI `TextField` inside an overlay never received focus on macOS — neither set in
-/// `onAppear` nor deferred — so the palette opened with the *window* as first responder and
+/// A SwiftUI `TextField` inside an overlay never received focus on macOS (neither set in
+/// `onAppear` nor deferred), so the palette opened with the *window* as first responder and
 /// typing, Enter and the arrow keys all did nothing. This field takes focus itself the moment it
 /// lands in a window, and routes ↑ ↓ ↩ Esc through AppKit's own command handling, which is what
 /// those keys are actually delivered as.

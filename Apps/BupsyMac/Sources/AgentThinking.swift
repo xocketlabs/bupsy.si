@@ -13,7 +13,7 @@ struct AgentThinking: View {
     let thread: Thread
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Theme.Space.compact) {
             BotFace(bot: bot, mood: .working, size: 22)
             // The breath and the clock run on separate timelines, so Reduce Motion can still the
             // one without freezing the other: the time is information, not motion.
@@ -41,7 +41,7 @@ struct AgentThinking: View {
             }
         }
         .padding(.leading, ThreadLayout.gutter)
-        .padding(.vertical, 2)
+        .padding(.vertical, Theme.Space.hairline)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(bot.name) is \(status.lowercased())")

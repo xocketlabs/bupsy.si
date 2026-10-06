@@ -107,23 +107,17 @@ struct ApprovalCard: View {
             Spacer(minLength: Theme.Space.snug)
             // Plain text in the theme rather than `.link`, which drew it in macOS blue. Named for
             // what it shows, so it is not mistaken for the topbar's Details panel.
-            Button {
+            Button(showsDetail ? "Hide input" : "Show input") {
                 showsDetail.toggle()
-            } label: {
-                Text(showsDetail ? "Hide input" : "Show input")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-                    .frame(minHeight: 24)
-                    .contentShape(.rect)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
         }
     }
 
     @ViewBuilder
     private var footer: some View {
         if pending {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 allowButton
                 denyButton
                 if ToolNames.canAlwaysAllow(approval.tool), let bot {
@@ -247,7 +241,7 @@ struct LimitsGauge: View {
         if let tightest = limits.tightest {
             let utilization = tightest.window.utilization
             let colour = LimitScale.fill(utilization, palette)
-            HStack(spacing: 5) {
+            HStack(spacing: Theme.Space.xs) {
                 Circle()
                     .trim(from: 0, to: max(0.02, min(utilization, 1)))
                     .stroke(colour, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
@@ -314,7 +308,7 @@ struct QuestionCard: View {
                     Button { model.answer(question, with: "", for: bot) } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: Theme.scaled(10), weight: .semibold))
-                            .frame(width: 24, height: 24)
+                            .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
@@ -343,7 +337,7 @@ struct QuestionCard: View {
                                     .font(.system(size: Theme.scaled(10.5), weight: .medium))
                                     .foregroundStyle(palette.mutedForeground)
                                     .frame(width: 24, height: 24)
-                                    .background(palette.card, in: .rect(cornerRadius: 6))
+                                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.sm))
                                 Text(option)
                                     .font(.system(size: Theme.scaled(13.5)))
                                     .foregroundStyle(palette.foreground)

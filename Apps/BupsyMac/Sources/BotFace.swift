@@ -793,13 +793,15 @@ enum BotShape: String, CaseIterable, Sendable {
 
 /// Dotted orbs for "thinking", the most-seen animation in the app. Kept small and quiet.
 struct ThinkingOrbs: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var hue: Double = 0.58
     var dotSize: CGFloat = 5
     var count: Int = 3
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
+        // Reduce Motion pauses the timeline, so the dots hold on one calm frame.
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
+            let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: dotSize * 0.6) {
                 ForEach(0..<count, id: \.self) { index in
                     let phase = time * 2.2 - Double(index) * 0.55
@@ -825,7 +827,7 @@ struct BorderBeam: ViewModifier {
     @Environment(\.palette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var hue: Double = 0.58
-    var cornerRadius: CGFloat = 10
+    var cornerRadius: CGFloat = Theme.Radius.lg
     var period: Double = 2.4
     /// Drawn only while true. The modifier itself stays applied either way, so turning it on
     /// and off never changes the identity of the view it decorates (which took focus out of the
@@ -859,7 +861,7 @@ struct BorderBeam: ViewModifier {
 extension View {
     /// Always applies the beam and lets `active` decide whether it draws. An idle composer still
     /// costs no animation frames: the timeline only exists while active.
-    func borderBeam(hue: Double, active: Bool, cornerRadius: CGFloat = 10) -> some View {
+    func borderBeam(hue: Double, active: Bool, cornerRadius: CGFloat = Theme.Radius.lg) -> some View {
         modifier(BorderBeam(hue: hue, cornerRadius: cornerRadius, active: active))
     }
 }

@@ -146,7 +146,7 @@ struct SetupListRow<Leading: View, Trailing: View>: View {
     var body: some View {
         HStack(spacing: Theme.Space.gutter) {
             leading
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(title)
                     .font(Theme.Typography.body)
                     .foregroundStyle(palette.foreground)
@@ -180,7 +180,9 @@ struct SetupListRow<Leading: View, Trailing: View>: View {
     }
 }
 
-/// A square icon-only action at the end of a row. Red for anything that removes.
+/// A square icon-only action at the end of a row, at the small control size (28pt, which is also
+/// its hit area). Red for anything that removes. Always carries its words as help and as the
+/// VoiceOver label, since the icon alone says nothing to a screen reader.
 struct SetupIconButton: View {
     @Environment(\.palette) private var palette
     let systemName: String
@@ -201,7 +203,7 @@ struct SetupIconButton: View {
             Image(systemName: systemName)
                 .font(.system(size: Theme.scaled(12), weight: .semibold))
                 .foregroundStyle(destructive ? palette.destructiveText : palette.foreground)
-                .frame(width: 30, height: 30)
+                .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                 .background(hovering ? palette.background.opacity(0.7) : Color.clear,
                             in: .rect(cornerRadius: Theme.Radius.control))
                 .contentShape(.rect)
@@ -254,21 +256,23 @@ struct SetupPanel<Content: View>: View {
     private var innerRadius: CGFloat { Theme.Radius.xl - Theme.Space.hairline }
 }
 
-/// A short "nothing here" line with a still bot beside it, for an empty section inside a page
-/// that has other things on it. A whole empty page uses `EmptyState` instead.
+/// A short "nothing here" line with a napping bot beside it, for an empty section inside a page
+/// that has other things on it. Asleep and held still, the compact form of `EmptyState`, so an
+/// empty section reads as calm rather than as a bot waiting for something. A whole empty page
+/// uses `EmptyState` instead.
 struct SetupEmptyNote: View {
     @Environment(\.palette) private var palette
     let text: String
-    var mood: BotMood = .idle
+    var mood: BotMood = .sleeping
 
     var body: some View {
         HStack(spacing: Theme.Space.gutter) {
-            BotFace(hue: 0, mood: mood, size: 48, shape: .bup, colour: 0)
+            BotFace(hue: 0, mood: mood, size: 48, shape: .bup, colour: 0, still: true)
                 .saturation(0)
                 .opacity(0.7)
                 .accessibilityHidden(true)
             Text(text)
-                .font(.system(size: Theme.scaled(13)))
+                .font(Theme.Typography.body)
                 .foregroundStyle(palette.mutedForeground)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)

@@ -56,7 +56,7 @@ struct CustomModelSheet: View {
                   hint: "If the CLI is older than the model, it says so on the first run. "
                       + "Updating the CLI fixes it.") {
                 TextField("", text: $id, prompt: Text(bot.engine == .codex ? "gpt-5.6" : "claude-opus-5-5"))
-                    .textFieldStyle(BupsyFieldStyle())
+                    .bupsyField()
                     .onSubmit(save)
             }
         } actions: {

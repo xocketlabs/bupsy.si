@@ -177,7 +177,7 @@ struct ThreadButtonStyle: ButtonStyle {
     enum Kind { case primary, secondary, ghost, ghostDestructive }
 
     var kind: Kind = .secondary
-    var height: CGFloat = 36
+    var height: CGFloat = Theme.Size.controlMd
 
     func makeBody(configuration: Configuration) -> some View {
         BupsyButtonStyle(kind: buttonKind, size: buttonSize).makeBody(configuration: configuration)
@@ -225,7 +225,7 @@ struct ThreadNestedCard<Content: View, Footer: View>: View {
             footer
                 .padding(.horizontal, Theme.Space.step)
         }
-        .padding([.top, .horizontal], 2)
+        .padding([.top, .horizontal], Theme.Space.hairline)
         .padding(.bottom, Theme.Space.step)
         .background {
             ZStack {

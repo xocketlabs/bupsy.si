@@ -31,7 +31,7 @@ struct KeyboardShortcutsSheet: View {
     static let groups: [ShortcutGroup] = [
         ShortcutGroup(title: "Anywhere", shortcuts: [
             Shortcut(keys: ["Cmd", "N"], action: "Start a chat"),
-            Shortcut(keys: ["Cmd", "F"], action: "Search bots"),
+            Shortcut(keys: ["Cmd", "F"], action: "Search bots, groups and messages"),
             Shortcut(keys: ["Cmd", "1 to 9"], action: "Open the first nine bots in the sidebar, top to bottom"),
             Shortcut(keys: ["Cmd", ","], action: "Settings"),
             Shortcut(keys: ["Cmd", "/"], action: "Keyboard shortcuts"),
@@ -74,7 +74,8 @@ struct KeyboardShortcutsSheet: View {
             Text(group.title)
                 .font(Theme.Typography.caption)
                 .foregroundStyle(palette.mutedForeground)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, Theme.Space.hairline)
+                .accessibilityAddTraits(.isHeader)
             VStack(spacing: 0) {
                 ForEach(Array(group.shortcuts.enumerated()), id: \.element.id) { index, shortcut in
                     if index > 0 {
@@ -87,9 +88,11 @@ struct KeyboardShortcutsSheet: View {
                             .foregroundStyle(palette.foreground)
                             .lineLimit(1)
                         Spacer(minLength: Theme.Space.snug)
-                        HStack(spacing: 4) {
+                        HStack(spacing: Theme.Space.xs) {
                             ForEach(shortcut.keys, id: \.self) { Keycap($0) }
                         }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(shortcut.keys.joined(separator: " "))
                     }
                     .padding(.horizontal, Theme.Space.step)
                     .frame(minHeight: 40)

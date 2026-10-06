@@ -306,7 +306,7 @@ struct RootView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.top, 90)
                 .padding(.bottom, Theme.Space.gutter)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, Theme.Space.gutter)
             }
             .transition(.opacity)
         }
@@ -375,13 +375,14 @@ struct RootView: View {
             HStack(spacing: Theme.Space.snug) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: Theme.scaled(11)))
-                VStack(alignment: .leading, spacing: 2) {
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                     // Two very different failures wear this banner, and saying the wrong one is
                     // its own problem: "nothing will be saved" is alarming and false when a
                     // single write failed on an otherwise healthy database.
                     Text(model.hasStore
                          ? "Something couldn't be saved."
-                         : "bupsy can't open its database, so nothing in this session will be saved.")
+                         : "Bupsy can't open its database, so nothing in this session will be saved.")
                         .font(Theme.Typography.body)
                         .fontWeight(.medium)
                     // The reassurance matters as much as the warning: the instinct on seeing an
@@ -473,7 +474,7 @@ struct RootView: View {
     /// the rail on the fourth, which is where the layout's depth comes from.
     private func floating<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         PanelSurface { content() }
-            .padding([.top, .bottom, .trailing], 8)
+            .padding([.top, .bottom, .trailing], Theme.Space.snug)
     }
 }
 

@@ -32,7 +32,7 @@ struct RoutineDetailView: View {
     private var isBusy: Bool { model.isRunning(bot.id) }
 
     /// The page's width on the board: wider than other pages, for the two panels side by side.
-    private static let maxWidth: CGFloat = 896
+    private static let maxWidth: CGFloat = Theme.Size.contentMaxWidth
 
     var body: some View {
         let runs = model.runs(of: routine)
@@ -47,7 +47,7 @@ struct RoutineDetailView: View {
         VStack(spacing: 0) {
             topbar
             ScrollView {
-                VStack(alignment: .leading, spacing: 32) {
+                VStack(alignment: .leading, spacing: Theme.Space.pageSide) {
                     VStack(alignment: .leading, spacing: Theme.Space.gutter) {
                         header
                         if !routine.enabled { pausedBanner }
@@ -74,7 +74,7 @@ struct RoutineDetailView: View {
                             .onChange(of: proxy.size.width) { _, width in contentWidth = width }
                     }
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, Theme.Space.pageSide)
                 .padding(.top, Theme.Space.section)
                 .padding(.bottom, Theme.Space.page)
                 .frame(maxWidth: .infinity)
@@ -113,7 +113,7 @@ struct RoutineDetailView: View {
             Button(action: onClose) {
                 Label("Back", systemImage: "chevron.left")
             }
-            .buttonStyle(ThreadButtonStyle(kind: .ghost, height: Theme.Size.control))
+            .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .lg))
             .keyboardShortcut(.cancelAction)
             .help("Back to \(bot.name) (Esc)")
 
@@ -134,12 +134,12 @@ struct RoutineDetailView: View {
             .accessibilityLabel("More for \(routine.name)")
 
             Button("Edit") { editing = routine }
-                .buttonStyle(ThreadButtonStyle(kind: .secondary, height: Theme.Size.control))
+                .buttonStyle(BupsyButtonStyle(kind: .secondary, size: .lg))
 
             Button { model.runRoutineNow(routine) } label: {
                 Label("Run now", systemImage: "play.fill")
             }
-            .buttonStyle(ThreadButtonStyle(kind: .primary, height: Theme.Size.control))
+            .buttonStyle(BupsyButtonStyle(kind: .primary, size: .lg))
             .disabled(isBusy)
             .help(isBusy ? "\(bot.name) is working on something. Try again when it's done."
                   : "Run it now. The next scheduled run still happens.")
@@ -167,15 +167,13 @@ struct RoutineDetailView: View {
                 Text(routine.enabled ? "On" : "Paused")
                     .font(Theme.Typography.body)
                     .foregroundStyle(routine.enabled ? palette.foreground : palette.mutedForeground)
-                Toggle("", isOn: Binding(
+                Toggle("Run \(routine.name) on its schedule", isOn: Binding(
                     get: { routine.enabled },
                     set: { model.setRoutineEnabled(routine, $0) }))
                     .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .tint(palette.primary)
+                    .bupsySwitch()
             }
-            .padding(.top, 4)
+            .padding(.top, Theme.Space.xs)
         }
     }
 
@@ -232,11 +230,11 @@ struct RoutineDetailView: View {
         return run.status.capitalized
     }
 
-    private func resultTone(_ run: RunSummary) -> Color {
-        if run.succeeded { return palette.success }
-        if run.status == "failed" { return palette.destructiveText }
-        if run.endedAt == nil && isBusy { return palette.infoText }
-        return palette.warning
+    private func resultTone(_ run: RunSummary) -> BadgeTone {
+        if run.succeeded { return .success }
+        if run.status == "failed" { return .destructive }
+        if run.endedAt == nil && isBusy { return .info }
+        return .warning
     }
 
     // MARK: - Panels
@@ -335,16 +333,7 @@ struct RoutineDetailView: View {
             }
 
             if runs.isEmpty {
-                HStack(spacing: Theme.Space.step) {
-                    BotFace(bot: bot, mood: .sleeping, size: 32)
-                    Text(emptyRunsText)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(palette.mutedForeground)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .padding(Theme.Space.gutter)
-                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
+                SetupEmptyNote(text: emptyRunsText)
             } else {
                 VStack(spacing: Theme.Space.snug) {
                     ForEach(Array(shown.enumerated()), id: \.element.id) { index, run in
@@ -362,7 +351,8 @@ struct RoutineDetailView: View {
     private func liveRow(_ run: RunSummary) -> some View {
         HStack(spacing: Theme.Space.step) {
             BotFace(bot: bot, mood: .working, size: 32)
-            VStack(alignment: .leading, spacing: 3) {
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(model.liveStatus(for: bot))
                     .font(Theme.Typography.body)
                     .foregroundStyle(palette.foreground)
@@ -377,7 +367,7 @@ struct RoutineDetailView: View {
                 }
             }
             Spacer(minLength: Theme.Space.snug)
-            RoutineStatusPill(text: "Running", tone: palette.infoText)
+            Badge(text: "Running", tone: .info, dot: true)
         }
         .padding(Theme.Space.step)
         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
@@ -397,7 +387,7 @@ struct RoutineDetailView: View {
                      ? "checkmark" : (run.status == "failed" ? "stop.fill"
                                       : (run.endedAt == nil && isBusy ? "ellipsis" : "info.circle")))
         } content: {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(RoutineRunStats.whenLabel(run.startedAt))
                     .font(Theme.Typography.body)
                     .foregroundStyle(palette.foreground)
@@ -419,14 +409,15 @@ struct RoutineDetailView: View {
                 .foregroundStyle(palette.mutedForeground)
             }
         } trailing: {
-            RoutineStatusPill(text: resultLabel(run), tone: resultTone(run))
+            Badge(text: resultLabel(run), tone: resultTone(run), dot: true)
         }
     }
 
     private func failureCallout(_ run: RunSummary, isLatest: Bool) -> some View {
         HStack(alignment: .top, spacing: Theme.Space.step) {
             BotFace(bot: bot, mood: .failed, size: 36)
-            VStack(alignment: .leading, spacing: 3) {
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(isLatest ? "The last run failed" : "This run failed")
                     .font(Theme.Typography.body)
                     .fontWeight(.medium)
@@ -439,7 +430,7 @@ struct RoutineDetailView: View {
             }
             Spacer(minLength: Theme.Space.snug)
             Button("Run again") { model.runRoutineNow(routine) }
-                .buttonStyle(ThreadButtonStyle(kind: .secondary, height: 32))
+                .buttonStyle(BupsyButtonStyle(kind: .secondary, size: .md))
                 .disabled(isBusy)
         }
         .padding(Theme.Space.step)
@@ -537,12 +528,12 @@ private struct RoutineDetailPanel<Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(colorScheme == .dark ? palette.card : palette.background,
                                 in: .rect(cornerRadius: Theme.Radius.base))
-                    .padding(2)
+                    .padding(Theme.Space.hairline)
                 Text(footer)
                     .font(Theme.Typography.label)
                     .foregroundStyle(footerTone ?? palette.mutedForeground)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Theme.Space.step + 2)
+                    .padding(.horizontal, Theme.Space.step + Theme.Space.hairline)
                     .padding(.vertical, Theme.Space.step)
             }
             .background(colorScheme == .dark ? palette.sidebar : palette.card,
@@ -551,28 +542,10 @@ private struct RoutineDetailPanel<Content: View>: View {
     }
 }
 
-/// "Done", "Failed": a dot and a word on a wash of the same tone.
-private struct RoutineStatusPill: View {
-    let text: String
-    let tone: Color
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Circle().fill(tone).frame(width: 5, height: 5)
-            Text(text)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(tone)
-        }
-        .padding(.horizontal, Theme.Space.snug)
-        .padding(.vertical, 5)
-        .background(tone.opacity(0.12), in: .rect(cornerRadius: Theme.Radius.control))
-    }
-}
-
 /// An icon and a word close together, for a meta line.
 private struct RoutineCompactLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Theme.Space.xs) {
             configuration.icon.font(.system(size: Theme.scaled(9)))
             configuration.title
         }

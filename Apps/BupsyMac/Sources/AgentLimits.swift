@@ -9,6 +9,7 @@ import SwiftUI
 /// resets, which is the question people actually have about a limit.
 struct AgentLimitsCard: View {
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let bot: Bot
     /// The last turn's usage, if any run has reported one.
     let usage: Usage?
@@ -45,17 +46,19 @@ struct AgentLimitsCard: View {
         VStack(alignment: .leading, spacing: 0) {
             if usage != nil, let capacity { context(capacity) }
             if usage != nil, capacity != nil, let limits, !limits.windows.isEmpty {
-                Rectangle().fill(palette.border).frame(height: 1).padding(.horizontal, 12)
+                Rectangle().fill(palette.border).frame(height: 1).padding(.horizontal, Theme.Space.step)
             }
             if let limits, !limits.windows.isEmpty { plan(limits) }
         }
-        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
     private func context(_ capacity: Int) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button { withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() } } label: {
-                HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.compact) {
+            Button {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: Theme.Space.tight) {
                     Text("Context window").foregroundStyle(palette.mutedForeground)
                     Spacer(minLength: 0)
                     Text("\(Self.compact(used)) / \(Self.compact(capacity))")
@@ -71,6 +74,8 @@ struct AgentLimitsCard: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .help(expanded ? "Hide the breakdown" : "Show the breakdown")
 
             GeometryReader { proxy in
                 HStack(spacing: 1.5) {
@@ -87,22 +92,22 @@ struct AgentLimitsCard: View {
             .frame(height: 6)
 
             if expanded {
-                VStack(spacing: 7) {
+                VStack(spacing: Theme.Space.tight) {
                     ForEach(segments) { segment in
                         breakdownRow(segment.id, segment.tokens, of: capacity, colour: segment.colour)
                     }
                     breakdownRow("Free", max(0, capacity - used), of: capacity,
                                  colour: palette.foreground.opacity(0.15))
                 }
-                .padding(.top, 2)
+                .padding(.top, Theme.Space.hairline)
                 .transition(.opacity)
             }
         }
-        .padding(12)
+        .padding(Theme.Space.step)
     }
 
     private func breakdownRow(_ label: String, _ tokens: Int, of capacity: Int, colour: Color) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Space.snug) {
             RoundedRectangle(cornerRadius: 2).fill(colour).frame(width: 8, height: 8)
             Text(label).foregroundStyle(palette.foreground)
             Spacer(minLength: 0)
@@ -115,13 +120,13 @@ struct AgentLimitsCard: View {
     }
 
     private func plan(_ limits: RateLimit) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.Space.step) {
             Text("\(bot.engine.displayName) plan limits")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(palette.mutedForeground)
             ForEach(limits.windows.sorted { $0.key < $1.key }, id: \.key) { name, window in
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    HStack(spacing: Theme.Space.tight) {
                         Text(Self.label(name)).fontWeight(.semibold).foregroundStyle(palette.foreground)
                         Spacer(minLength: 0)
                         if let reset = window.resetsAt {
@@ -144,7 +149,7 @@ struct AgentLimitsCard: View {
                 }
             }
         }
-        .padding(12)
+        .padding(Theme.Space.step)
     }
 
     /// The bar's fill. See `LimitScale`.

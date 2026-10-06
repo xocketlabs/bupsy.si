@@ -134,24 +134,21 @@ struct CodeBlock: View {
                 }
                 Spacer(minLength: 0)
                 Button { copy() } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: Theme.Space.xs) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
                             .font(.system(size: Theme.scaled(9.5), weight: .medium))
                         Text(copied ? "Copied" : "Copy")
                     }
                     .font(Theme.Typography.caption)
                     .foregroundStyle(copied ? palette.success : palette.mutedForeground)
-                    .padding(.horizontal, Theme.Space.tight)
-                    .frame(minWidth: 24, minHeight: 24)
-                    .contentShape(.rect)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
                 .help("Copy this code")
                 .accessibilityLabel(copied ? "Copied" : "Copy code")
             }
             .padding(.leading, Theme.Space.step)
             .padding(.trailing, Theme.Space.tight)
-            .padding(.vertical, 2)
+            .padding(.vertical, Theme.Space.hairline)
 
             // The indicator shows: a long line that runs off the edge has to look like it does,
             // or the end of a command is hidden with nothing saying so.

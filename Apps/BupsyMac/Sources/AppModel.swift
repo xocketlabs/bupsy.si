@@ -802,7 +802,7 @@ final class AppModel {
             } catch {
                 // Never swallowed: a routine that silently never fires is this feature's worst
                 // failure, so the reason reaches the user rather than a debug log.
-                FileHandle.standardError.write(Data("bupsy: launch agent — \(error)\n".utf8))
+                FileHandle.standardError.write(Data("bupsy: launch agent: \(error)\n".utf8))
                 // The message is read out here and only the String crosses to the main actor.
                 // Capturing `self` inside the hop sends a task-isolated reference into a
                 // main-actor closure, which Swift 6 rejects — and which this app never compiled
@@ -1359,7 +1359,7 @@ final class AppModel {
         // minute three of ten leaves a half-finished task and a truncated transcript, which is
         // worse than one that never started.
         if bot.keepAwake == .whileWorking {
-            let assertion = PowerAssertion(reason: "bupsy: \(bot.name) is working")
+            let assertion = PowerAssertion(reason: "Bupsy: \(bot.name) is working")
             if assertion.acquire() { awake[bot.id] = assertion }
         }
 
@@ -1867,7 +1867,7 @@ final class AppModel {
             // Once is enough: a late turn from a bot that was busy elsewhere can arrive here too.
             if thread.messages.last?.isPauseNote != true {
                 appendGroupMessage(GroupMessageRecord(
-                    groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
+                    groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "Bupsy",
                     text: GroupMessageRecord.pauseNote(after: GroupRouting.effectiveTurnLimit(limit))),
                     to: group)
             }
@@ -1908,7 +1908,7 @@ final class AppModel {
             // it is free — said in the thread, so silence never reads as being ignored.
             thread.speaking = nil
             appendGroupMessage(GroupMessageRecord(
-                groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
+                groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "Bupsy",
                 text: "\(bot.name) is finishing something in another chat. It'll reply here next."),
                 to: group)
             waitingForBot[bot.id, default: []].append { [weak self] in
@@ -2026,7 +2026,7 @@ final class AppModel {
         }
         let roster = others.isEmpty ? "You are the first bot." : "The other bots are: \(others.joined(separator: "; "))."
         let unnamed = current.name.hasPrefix("New bot")
-        let intro = "You have just been created in bupsy, the person's roster of AI bots. \(roster) "
+        let intro = "You have just been created in Bupsy, the person's roster of AI bots. \(roster) "
             + "Greet the person, not the other bots (they cannot see this), in two short sentences. "
         let prompt: String
         if trimmedJob.isEmpty {

@@ -64,10 +64,11 @@ struct ObjectiveRow: View {
                 Image(systemName: "target")
                     .font(.system(size: Theme.scaled(13)))
                     .foregroundStyle(palette.mutedForeground)
-                    .frame(width: 36, height: 36)
+                    .frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
                     .background(palette.background, in: .rect(cornerRadius: Theme.Radius.control))
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     Text(objective.goal)
                         .font(Theme.Typography.body)
                         .fontWeight(.medium)
@@ -131,8 +132,7 @@ struct ObjectiveToggle: View {
             set: { model.setObjectiveEnabled(objective, $0) }
         ))
         .labelsHidden()
-        .toggleStyle(.switch)
-        .controlSize(.small)
+        .bupsySwitch()
         .help(objective.enabled ? "Checked on its schedule. Turn off to pause." : "Paused. Turn on to check it on its schedule.")
     }
 }
@@ -182,7 +182,7 @@ struct ObjectiveMenu: View {
             Image(systemName: "ellipsis")
                 .font(.system(size: Theme.scaled(13), weight: .semibold))
                 .foregroundStyle(palette.mutedForeground)
-                .frame(width: 28, height: 28)
+                .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                 .contentShape(.rect)
         }
         .menuStyle(.borderlessButton)

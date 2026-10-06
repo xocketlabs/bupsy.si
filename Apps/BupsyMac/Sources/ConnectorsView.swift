@@ -43,7 +43,7 @@ struct ConnectorsSheet: View {
                         Button("Add a server") { isAdding = true }
                             .buttonStyle(QuietButton(compact: true))
                     }
-                    .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
                 } else {
                     VStack(spacing: Theme.Space.step) {
                         ForEach(servers) { server in
@@ -169,7 +169,7 @@ struct ExecutorCard: View {
         switch phase {
         case .checking: return "Looking for Executor"
         case .missing: return "Executor isn\u{2019}t on this Mac yet"
-        case .installing: return "Installing in Terminal..."
+        case .installing: return "Installing in Terminal…"
         case .on: return "Executor is on"
         case .off: return "Installed, but off for your bots"
         }
@@ -226,10 +226,7 @@ struct ExecutorCard: View {
                 .buttonStyle(PrimaryButton())
                 if let server = model.connectors.first(where: { $0.name == Executor.name }) {
                     Button("Turn off for my bots") { model.removeConnector(server) }
-                        .buttonStyle(.plain)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(palette.mutedForeground)
-                        .padding(.horizontal, Theme.Space.snug)
+                        .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .lg))
                 }
             }
         case .off:
@@ -429,7 +426,7 @@ struct AddServerSheet: View {
             }
             if editing != nil {
                 Toggle("On for your bots", isOn: $enabled)
-                    .toggleStyle(.switch)
+                    .bupsySwitch()
             }
         } actions: {
             Button("Cancel") { dismiss() }

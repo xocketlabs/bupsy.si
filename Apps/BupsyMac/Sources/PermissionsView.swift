@@ -61,7 +61,8 @@ struct PermissionsPage: View {
                         ForEach(rules) { rule in
                             SetupListRow(title: describe(rule.tools), meta: [rule.bot.name, toolMeta(rule.tools)],
                                          monospacedMeta: 1) {
-                                BotFace(bot: rule.bot, mood: .idle, size: 44)
+                                BotFace(bot: rule.bot, mood: .idle, size: Theme.Size.tile)
+                                    .accessibilityHidden(true)
                             } trailing: {
                                 SetupIconButton(systemName: "trash",
                                                 help: "Remove, and ask again next time",

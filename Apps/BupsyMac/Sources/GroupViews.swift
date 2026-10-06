@@ -78,15 +78,13 @@ struct GroupRow: View {
         let active = model.groupThread(for: group).speaking != nil
         let waiting = model.groupThread(for: group).isWaitingOnYou
         Button(action: action) {
-            HStack(spacing: Theme.Space.step) {
+            HStack(spacing: Theme.Space.compact) {
                 Image(systemName: "person.2.fill")
                     .font(.system(size: Theme.scaled(11)))
-                    .foregroundStyle(selected ? palette.foreground : palette.sidebarMutedForeground)
                     .frame(width: 20)
                 Text(group.name)
                     .font(Theme.Typography.body)
-                    .fontWeight(unread || selected ? .semibold : .regular)
-                    .foregroundStyle(palette.foreground)
+                    .fontWeight(unread || selected ? .medium : .regular)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if active {
@@ -99,17 +97,58 @@ struct GroupRow: View {
                     Circle().fill(palette.info).frame(width: 6, height: 6)
                 }
             }
+            // The same ink as a bot row: muted until current, hovered or waiting on you.
+            .foregroundStyle(SidebarRowInk.text(selected: selected, hovering: hovering,
+                                                needs: waiting || unread, palette: palette))
             .padding(.horizontal, Theme.Space.step)
-            .frame(height: 36)
+            .frame(height: Theme.Size.row)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? palette.sidebarAccent
-                                 : (hovering ? palette.sidebarAccent.opacity(0.55) : .clear),
-                        in: .rect(cornerRadius: Theme.Radius.control))
+            .background(SidebarRowInk.fill(selected: selected, hovering: hovering, palette: palette),
+                        in: .rect(cornerRadius: Theme.Radius.lg))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(model.groupThread(for: group).preview ?? group.name)
+        // The dot is colour only, so its meaning is spoken.
+        .accessibilityLabel("\(group.name), group chat")
+        .accessibilityValue(active ? "Active now" : (waiting ? "Waiting on you" : (unread ? "Unread" : "")))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+// MARK: - The group menu
+
+/// The one menu for a group chat: the sidebar row's right-click, the card's "..." and the group
+/// page's header all build it from here. The order follows the board: rename, open, then how
+/// often it checks in, then the removal.
+struct GroupMenu: View {
+    let group: ChatGroup
+    /// Opens the chat. Nil on the group's own page.
+    var onOpen: (() -> Void)?
+    let onRename: () -> Void
+    /// Asks before deleting. The menu cannot host the dialog: it closes on click.
+    let onDelete: () -> Void
+
+    init(group: ChatGroup, onOpen: (() -> Void)? = nil, onRename: @escaping () -> Void,
+         onDelete: @escaping () -> Void) {
+        self.group = group
+        self.onOpen = onOpen
+        self.onRename = onRename
+        self.onDelete = onDelete
+    }
+
+    var body: some View {
+        Button(action: onRename) { Label("Rename…", systemImage: "pencil") }
+        if let onOpen {
+            Button(action: onOpen) { Label("Open chat", systemImage: "bubble.left") }
+        }
+        GroupTurnLimitPicker(group: group)
+        Divider()
+        // The conversation only. Its bots are untouched.
+        Button(role: .destructive, action: onDelete) {
+            Label("Delete group…", systemImage: "trash")
+        }
     }
 }
 
@@ -137,7 +176,7 @@ struct GroupsListView: View {
                         Text("Group chats")
                             .font(Theme.Typography.title)
                             .foregroundStyle(palette.foreground)
-                        Text("A few bots in one thread. Mention one with @ to ask it, or the lead answers.")
+                        Text("A few bots in one thread, working toward one goal. The lead hands out the work.")
                             .font(Theme.Typography.body)
                             .foregroundStyle(palette.mutedForeground)
                             .fixedSize(horizontal: false, vertical: true)
@@ -160,10 +199,10 @@ struct GroupsListView: View {
                     invite
                 }
             }
-            .padding(.horizontal, Theme.Space.section + Theme.Space.tight)
+            .padding(.horizontal, Theme.Space.pageSide)
             .padding(.top, Theme.Space.section)
             .padding(.bottom, Theme.Space.page)
-            .frame(maxWidth: 896)
+            .frame(maxWidth: Theme.Size.contentMaxWidth)
             .frame(maxWidth: .infinity)
         }
         .sheet(isPresented: $isCreating) {
@@ -178,13 +217,16 @@ struct GroupsListView: View {
     }
 
     /// The napping bot and one way forward. Under the list rather than instead of it, so the
-    /// reason to make another group is always in reach.
+    /// reason to make another group is always in reach. The compact napping state, as every
+    /// section-level empty state is.
     private var invite: some View {
         EmptyState(
             title: model.groups.isEmpty ? "No group chats yet" : "Got a job that needs more than one bot?",
             message: model.bots.count < 2
                 ? "Make a second bot first. A group needs at least two."
-                : "Put them in a group. They answer in one thread, and anything risky still waits for you."
+                : "Put them in a group. They pass work to each other and stop to ask you before going too far.",
+            mood: .sleeping,
+            faceSize: 56
         ) {
             if model.bots.count >= 2 {
                 Button { isCreating = true } label: {
@@ -196,12 +238,13 @@ struct GroupsListView: View {
         .padding(.vertical, Theme.Space.snug)
         .overlay {
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .strokeBorder(palette.border, style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                .strokeBorder(palette.border, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
         }
     }
 }
 
-/// One group in the list.
+/// One group in the list. The whole card opens the chat, by click, by Return or Space once it
+/// has keyboard focus, or by VoiceOver's default action.
 struct GroupCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
@@ -226,7 +269,8 @@ struct GroupCard: View {
         let lead = members.first { $0.id == group.leadBotID } ?? members.first
         HStack(alignment: .top, spacing: Theme.Space.gutter) {
             GroupFaceRow(bots: members, size: 36)
-                .padding(.top, 2)
+                .padding(.top, Theme.Space.hairline)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: Theme.Space.tight) {
                 HStack(spacing: Theme.Space.snug) {
@@ -235,22 +279,18 @@ struct GroupCard: View {
                         .foregroundStyle(palette.foreground)
                         .lineLimit(1)
                     if thread.speaking != nil {
-                        TeamPill(text: "Active now", tone: palette.success)
+                        Badge(text: "Active now", tone: .success, dot: true)
                     } else if thread.isWaitingOnYou {
-                        TeamPill(text: "Waiting on you", tone: palette.primary)
+                        Badge(text: "Waiting on you", tone: .primary, dot: true)
                     }
                 }
-                Text(thread.preview ?? "No messages yet. Say hi to get them going.")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(thread.preview == nil ? palette.mutedForeground : palette.foreground)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                latestLine(thread)
                 HStack(spacing: Theme.Space.tight) {
                     fact("person.2.fill", members.count == 1 ? "1 bot" : "\(members.count) bots")
                     if let lead { fact("star.fill", "\(lead.name) leads") }
                     fact("hand.raised.fill", "Checks with you after \(group.turnLimit) turns")
                 }
-                .padding(.top, 2)
+                .padding(.top, Theme.Space.hairline)
             }
 
             Spacer(minLength: 0)
@@ -259,28 +299,23 @@ struct GroupCard: View {
                 Text(Theme.stamp(last.at))
                     .font(Theme.Typography.caption)
                     .foregroundStyle(palette.mutedForeground)
-                    .padding(.top, 4)
+                    .padding(.top, Theme.Space.xs)
             }
 
             Menu {
-                Button(action: onOpen) { Label("Open chat", systemImage: "bubble.left") }
-                Button(action: onRename) { Label("Rename", systemImage: "pencil") }
-                GroupTurnLimitPicker(group: group)
-                Divider()
-                // The conversation only. Its bots are untouched.
-                Button(role: .destructive, action: onDelete) {
-                    Label("Delete group…", systemImage: "trash")
-                }
+                GroupMenu(group: group, onOpen: onOpen, onRename: onRename, onDelete: onDelete)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: Theme.scaled(13), weight: .semibold))
                     .foregroundStyle(palette.mutedForeground)
-                    .frame(width: 28, height: 28)
+                    .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                     .contentShape(.rect)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .help("\(group.name) options")
+            .accessibilityLabel("\(group.name) options")
         }
         .padding(Theme.Space.gutter)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -289,17 +324,42 @@ struct GroupCard: View {
         .contentShape(.rect)
         .onHover { hovering = $0 }
         .onTapGesture(perform: onOpen)
+        .focusable()
+        .onKeyPress(.return) { onOpen(); return .handled }
+        .onKeyPress(.space) { onOpen(); return .handled }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(group.name)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onOpen() }
+    }
+
+    /// Who said the last thing, in ink, then what they said, muted, as the board shows it.
+    @ViewBuilder
+    private func latestLine(_ thread: GroupThread) -> some View {
+        if let last = thread.messages.last(where: { !$0.isSystem }) {
+            let who = last.isFromUser ? "You" : last.authorName
+            (Text("\(who): ").foregroundStyle(palette.foreground)
+             + Text(PlainPreview.of(last.text)).foregroundStyle(palette.mutedForeground))
+                .font(Theme.Typography.body)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        } else {
+            Text("No messages yet. Say hi to get them going.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.mutedForeground)
+                .lineLimit(1)
+        }
     }
 
     private func fact(_ icon: String, _ text: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Theme.Space.xs) {
             Image(systemName: icon).font(.system(size: Theme.scaled(9)))
             Text(text).font(Theme.Typography.caption)
         }
         .foregroundStyle(palette.mutedForeground)
         .padding(.horizontal, Theme.Space.snug)
-        .padding(.vertical, 3)
-        .background(palette.background, in: .rect(cornerRadius: 6))
+        .padding(.vertical, Theme.Space.xs)
+        .background(palette.background, in: .rect(cornerRadius: Theme.Radius.sm))
     }
 }
 
@@ -308,9 +368,13 @@ struct GroupCard: View {
 struct GroupPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let group: ChatGroup
     @State private var draft = ""
     @FocusState private var composerFocused: Bool
+    @State private var isRenaming = false
+    /// Set to ask before deleting. Owned here, not by the header menu, which is gone on click.
+    @State private var deleting: ChatGroup?
 
     init(group: ChatGroup) {
         self.group = group
@@ -324,35 +388,42 @@ struct GroupPage: View {
             VStack(spacing: 0) {
                 Topbar(trail: [group.name]) {
                     HStack(spacing: Theme.Space.snug) {
-                        GroupFaceRow(bots: members, size: 26)
-                        Text(memberLine)
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(palette.mutedForeground)
-                            .lineLimit(1)
-                            .padding(.horizontal, Theme.Space.snug)
-                            .padding(.vertical, 5)
-                            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                        GroupFaceRow(bots: members, size: Theme.Size.controlSm)
+                            .accessibilityHidden(true)
+                        Badge(text: memberLine, tone: .neutral)
+                        // Rename and delete live here too, not only in the sidebar and the list.
                         Menu {
-                            GroupTurnLimitPicker(group: group)
+                            GroupMenu(group: group,
+                                      onRename: { isRenaming = true },
+                                      onDelete: { deleting = group })
                         } label: {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: Theme.scaled(13), weight: .semibold))
                                 .foregroundStyle(palette.mutedForeground)
-                                .frame(width: 28, height: 28)
+                                .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                                 .contentShape(.rect)
                         }
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         .fixedSize()
-                        .help("Group settings")
+                        .help("Group options")
+                        .accessibilityLabel("Group options")
                     }
                 }
                 transcript
                 composer
             }
         }
-        .padding(.vertical, 8)
-        .padding(.trailing, 8)
+        .padding(.vertical, Theme.Space.snug)
+        .padding(.trailing, Theme.Space.snug)
+        .sheet(isPresented: $isRenaming) { RenameGroupSheet(group: group) }
+        .background {
+            Color.clear.confirmsGroupDeletion($deleting) { doomed in
+                // Off the page first, so the window is never left showing a group that is gone.
+                model.open(.groups)
+                model.deleteGroup(doomed)
+            }
+        }
         .onAppear {
             model.selectedGroupID = group.id
             model.markGroupRead(group)
@@ -405,7 +476,7 @@ struct GroupPage: View {
                             ApprovalCard(approval: approval, owner: bot,
                                          showsShortcuts: approval.id == pending.last?.1.id)
                                 .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .leading)
-                                .padding(.leading, Theme.Size.bubbleAvatar + 4 + Theme.Space.step)
+                                .padding(.leading, Theme.Size.bubbleAvatar + Theme.Space.xs + Theme.Space.step)
                         }
                         if let speaking = thread.speaking,
                            let bot = members.first(where: { $0.id == speaking }),
@@ -416,14 +487,14 @@ struct GroupPage: View {
                                     .font(Theme.Typography.label)
                                     .foregroundStyle(palette.mutedForeground)
                             }
-                            .padding(.leading, Theme.Size.bubbleAvatar + 4 + Theme.Space.step)
+                            .padding(.leading, Theme.Size.bubbleAvatar + Theme.Space.xs + Theme.Space.step)
                             .id("speaking")
                         }
                     }
                     .padding(.top, Theme.Space.section)
                     .padding(.bottom, Theme.Space.gutter)
-                    .padding(.horizontal, Theme.Space.section + Theme.Space.tight)
-                    .frame(maxWidth: 896)
+                    .padding(.horizontal, Theme.Space.pageSide)
+                    .frame(maxWidth: Theme.Size.contentMaxWidth)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .frame(minHeight: geometry.size.height, alignment: .bottom)
                 }
@@ -431,7 +502,9 @@ struct GroupPage: View {
                 .defaultScrollAnchor(.bottom)
                 .onChange(of: thread.messages.count) {
                     guard let last = thread.messages.last else { return }
-                    withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(last.id, anchor: .bottom) }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
                 }
             }
         }
@@ -487,7 +560,7 @@ struct GroupPage: View {
                     // the exact name of "LinkedIn YC connection maker for founders".
                     let isAddressed = addressed.contains(bot.id)
                     Button { mention(bot) } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: Theme.Space.xs) {
                             // What each member is up to, from the model's one truth; still
                             // unless something is going on.
                             let memberMood = model.mood(for: bot)
@@ -499,7 +572,7 @@ struct GroupPage: View {
                         }
                         .foregroundStyle(isAddressed ? palette.foreground : palette.mutedForeground)
                         .padding(.horizontal, Theme.Space.snug)
-                        .frame(height: 30)
+                        .frame(height: Theme.Size.controlSm)
                         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
                         .overlay {
                             RoundedRectangle(cornerRadius: Theme.Radius.control)
@@ -508,6 +581,9 @@ struct GroupPage: View {
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
+                    .help("Mention \(bot.name)")
+                    .accessibilityLabel("Mention \(bot.name)")
+                    .accessibilityAddTraits(isAddressed ? .isSelected : [])
                 }
                 Spacer(minLength: 0)
                 if typed {
@@ -525,11 +601,13 @@ struct GroupPage: View {
                     Image(systemName: "plus")
                         .font(.system(size: Theme.scaled(14), weight: .regular))
                         .foregroundStyle(palette.foreground)
-                        .frame(width: 32, height: 32)
+                        .frame(width: Theme.Size.controlSm + Theme.Space.xs,
+                               height: Theme.Size.controlSm + Theme.Space.xs)
                         .contentShape(.rect)
                 }
                 .buttonStyle(SidebarIconButtonStyle())
                 .help("Attach files")
+                .accessibilityLabel("Attach files")
 
                 TextField("Message \(group.name)", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -543,7 +621,8 @@ struct GroupPage: View {
                     Image(systemName: "arrow.up")
                         .font(.system(size: Theme.scaled(13), weight: .bold))
                         .foregroundStyle(palette.onPrimary)
-                        .frame(width: 34, height: 34)
+                        .frame(width: Theme.Size.controlSm + Theme.Space.xs,
+                               height: Theme.Size.controlSm + Theme.Space.xs)
                         .background(palette.primary.opacity(typed ? 1 : 0.45),
                                     in: .rect(cornerRadius: Theme.Radius.control))
                         .contentShape(.rect)
@@ -551,6 +630,8 @@ struct GroupPage: View {
                 .buttonStyle(.plain)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!typed)
+                .help("Send (Cmd Return)")
+                .accessibilityLabel("Send")
             }
             .padding(.leading, Theme.Space.snug)
             .padding(.trailing, Theme.Space.snug)
@@ -560,10 +641,10 @@ struct GroupPage: View {
                 RoundedRectangle(cornerRadius: Theme.Radius.bubble).strokeBorder(palette.border)
             }
         }
-        .padding(.horizontal, Theme.Space.section + Theme.Space.tight)
+        .padding(.horizontal, Theme.Space.pageSide)
         .padding(.bottom, Theme.Space.section)
         .padding(.top, Theme.Space.snug)
-        .frame(maxWidth: 896)
+        .frame(maxWidth: Theme.Size.contentMaxWidth)
         .frame(maxWidth: .infinity)
     }
 
@@ -615,7 +696,7 @@ struct GroupBubble: View {
 
     var body: some View {
         if message.isSystem {
-            // Notes from bupsy itself: a bot handing work to another, a stop after too many
+            // Notes from Bupsy itself: a bot handing work to another, a stop after too many
             // replies. Quiet and indented, so they read as stage directions.
             HStack(spacing: Theme.Space.tight) {
                 // A pause at the turn limit is the group waiting on you, so it gets the accent.
@@ -637,7 +718,7 @@ struct GroupBubble: View {
                     .foregroundStyle(palette.foreground)
                     .textSelection(.enabled)
                     .padding(.horizontal, Theme.Space.gutter)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, Theme.Space.compact)
                     .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
                     .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .trailing)
             }
@@ -656,7 +737,7 @@ struct GroupBubble: View {
                 .opacity(showsName ? 1 : 0)
                 .frame(height: showsName ? avatarSize : 1, alignment: .top)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     if showsName {
                         HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
                             Text(message.authorName)
@@ -734,7 +815,7 @@ struct NewGroupSheet: View {
                    width: 520, tone: .info, primaryVerb: "create") {
             Field(label: "Name") {
                 TextField("", text: $name, prompt: Text("Docs refresh"))
-                    .textFieldStyle(BupsyFieldStyle())
+                    .bupsyField()
             }
 
             VStack(alignment: .leading, spacing: Theme.Space.tight) {
@@ -784,14 +865,8 @@ struct NewGroupSheet: View {
 
                 Field(label: "Turns before it checks with you",
                       hint: "When the bots pass work back and forth, they pause here until you reply.") {
-                    Picker("", selection: $turnLimit) {
-                        ForEach(GroupRouting.turnLimitChoices, id: \.self) { turns in
-                            Text("\(turns) turns").tag(turns)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: .infinity)
+                    Segmented(selection: $turnLimit, values: GroupRouting.turnLimitChoices,
+                              full: true) { "\($0) turns" }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -829,7 +904,7 @@ struct NewGroupSheet: View {
                 .lineLimit(1)
             if let role = bot.role, !role.isEmpty { RoleTag(text: role) }
             Spacer(minLength: 0)
-            Toggle("", isOn: Binding(
+            Toggle("Add \(bot.name)", isOn: Binding(
                 get: { chosen.contains(bot.id) },
                 set: { on in
                     if on {
@@ -841,11 +916,10 @@ struct NewGroupSheet: View {
                 }
             ))
             .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            .bupsySwitch()
         }
         .padding(.horizontal, Theme.Space.step)
-        .frame(height: 44)
+        .frame(height: Theme.Size.controlLg)
         .contentShape(.rect)
     }
 }
@@ -865,7 +939,7 @@ struct RenameGroupSheet: View {
                    primaryVerb: "rename") {
             Field(label: "Name") {
                 TextField("", text: $name, prompt: Text(group.name))
-                    .textFieldStyle(BupsyFieldStyle())
+                    .bupsyField()
                     .onSubmit(commit)
             }
         } actions: {

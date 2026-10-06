@@ -11,6 +11,7 @@ struct BotCreatorSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The bot being edited, or nil to make a new one.
     var editing: Bot? = nil
@@ -97,7 +98,7 @@ struct BotCreatorSheet: View {
 
     /// The bot, live, on a stage in its own colour.
     private var preview: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Theme.Space.compact) {
             BotFace(hue: 0.5, mood: previewMood, size: 132, shape: shape, colour: safeColour)
             VStack(spacing: 1) {
                 Text(displayName)
@@ -114,8 +115,8 @@ struct BotCreatorSheet: View {
         .padding(.top, 18)
         .padding(.bottom, 14)
         .padding(.horizontal, Theme.Space.step)
-        .background { MascotStageBackground(tint: tint, cornerRadius: 14) }
-        .animation(.easeOut(duration: 0.2), value: safeColour)
+        .background { MascotStageBackground(tint: tint, cornerRadius: Theme.Radius.xl) }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: safeColour)
     }
 
     private var previewMood: BotMood {
@@ -143,7 +144,7 @@ struct BotCreatorSheet: View {
             Field(label: "Name") {
                 VStack(alignment: .leading, spacing: Theme.Space.tight) {
                     TextField("", text: $name, prompt: Text("Give it a name"))
-                        .textFieldStyle(BupsyFieldStyle())
+                        .bupsyField()
                     if nameTaken {
                         Text("Another bot is already called that.")
                             .font(Theme.Typography.caption)
@@ -154,8 +155,8 @@ struct BotCreatorSheet: View {
 
             HStack(alignment: .top, spacing: Theme.Space.step) {
                 Field(label: "Role") {
-                    TextField("", text: $role, prompt: Text("Research, PA..."))
-                        .textFieldStyle(BupsyFieldStyle())
+                    TextField("", text: $role, prompt: Text("Research, PA…"))
+                        .bupsyField()
                 }
                 .frame(maxWidth: .infinity)
                 Field(label: "Section") { sectionControl }
@@ -166,7 +167,7 @@ struct BotCreatorSheet: View {
                 TextField("", text: $job,
                           prompt: Text("What should it do? e.g. watch my inbox and flag anything urgent"),
                           axis: .vertical)
-                    .textFieldStyle(BupsyFieldStyle())
+                    .bupsyField()
                     .lineLimit(3...5)
             }
 
@@ -217,7 +218,7 @@ struct BotCreatorSheet: View {
         if typingNewSection {
             HStack(spacing: Theme.Space.tight) {
                 TextField("", text: $folder, prompt: Text("Section name"))
-                    .textFieldStyle(BupsyFieldStyle())
+                    .bupsyField()
                 Button {
                     typingNewSection = false
                     if !sections.contains(trimmedFolder) { folder = "" }
@@ -225,11 +226,12 @@ struct BotCreatorSheet: View {
                     Image(systemName: "xmark")
                         .font(.system(size: Theme.scaled(10), weight: .semibold))
                         .foregroundStyle(palette.mutedForeground)
-                        .frame(width: 24, height: 24)
+                        .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .help("Pick an existing section")
+                .accessibilityLabel("Pick an existing section")
             }
         } else {
             selectField(trimmedFolder.isEmpty ? "Unassigned" : trimmedFolder) {
@@ -246,7 +248,7 @@ struct BotCreatorSheet: View {
                     Text("Unassigned")
                 }
                 Divider()
-                Button("New section...") {
+                Button("New section…") {
                     folder = ""
                     typingNewSection = true
                 }
@@ -285,7 +287,7 @@ struct BotCreatorSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, Theme.Space.step)
         .padding(.trailing, 28)
-        .frame(height: 38)
+        .frame(height: Theme.Size.controlMd)
         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
         .overlay {
             RoundedRectangle(cornerRadius: Theme.Radius.control)

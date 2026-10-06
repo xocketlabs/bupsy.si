@@ -211,7 +211,7 @@ struct MenuBarApproval: View {
     /// Menu items have no room to wrap, and a truncated command is still recognisable.
     private func short(_ text: String, limit: Int = 44) -> String {
         let flat = text.replacingOccurrences(of: "\n", with: " ")
-        return flat.count <= limit ? flat : flat.prefix(limit) + "..."
+        return flat.count <= limit ? flat : flat.prefix(limit) + "…"
     }
 }
 
@@ -266,7 +266,7 @@ private struct MenuBarPanelContent: View {
                 .foregroundStyle(palette.mutedForeground)
                 .padding(.horizontal, Theme.Space.step)
                 .padding(.top, Theme.Space.snug)
-                .padding(.bottom, 4)
+                .padding(.bottom, Theme.Space.xs)
 
             if bots.isEmpty {
                 Text("Make one and it shows up here.")
@@ -348,7 +348,7 @@ private struct MenuBarPanelBotRow: View {
         let mood = MenuBarStatus.mood(for: bot, in: model)
         let approval = firstPendingApproval
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             Button {
                 MenuBarNavigation.show(bot.id, model: model, openWindow: openWindow)
             } label: {
@@ -361,23 +361,18 @@ private struct MenuBarPanelBotRow: View {
                         .lineLimit(1)
                     Spacer(minLength: Theme.Space.snug)
                     if mood == .waitingForYou {
-                        Text("Needs you")
-                            .font(Theme.Typography.badge)
-                            .foregroundStyle(Color.white)
-                            .padding(.horizontal, 6)
-                            .frame(height: 18)
-                            .background(palette.primary, in: .rect(cornerRadius: 5))
+                        Badge(text: "Needs you", tone: .primary, dot: true)
                     } else {
                         Text(MenuBarStatus.text(for: bot, mood: mood, in: model))
                             .font(Theme.Typography.label)
-                            .foregroundStyle(mood == .failed ? palette.destructive : palette.mutedForeground)
+                            .foregroundStyle(mood == .failed ? palette.destructiveText : palette.mutedForeground)
                             .lineLimit(1)
                     }
                 }
                 .padding(.horizontal, Theme.Space.tight)
                 .frame(height: 32)
                 .background(hovering ? palette.cardHover : Color.clear,
-                            in: .rect(cornerRadius: 6))
+                            in: .rect(cornerRadius: Theme.Radius.sm))
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -459,7 +454,7 @@ private struct MenuBarPanelAction: View {
             .padding(.horizontal, Theme.Space.tight)
             .frame(height: 30)
             .background(hovering && isEnabled ? palette.cardHover : Color.clear,
-                        in: .rect(cornerRadius: 6))
+                        in: .rect(cornerRadius: Theme.Radius.sm))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

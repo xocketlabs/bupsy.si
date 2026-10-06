@@ -4,11 +4,18 @@ import SwiftUI
 // The bot list now lives in NavRail. What remains here is the right-click menu, which the rail
 // uses, and the empty roster.
 
-/// Right-click. Everything here is also in the bot's profile, where it is visible rather than
-/// hidden. This is the shortcut, not the only route.
+/// The one menu for a bot, wherever it is offered: the sidebar row's right-click and the Team
+/// card's "..." button both build it from here, so the two can never drift apart.
+///
+/// The order follows the board: open, edit, face; where it lives; pin; stop and delete. The
+/// rarer settings (engine, model, trust, copying) sit one level down under More rather than
+/// making a seventeen-row menu. Everything here is also in the bot's profile, where it is
+/// visible rather than hidden. This is the shortcut, not the only route.
 struct BotMenu: View {
     @Environment(AppModel.self) private var model
     let bot: Bot
+    /// Opens the bot's chat. Nil where the menu sits on the chat already.
+    var onOpen: (() -> Void)? = nil
     /// Opens the "new folder" sheet. A closure rather than a binding because a context menu is
     /// torn down the instant it is clicked, so the sheet has to belong to the view behind it.
     var onNewFolder: () -> Void
@@ -20,10 +27,16 @@ struct BotMenu: View {
     var onDelete: () -> Void
 
     var body: some View {
-        Button("Pin to top", systemImage: bot.pinned ? "pin.slash" : "pin") {
-            model.togglePin(bot)
+        if let onOpen {
+            Button(action: onOpen) { Label("Open chat", systemImage: "bubble.left") }
         }
-        Menu("Move to") {
+        // It opens the full editor, so it says so rather than promising only a new name.
+        Button(action: onRename) { Label("Edit bot…", systemImage: "pencil") }
+        Button { model.shuffleFace(bot) } label: { Label("Change face", systemImage: "sparkles") }
+
+        Divider()
+
+        Section("Move to") {
             ForEach(model.folders, id: \.self) { folder in
                 Button {
                     model.setFolder(bot, folder)
@@ -34,48 +47,65 @@ struct BotMenu: View {
             Button {
                 model.setFolder(bot, nil)
             } label: {
-                Label("Unassigned",
-                      systemImage: (bot.folder ?? "").isEmpty ? "checkmark" : "tray")
+                Label("Unassigned", systemImage: (bot.folder ?? "").isEmpty ? "checkmark" : "tray")
+            }
+            Button(action: onNewFolder) { Label("New section…", systemImage: "plus") }
+        }
+
+        Divider()
+
+        Button { model.togglePin(bot) } label: {
+            Label(bot.pinned ? "Unpin" : "Pin to top", systemImage: bot.pinned ? "pin.slash" : "pin")
+        }
+
+        Menu {
+            Button("Mark as unread") { model.markUnread(bot) }
+            Divider()
+            Menu("Engine") {
+                ForEach(EngineID.supported, id: \.self) { engine in
+                    // A Toggle, so the menu draws its own checkmark and the other rows stay aligned.
+                    Toggle(isOn: Binding(
+                        get: { bot.engine == engine },
+                        set: { if $0 { model.setEngine(bot, engine) } })) {
+                        Text(engine.displayName)
+                    }
+                }
+            }
+            Menu("Model") { ModelMenuItems(bot: bot) }
+            Menu("Trust") {
+                ForEach(Autonomy.allCases, id: \.self) { level in
+                    Toggle(isOn: Binding(
+                        get: { bot.autonomy == level },
+                        set: { if $0 { model.setAutonomy(bot, level) } })) {
+                        Text(level.trustLabel)
+                    }
+                }
             }
             Divider()
-            Button("Create section…", action: onNewFolder)
-        }
-        Button("Mark as unread") { model.markUnread(bot) }
-        Divider()
-        Button("Edit bot…", action: onRename)
-        Button("Shuffle face") { model.shuffleFace(bot) }
-        Menu("Engine") {
-            ForEach(EngineID.supported, id: \.self) { engine in
-                // A Toggle, so the menu draws its own checkmark and the other rows stay aligned.
-                Toggle(isOn: Binding(
-                    get: { bot.engine == engine },
-                    set: { if $0 { model.setEngine(bot, engine) } })) {
-                    Text(engine.displayName)
-                }
+            Button("Duplicate") { model.duplicate(bot) }
+            Button("Copy conversation") { model.copyTranscript(of: bot) }
+            // The engine's own resume handle. Useful when you want to pick a thread up in the CLI
+            // directly, which is a thing this app should never make harder.
+            Button("Copy conversation ID") { model.copyConversationID(of: bot) }
+            Divider()
+            // Not destructive, and worded so it cannot be mistaken for one.
+            Button(bot.hidden ? "Show in sidebar" : "Hide from sidebar") {
+                model.toggleHidden(bot)
             }
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
         }
-        Menu("Model") { ModelMenuItems(bot: bot) }
-        Menu("Trust") {
-            ForEach(Autonomy.allCases, id: \.self) { level in
-                Toggle(isOn: Binding(
-                    get: { bot.autonomy == level },
-                    set: { if $0 { model.setAutonomy(bot, level) } })) {
-                    Text(level.trustLabel)
-                }
-            }
-        }
+
         Divider()
-        Button("Duplicate") { model.duplicate(bot) }
-        Button("Copy conversation") { model.copyTranscript(of: bot) }
-        // The engine's own resume handle. Useful when you want to pick a thread up in the CLI
-        // directly, which is a thing this app should never make harder.
-        Button("Copy conversation ID") { model.copyConversationID(of: bot) }
-        Divider()
-        // Not destructive, and worded so it cannot be mistaken for one.
-        Button(bot.hidden ? "Show in sidebar" : "Hide from sidebar") {
-            model.toggleHidden(bot)
+
+        // Only while it is doing something. Stops the run in progress; it does not hold the bot's
+        // routines, so it is called Stop rather than Pause.
+        if model.isRunning(bot.id) {
+            Button { model.stop(bot.id) } label: { Label("Stop", systemImage: "stop.fill") }
         }
-        Button("Delete bot…", role: .destructive, action: onDelete)
+        Button(role: .destructive, action: onDelete) {
+            Label("Delete bot…", systemImage: "trash")
+        }
     }
 }
 
@@ -173,11 +203,11 @@ struct RosterEmpty: View {
             Topbar(trail: ["Roster"]) { EmptyView() }
             GeometryReader { geometry in
                 ScrollView {
-                    VStack(spacing: 40) {
+                    VStack(spacing: Theme.Space.page) {
                         hero
                         starters
                     }
-                    .padding(32)
+                    .padding(Theme.Space.pageSide)
                     .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                 }
             }
@@ -230,11 +260,11 @@ struct RosterEmpty: View {
                 Button { start(starter) } label: {
                     CardRow {
                         StillBotFace(shape: starter.shape, colour: starter.colour, size: 40)
-                            .frame(width: 44, height: 44)
+                            .frame(width: Theme.Size.tile, height: Theme.Size.tile)
                             .background(BotShape.palette[starter.colour].opacity(0.14),
                                         in: .rect(cornerRadius: Theme.Radius.control))
                     } content: {
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: Theme.Space.xs) {
                             Text(starter.title)
                                 .font(Theme.Typography.body)
                                 .foregroundStyle(palette.foreground)

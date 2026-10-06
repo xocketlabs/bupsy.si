@@ -54,7 +54,7 @@ struct UsageSheet: View {
                     EmptyState(
                         title: period == .all ? "Nothing yet" : "Nothing \(period.phrase)",
                         message: "Usage shows up here after a bot's first run.")
-                        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
                 } else {
                     totals(rows)
 
@@ -110,35 +110,12 @@ struct UsageSheet: View {
     }
 }
 
-/// 7 days, 30 days, All time: a quiet segmented control that matches the cards beside it.
+/// 7 days, 30 days, All time: the app's one segmented control.
 private struct UsagePeriodPicker: View {
-    @Environment(\.palette) private var palette
-    @Environment(\.colorScheme) private var colorScheme
     @Binding var period: UsagePeriod
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(UsagePeriod.allCases, id: \.self) { option in
-                let selected = option == period
-                Button { period = option } label: {
-                    Text(option.label)
-                        .font(.system(size: Theme.scaled(13)))
-                        .foregroundStyle(selected ? palette.foreground : palette.mutedForeground)
-                        .padding(.horizontal, 14)
-                        .frame(height: 34)
-                        .background(selected ? (colorScheme == .dark ? palette.cardHover : palette.background)
-                                             : Color.clear,
-                                    in: .rect(cornerRadius: Theme.Radius.control))
-                        .shadow(color: selected ? Color.black.opacity(0.08) : Color.clear, radius: 1, y: 1)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
-            }
-        }
-        .padding(2)
-        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.base))
-        .fixedSize()
+        Segmented(selection: $period, values: UsagePeriod.allCases) { $0.label }
     }
 }
 
@@ -217,7 +194,7 @@ private struct StatTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Space.gutter)
-        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
     }
 }
 
@@ -244,7 +221,7 @@ private struct UsageRow: View {
         } label: {
             HStack(spacing: Theme.Space.gutter) {
                 BotFace(bot: bot, mood: working ? .working : .idle, size: 40)
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     HStack {
                         Text(bot.name)
                             .font(Theme.Typography.body)
@@ -278,7 +255,7 @@ private struct UsageRow: View {
             .padding(.leading, Theme.Space.step)
             .padding(.trailing, Theme.Space.gutter)
             .background(hovering ? palette.cardHover : palette.card,
-                        in: .rect(cornerRadius: 14, style: .continuous))
+                        in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

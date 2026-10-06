@@ -18,6 +18,7 @@ struct OnboardingSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var page = 0
     @State private var checking = false
@@ -68,7 +69,7 @@ struct OnboardingSheet: View {
 
     /// Section names offered when the person has none of their own yet.
     private static let presetSections: [(title: String, icon: String, detail: String)] = [
-        ("Work", "folder", "Jobs, repos, clients"),
+        ("Work", "briefcase", "Jobs, repos, clients"),
         ("Personal", "house", "Inbox, errands, plans"),
         ("Engineering", "chevron.left.forwardslash.chevron.right", "Builds, reviews, CI"),
     ]
@@ -174,7 +175,7 @@ struct OnboardingSheet: View {
             .transition(.opacity)
         }
         .clipped()
-        .animation(.easeOut(duration: 0.2), value: safeColour)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: safeColour)
     }
 
     /// What each scene shows, for VoiceOver.
@@ -204,11 +205,11 @@ struct OnboardingSheet: View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             MascotStageBubble(text: "Hi! I'm Bupsy.")
-                .padding(.bottom, 16)
+                .padding(.bottom, Theme.Space.gutter)
             bupsy(.waitingForYou, size: 240 * s)
             Spacer(minLength: 0)
             VStack(spacing: Theme.Space.snug) {
-                HStack(spacing: 4) {
+                HStack(spacing: Theme.Space.xs) {
                     ForEach(Array(Self.lineup.enumerated()), id: \.offset) { _, member in
                         BotFace(hue: 0, mood: .sleeping, size: 56 * s, shape: member.shape, colour: member.colour)
                     }
@@ -217,7 +218,7 @@ struct OnboardingSheet: View {
                     .font(Theme.Typography.label)
                     .foregroundStyle(palette.mutedForeground)
             }
-            .padding(.bottom, 32)
+            .padding(.bottom, Theme.Space.pageSide)
         }
         .padding(.horizontal, Theme.Space.gutter)
     }
@@ -241,15 +242,15 @@ struct OnboardingSheet: View {
     private func howScene(_ s: CGFloat) -> some View {
         let line = palette.mutedForeground.opacity(0.6)
         return VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: Theme.Space.compact) {
                 Image(systemName: "key.fill")
                     .font(.system(size: Theme.scaled(14)))
                 Text("Your Claude Code or Codex plan")
                     .font(.system(size: Theme.scaled(15), weight: .medium))
             }
             .foregroundStyle(palette.foreground)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, Theme.Space.gutter)
+            .padding(.vertical, Theme.Space.compact)
             .background(palette.background, in: .rect(cornerRadius: Theme.Radius.card, style: .continuous))
             .shadow(color: Color.black.opacity(0.06), radius: 4, y: 1)
             MascotStageDash(tint: line, length: 28 * s)
@@ -259,7 +260,7 @@ struct OnboardingSheet: View {
             MascotStageDash(tint: line, length: 28 * s)
             HStack(alignment: .top, spacing: 22 * s) {
                 ForEach(Array(trio.enumerated()), id: \.offset) { index, member in
-                    VStack(spacing: 4) {
+                    VStack(spacing: Theme.Space.xs) {
                         BotFace(hue: 0.5, mood: index == 1 ? .working : .idle, size: 88 * s,
                                 shape: member.shape, colour: member.colour)
                         MascotStageTag(text: member.name,
@@ -290,7 +291,7 @@ struct OnboardingSheet: View {
     }
 
     private func stageEngineCard(_ engine: EngineID, scale s: CGFloat) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Theme.Space.snug) {
             Image(systemName: "chevron.left.forwardslash.chevron.right")
                 .font(.system(size: Theme.scaled(16), weight: .semibold))
             Text(engine.displayName)
@@ -299,14 +300,14 @@ struct OnboardingSheet: View {
                 .minimumScaleFactor(0.7)
         }
         .foregroundStyle(palette.foreground)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Theme.Space.snug)
         .frame(width: 116 * s, height: 88 * s)
         .background(palette.background, in: .rect(cornerRadius: Theme.Radius.bubble, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Circle()
                 .fill(engineTone(engine))
                 .frame(width: 7, height: 7)
-                .padding(8)
+                .padding(Theme.Space.snug)
         }
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 1)
     }
@@ -317,25 +318,25 @@ struct OnboardingSheet: View {
 
     /// Bupsy presenting the new bot, which stands on a lit spot of its own.
     private func faceScene(_ s: CGFloat) -> some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: Theme.Space.snug) {
             VStack(spacing: 14) {
                 MascotStageBubble(text: faceLine, small: true)
                     .frame(maxWidth: 180 * s)
                 bupsy(trimmedName.isEmpty ? .waitingForYou : .idle, size: 110 * s)
             }
             .padding(.bottom, 52 * s)
-            VStack(spacing: 6) {
+            VStack(spacing: Theme.Space.tight) {
                 ZStack(alignment: .bottom) {
                     MascotStageSpot(tint: botTint, width: 210 * s)
                         .offset(y: 14)
                     newBot(faceMood, size: 240 * s)
                 }
                 MascotStageTag(text: shownName, dot: botTint)
-                    .padding(.top, 10)
+                    .padding(.top, Theme.Space.compact)
             }
         }
         .padding(.horizontal, Theme.Space.gutter)
-        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: shape)
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75), value: shape)
     }
 
     private var faceLine: String {
@@ -356,8 +357,8 @@ struct OnboardingSheet: View {
             MascotStageBubble(text: trustLine(trust))
                 .frame(maxWidth: 300)
             newBot(trustMood(trust), size: 220 * s)
-            VStack(spacing: 6) {
-                HStack(spacing: 6) {
+            VStack(spacing: Theme.Space.tight) {
+                HStack(spacing: Theme.Space.tight) {
                     ForEach(Autonomy.allCases, id: \.self) { level in
                         Capsule()
                             .fill(level <= trust ? meterFill : palette.foreground.opacity(0.12))
@@ -373,7 +374,7 @@ struct OnboardingSheet: View {
                 .foregroundStyle(palette.mutedForeground)
             }
             .frame(width: 178)
-            .animation(.easeOut(duration: 0.18), value: trust)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: trust)
         }
     }
 
@@ -430,7 +431,7 @@ struct OnboardingSheet: View {
     }
 
     private func sidebarPreview(maxHeight: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Theme.Space.hairline) {
             HStack(spacing: Theme.Space.snug) {
                 bupsy(.idle, size: 22)
                 Text("Bupsy")
@@ -442,12 +443,12 @@ struct OnboardingSheet: View {
             }
             .font(.system(size: Theme.scaled(12)))
             .foregroundStyle(palette.mutedForeground)
-            .padding(.horizontal, 8)
-            .padding(.bottom, 8)
+            .padding(.horizontal, Theme.Space.snug)
+            .padding(.bottom, Theme.Space.snug)
             previewRow(icon: "hand.raised", "Waiting on you")
             previewRow(icon: "person.2", "Team")
             ForEach(Array(previewSections.enumerated()), id: \.offset) { _, section in
-                HStack(spacing: 6) {
+                HStack(spacing: Theme.Space.tight) {
                     Image(systemName: "chevron.down")
                         .font(.system(size: Theme.scaled(8), weight: .bold))
                     Text(section.title.uppercased())
@@ -459,15 +460,15 @@ struct OnboardingSheet: View {
                         .font(.system(size: Theme.scaled(10)))
                 }
                 .foregroundStyle(palette.mutedForeground)
-                .padding(.horizontal, 8)
-                .padding(.top, 12)
-                .padding(.bottom, 4)
+                .padding(.horizontal, Theme.Space.snug)
+                .padding(.top, Theme.Space.step)
+                .padding(.bottom, Theme.Space.xs)
                 if section.names.isEmpty {
                     Text("Nothing here yet")
                         .font(Theme.Typography.label)
                         .foregroundStyle(palette.mutedForeground)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, Theme.Space.compact)
+                        .padding(.vertical, Theme.Space.xs)
                 }
                 ForEach(Array(section.names.enumerated()), id: \.offset) { _, entry in
                     HStack(spacing: Theme.Space.snug) {
@@ -478,8 +479,8 @@ struct OnboardingSheet: View {
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
+                    .padding(.horizontal, Theme.Space.snug)
+                    .padding(.vertical, Theme.Space.xs)
                     .background(entry.isNew ? palette.cardHover : Color.clear,
                                 in: .rect(cornerRadius: Theme.Radius.control))
                 }
@@ -487,18 +488,18 @@ struct OnboardingSheet: View {
                     Text("and \(section.more) more")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(palette.mutedForeground)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, Theme.Space.compact)
+                        .padding(.vertical, Theme.Space.hairline)
                 }
             }
         }
-        .padding(10)
+        .padding(Theme.Space.compact)
         .frame(width: 270, alignment: .topLeading)
         .frame(maxHeight: maxHeight, alignment: .top)
         .background(palette.sidebar, in: .rect(cornerRadius: Theme.Radius.bubble, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous))
         .shadow(color: Color.black.opacity(0.08), radius: 10, y: 3)
-        .animation(.easeOut(duration: 0.18), value: chosenSection)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: chosenSection)
     }
 
     private func previewRow(icon: String, _ text: String) -> some View {
@@ -511,21 +512,21 @@ struct OnboardingSheet: View {
             Spacer(minLength: 0)
         }
         .foregroundStyle(palette.mutedForeground)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Theme.Space.snug)
+        .padding(.vertical, Theme.Space.tight)
     }
 
     /// Both cheering, in the confetti.
     private func readyScene(_ s: CGFloat) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: Theme.Space.tight) {
             MascotStageBubble(text: "Let's go!")
-                .padding(.bottom, 10)
-            HStack(alignment: .bottom, spacing: 4) {
+                .padding(.bottom, Theme.Space.compact)
+            HStack(alignment: .bottom, spacing: Theme.Space.xs) {
                 bupsy(.done, size: 140 * s)
                 newBot(.done, size: 210 * s)
             }
             MascotStageTag(text: shownName, dot: botTint)
-                .padding(.top, 6)
+                .padding(.top, Theme.Space.tight)
         }
         .padding(.horizontal, Theme.Space.gutter)
     }
@@ -570,8 +571,8 @@ struct OnboardingSheet: View {
 
     /// One segment per step: done in ink, the current one in pink, the rest still empty.
     private var progress: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.compact) {
+            HStack(spacing: Theme.Space.tight) {
                 ForEach(0..<pages, id: \.self) { index in
                     Capsule()
                         .fill(index < page ? palette.foreground
@@ -588,7 +589,7 @@ struct OnboardingSheet: View {
             }
             .font(Theme.Typography.label)
         }
-        .animation(.easeOut(duration: 0.2), value: page)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: page)
     }
 
     /// A step's title and line, at the Welcome board's sizes: 44 for the first and last steps,
@@ -652,11 +653,11 @@ struct OnboardingSheet: View {
     }
 
     private func fact(_ icon: String, _ title: String, _ detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             Image(systemName: icon)
                 .font(.system(size: Theme.scaled(15)))
                 .foregroundStyle(palette.mutedForeground)
-                .padding(.bottom, 4)
+                .padding(.bottom, Theme.Space.xs)
                 .accessibilityHidden(true)
             Text(title)
                 .font(.system(size: Theme.scaled(14), weight: .medium))
@@ -733,7 +734,7 @@ struct OnboardingSheet: View {
         if choosable {
             let selected = engine == self.engine
             Button {
-                withAnimation(.easeOut(duration: 0.15)) { pickedEngine = engine }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { pickedEngine = engine }
             } label: {
                 engineRowBody(engine, selected: selected)
             }
@@ -760,7 +761,7 @@ struct OnboardingSheet: View {
                 .background(palette.background, in: .rect(cornerRadius: Theme.Radius.base))
                 .overlay(RoundedRectangle(cornerRadius: Theme.Radius.base).strokeBorder(palette.border))
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                 Text(engine.displayName)
                     .font(.system(size: Theme.scaled(15), weight: .medium))
                     .foregroundStyle(palette.foreground)
@@ -787,18 +788,11 @@ struct OnboardingSheet: View {
     @ViewBuilder
     private func statusPill(_ status: AuthStatus?) -> some View {
         if let status {
-            let tone = status.isUsable ? palette.success : palette.warning
-            HStack(spacing: 5) {
-                Circle().fill(tone).frame(width: 6, height: 6)
-                Text(statusLabel(status))
-            }
-            .font(Theme.Typography.caption.weight(.medium))
-            .foregroundStyle(tone)
-            .padding(.horizontal, Theme.Space.snug)
-            .padding(.vertical, 5)
-            .background(tone.opacity(0.13), in: .rect(cornerRadius: Theme.Radius.control))
+            Badge(text: statusLabel(status),
+                  tone: status.isUsable ? BadgeTone.success : BadgeTone.warning,
+                  dot: true)
         } else {
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Space.tight) {
                 ProgressView().controlSize(.small)
                 Text("Checking")
             }
@@ -822,7 +816,7 @@ struct OnboardingSheet: View {
                 Image(systemName: copiedCommand == command ? "checkmark" : "doc.on.doc")
                     .font(.system(size: Theme.scaled(12)))
                     .foregroundStyle(palette.mutedForeground)
-                    .frame(width: 28, height: 28)
+                    .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -831,14 +825,14 @@ struct OnboardingSheet: View {
         }
         .padding(.leading, Theme.Space.gutter)
         .padding(.trailing, Theme.Space.snug)
-        .frame(minHeight: 44)
+        .frame(minHeight: Theme.Size.controlLg)
         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).strokeBorder(palette.border))
     }
 
     private var checkAgainButton: some View {
         Button(action: checkAgain) {
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Space.tight) {
                 if checking {
                     ProgressView().controlSize(.small)
                 } else {
@@ -860,7 +854,7 @@ struct OnboardingSheet: View {
             Field(label: "Name") {
                 VStack(alignment: .leading, spacing: Theme.Space.tight) {
                     TextField("", text: $name, prompt: Text("Give it a name"))
-                        .textFieldStyle(BupsyFieldStyle())
+                        .bupsyField()
                         .focused($focusedField, equals: .name)
                         .onAppear { focusSoon(.name) }
                     if nameTaken {
@@ -894,10 +888,10 @@ struct OnboardingSheet: View {
     private func trustRow(_ level: Autonomy) -> some View {
         let selected = level == trust
         return Button {
-            withAnimation(.easeOut(duration: 0.15)) { trust = level }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { trust = level }
         } label: {
             HStack(spacing: Theme.Space.snug) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                     Text(level.trustLabel)
                         .font(.system(size: Theme.scaled(15), weight: .medium))
                         .foregroundStyle(level == .auto ? palette.destructiveText : palette.foreground)
@@ -942,7 +936,7 @@ struct OnboardingSheet: View {
         var options: [SectionOption] = []
         for folder in model.folders.prefix(3) {
             let count = model.bots(in: folder).count
-            options.append(SectionOption(title: folder, icon: "folder",
+            options.append(SectionOption(title: folder, icon: "rectangle.stack",
                                          detail: count == 1 ? "1 bot" : "\(count) bots"))
         }
         for preset in Self.presetSections where !options.contains(where: {
@@ -982,8 +976,8 @@ struct OnboardingSheet: View {
             }
             if namingSection {
                 Field(label: "Section name") {
-                    TextField("", text: $newSection, prompt: Text("Research, Clients..."))
-                        .textFieldStyle(BupsyFieldStyle())
+                    TextField("", text: $newSection, prompt: Text("Research, Clients…"))
+                        .bupsyField()
                         .focused($focusedField, equals: .section)
                         .onAppear { focusSoon(.section) }
                 }
@@ -994,7 +988,7 @@ struct OnboardingSheet: View {
     private func sectionTile(icon: String, title: String, detail: String, selected: Bool,
                              action: @escaping () -> Void) -> some View {
         Button {
-            withAnimation(.easeOut(duration: 0.15)) { action() }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { action() }
         } label: {
             HStack(spacing: Theme.Space.step) {
                 Image(systemName: icon)
@@ -1002,7 +996,7 @@ struct OnboardingSheet: View {
                     .foregroundStyle(palette.mutedForeground)
                     .frame(width: 20)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                     Text(title)
                         .font(.system(size: Theme.scaled(15), weight: .medium))
                         .foregroundStyle(palette.foreground)
@@ -1045,7 +1039,7 @@ struct OnboardingSheet: View {
                 recapRow("Section", chosenSection ?? "Unassigned", step: Step.section, rule: false)
             }
             .padding(.horizontal, Theme.Space.gutter)
-            .padding(.vertical, 4)
+            .padding(.vertical, Theme.Space.xs)
             .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
             HStack(spacing: Theme.Space.snug) {
                 Button { finish(openApps: false) } label: {
@@ -1102,20 +1096,15 @@ struct OnboardingSheet: View {
     private var footer: some View {
         HStack(spacing: Theme.Space.step) {
             if page > 0 {
-                Button("Back") { withAnimation(.easeOut(duration: 0.15)) { page -= 1 } }
-                    .buttonStyle(.plain)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(palette.foreground)
-                    .padding(.horizontal, Theme.Space.gutter)
-                    .frame(height: Theme.Size.control)
-                    .contentShape(.rect)
+                Button("Back") { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { page -= 1 } }
+                    .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .lg))
             }
             Spacer(minLength: 0)
             // The last step's own buttons are the way out, so the footer only offers Back there.
             if page < Step.ready {
                 // Only offered when Return would actually do something.
                 if canContinue {
-                    HStack(spacing: 6) {
+                    HStack(spacing: Theme.Space.tight) {
                         Text("press")
                         Keycap("Return")
                     }
@@ -1165,7 +1154,7 @@ struct OnboardingSheet: View {
 
     private func next() {
         guard canContinue, page < Step.ready else { return }
-        withAnimation(.easeOut(duration: 0.15)) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
             if fromSummary && page > Step.hello {
                 page = Step.ready
             } else {
@@ -1178,7 +1167,7 @@ struct OnboardingSheet: View {
     /// From the summary's Change links: go to that step, and come straight back after.
     private func jump(to step: Int) {
         fromSummary = true
-        withAnimation(.easeOut(duration: 0.15)) { page = step }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { page = step }
     }
 
     /// Makes the bot for real, finishes onboarding and goes to it (or to Apps).
@@ -1191,7 +1180,7 @@ struct OnboardingSheet: View {
         guard let made else {
             // The name was taken after it was checked. Send them back to pick another.
             fromSummary = true
-            withAnimation(.easeOut(duration: 0.15)) { page = Step.face }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { page = Step.face }
             return
         }
         if openApps {
@@ -1239,7 +1228,7 @@ struct OnboardingSheet: View {
     }
 
     private var engineLine: String {
-        if isChecking { return "Checking what's signed in..." }
+        if isChecking { return "Checking what's signed in…" }
         if missingEngines.isEmpty { return "Both engines found!" }
         if readyEngines.isEmpty {
             return missingEngines.allSatisfy { isNotInstalled($0) } ? "Neither is installed yet." : "Nothing's signed in yet."
@@ -1305,10 +1294,8 @@ struct OnboardingSheet: View {
     }
 }
 
-/// The recap's "Change" link: a real 28pt target with a hover, not bare text.
+/// The recap's "Change" link: the app's small ghost button, a real 28pt target with a hover.
 private struct OnboardingChangeButton: View {
-    @Environment(\.palette) private var palette
-    @State private var hovering = false
     let key: String
     let action: () -> Void
 
@@ -1318,19 +1305,9 @@ private struct OnboardingChangeButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            Text("Change")
-                .font(Theme.Typography.label.weight(.medium))
-                .foregroundStyle(hovering ? palette.foreground : palette.mutedForeground)
-                .padding(.horizontal, Theme.Space.snug)
-                .frame(minHeight: 28)
-                .background(hovering ? palette.cardHover : Color.clear,
-                            in: .rect(cornerRadius: Theme.Radius.control))
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help("Go back and change the \(key.lowercased())")
+        Button("Change", action: action)
+            .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
+            .help("Go back and change the \(key.lowercased())")
         .accessibilityLabel("Change \(key.lowercased())")
     }
 }

@@ -85,7 +85,7 @@ struct MascotStageBubble: View {
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, small ? 14 : 18)
-            .padding(.vertical, small ? 10 : 12)
+            .padding(.vertical, small ? Theme.Space.compact : Theme.Space.step)
             .background(fill, in: .rect(cornerRadius: 16, style: .continuous))
             .overlay(alignment: .bottom) {
                 MascotStageBubbleTail()
@@ -121,7 +121,7 @@ struct MascotStageTag: View {
     var compact = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Space.tight) {
             if let dot {
                 Circle().fill(dot).frame(width: 7, height: 7)
             }
@@ -130,8 +130,8 @@ struct MascotStageTag: View {
                 .foregroundStyle(palette.foreground)
                 .lineLimit(1)
         }
-        .padding(.horizontal, compact ? 9 : 11)
-        .padding(.vertical, compact ? 4 : 6)
+        .padding(.horizontal, compact ? Theme.Space.snug : Theme.Space.compact)
+        .padding(.vertical, compact ? Theme.Space.xs : Theme.Space.tight)
         .background(colorScheme == .dark ? palette.popover : palette.background, in: Capsule())
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.06), radius: 3, y: 1)
     }

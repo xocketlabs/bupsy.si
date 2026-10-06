@@ -3,13 +3,14 @@ import SwiftUI
 
 /// One bot, as a page: who it is, the conversation, and what it does on its own.
 ///
-/// Everything about a bot on one surface, in the order someone would ask about it — rather than
+/// Everything about a bot on one surface, in the order someone would ask about it, rather than
 /// a chat box with the rest behind icons. Goals and routines sit below the conversation as card
 /// rows, so they are part of the page instead of somewhere you have to know to look.
 struct BotPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let bot: Bot
 
     @State private var draft = ""
@@ -70,7 +71,7 @@ struct BotPage: View {
                 pageContent(size: proxy.size)
             }
         }
-        .padding([.top, .bottom, .trailing], 8)
+        .padding([.top, .bottom, .trailing], Theme.Space.snug)
         // Each sheet on its own view: two sheets on one view and SwiftUI silently shows only one.
         // The panel already lists routines and goals, so "New" opens the form itself rather than
         // a second list with its own New button.
@@ -142,12 +143,12 @@ struct BotPage: View {
                 details(width: panelWidth)
                     .overlay(alignment: .topTrailing) {
                         Button {
-                            withAnimation(.easeOut(duration: 0.16)) { showsDetails = false }
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { showsDetails = false }
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: Theme.scaled(11), weight: .semibold))
                                 .foregroundStyle(palette.mutedForeground)
-                                .frame(width: 28, height: 28)
+                                .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                                 .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
                                 .contentShape(.rect)
                         }
@@ -178,7 +179,7 @@ struct BotPage: View {
             }
             statusBadge
             Button {
-                withAnimation(.easeOut(duration: 0.16)) { showsDetails.toggle() }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { showsDetails.toggle() }
             } label: {
                 HStack(spacing: Theme.Space.snug) {
                     BotFace(bot: bot, mood: mood, size: Theme.scaled(18))
@@ -298,33 +299,15 @@ struct BotPage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// The four questions worth asking about a bot, as a segmented strip.
+    /// The four questions worth asking about a bot, as the app's one segmented control.
     private var tabBar: some View {
-        HStack(spacing: 2) {
-            ForEach(DetailTab.allCases, id: \.self) { item in
-                Button { tab = item } label: {
-                    Text(item.label)
-                        .font(Theme.Typography.label.weight(tab == item ? .medium : .regular))
-                        .foregroundStyle(tab == item ? palette.foreground : palette.mutedForeground)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 32)
-                        .background(tab == item ? (isDark ? palette.cardHover : palette.background) : Color.clear,
-                                    in: .rect(cornerRadius: Theme.Radius.control))
-                        .shadow(color: tab == item ? Color.black.opacity(0.06) : Color.clear, radius: 1, y: 1)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(2)
-        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.base))
+        Segmented(selection: $tab, values: DetailTab.allCases, full: true) { $0.label }
     }
 
     /// Where this bot's work actually happens.
     ///
-    /// Grok Bot shows a live screen here. bupsy cannot yet — a cloud machine has no screen to
-    /// stream and the local host has no window of its own — so this says what is true rather than
+    /// Grok Bot shows a live screen here. bupsy cannot yet: a cloud machine has no screen to
+    /// stream and the local host has no window of its own, so this says what is true rather than
     /// drawing an empty frame labelled as one.
     private var computer: some View {
         VStack(alignment: .leading, spacing: Theme.Space.gutter) {
@@ -369,7 +352,7 @@ struct BotPage: View {
     ///
     /// Every number here is reported by the engine: the windows come from Claude's
     /// `rate_limit_event`, the tokens from each run's own result line. Deliberately missing is any
-    /// "context window" percentage — the engine reports what a turn *sent*, never how large the
+    /// "context window" percentage: the engine reports what a turn *sent*, never how large the
     /// window is, so a percentage would mean hardcoding a limit per model and watching it rot into
     /// a confident wrong number. "Largest turn" says the same thing without pretending.
     ///
@@ -504,14 +487,9 @@ struct BotPage: View {
                     }
                 }
             } footer: {
-                Button { editingBot = bot } label: {
-                    Text("Change")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(palette.mutedForeground)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .help("Edit \(bot.name)'s face, job, engine and trust")
+                Button("Change") { editingBot = bot }
+                    .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
+                    .help("Edit \(bot.name)'s face, job, engine and trust")
             }
 
             folderField
@@ -548,14 +526,14 @@ struct BotPage: View {
                         }
                     }
                     .foregroundStyle(palette.mutedForeground)
-                    .frame(minWidth: 24, minHeight: 24)
+                    .frame(minWidth: Theme.Size.controlSm, minHeight: Theme.Size.controlSm)
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .help(copiedPath ? "Copied" : "Copy the path")
                 .accessibilityLabel(copiedPath ? "Copied" : "Copy the path")
                 Menu {
-                    Button("Choose folder...") { model.chooseWorkdir(for: bot) }
+                    Button("Choose folder…") { model.chooseWorkdir(for: bot) }
                     if bot.workdir != nil {
                         Button("Use its own folder") { model.setWorkdir(bot, nil) }
                     }
@@ -568,13 +546,14 @@ struct BotPage: View {
                     Image(systemName: "ellipsis")
                         .font(.system(size: Theme.scaled(11), weight: .semibold))
                         .foregroundStyle(palette.mutedForeground)
-                        .frame(width: 24, height: 24)
+                        .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                         .contentShape(.rect)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help("Change folder")
+                .accessibilityLabel("Change folder")
             }
             .padding(.leading, Theme.Space.gutter)
             .padding(.trailing, Theme.Space.snug)
@@ -601,7 +580,7 @@ struct BotPage: View {
             Button(action: action) {
                 Label("New", systemImage: "plus")
             }
-            .buttonStyle(ThreadButtonStyle(kind: .ghost, height: 32))
+            .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
             .help(help)
         }
     }
@@ -609,7 +588,7 @@ struct BotPage: View {
     // MARK: - Head
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
             HStack(spacing: Theme.Space.tight) {
                 Text(bot.name)
                     .font(Theme.Typography.title)
@@ -631,7 +610,7 @@ struct BotPage: View {
         return model.models(for: bot).first { $0.id == bot.model }?.label ?? bot.model
     }
 
-    /// Shows the folder's own name rather than a path — the path is long and the name is what
+    /// Shows the folder's own name rather than a path: the path is long and the name is what
     /// anyone actually recognises.
     /// "Its own folder" rather than "No folder", because there is one: a private, empty folder
     /// that keeps the bot's tools off the rest of the disk. "No folder" read as harmless and
@@ -683,7 +662,7 @@ struct BotPage: View {
                                 .padding(.top, gap(before: index))
                                 .id(entry.id)
                             }
-                            // Not while it is waiting on you. The dots say "the bot is working" —
+                            // Not while it is waiting on you. The dots say "the bot is working":
                             // under an approval card that is false, and it is false at exactly
                             // the moment the person needs to understand that nothing will happen
                             // until they answer.
@@ -695,7 +674,7 @@ struct BotPage: View {
                         }
                         .padding(.top, Theme.Space.gutter)
                         .padding(.bottom, Theme.Space.section)
-                        .padding(.horizontal, 32)
+                        .padding(.horizontal, Theme.Space.pageSide)
                         .frame(maxWidth: ThreadLayout.columnMaxWidth)
                         // Centred, not leading: the composer is centred in the pane, and a
                         // transcript hugging the left edge while the box you type into sits in
@@ -705,7 +684,7 @@ struct BotPage: View {
                         // empty pane. Every messaging app does this, and the first reply in a new
                         // conversation is exactly when the difference is most obvious.
                         .frame(minHeight: geometry.size.height, alignment: .bottom)
-                        // Where the end of the thread is, relative to the visible pane — so the
+                        // Where the end of the thread is, relative to the visible pane, so the
                         // jump-to-latest button shows only once you have scrolled away from it.
                         .background(alignment: .bottom) {
                             GeometryReader { end in
@@ -715,7 +694,7 @@ struct BotPage: View {
                             }
                         }
                     }
-                    // Starts at the latest message, like every chat app — scrolling there after
+                    // Starts at the latest message, like every chat app, scrolling there after
                     // load lost the race with layout and stopped short.
                     .defaultScrollAnchor(.bottom)
                     .coordinateSpace(name: "thread")
@@ -727,9 +706,9 @@ struct BotPage: View {
                         if awayFromBottom {
                             Button {
                                 guard let last = thread.entries.last else { return }
-                                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
                             } label: {
-                                HStack(spacing: 6) {
+                                HStack(spacing: Theme.Space.tight) {
                                     Image(systemName: "arrow.down")
                                         .font(.system(size: Theme.scaled(12), weight: .semibold))
                                     if unseenCount > 0 {
@@ -739,7 +718,7 @@ struct BotPage: View {
                                     }
                                 }
                                 .foregroundStyle(palette.foreground)
-                                .padding(.horizontal, unseenCount > 0 ? 12 : 0)
+                                .padding(.horizontal, unseenCount > 0 ? Theme.Space.step : 0)
                                 .frame(minWidth: 32, minHeight: 32)
                                 .background(palette.background, in: .capsule)
                                 .overlay(Capsule().strokeBorder(palette.border))
@@ -774,7 +753,7 @@ struct BotPage: View {
                     // Only while you are at the end: scrolled up reading, you stay where you are.
                     .onChange(of: thread.isRunning) { _, running in
                         guard running, !awayFromBottom else { return }
-                        withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo("thinking", anchor: .bottom) }
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { proxy.scrollTo("thinking", anchor: .bottom) }
                     }
                     .onChange(of: thread.entries.count) { old, new in
                         guard let last = thread.entries.last else { return }
@@ -788,7 +767,7 @@ struct BotPage: View {
                             return
                         }
                         unseenCount = 0
-                        withAnimation(.easeOut(duration: 0.18)) {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
                             if thread.isRunning && !model.isWaitingForApproval(bot.id) {
                                 proxy.scrollTo("thinking", anchor: .bottom)
                             } else {
@@ -818,7 +797,7 @@ struct BotPage: View {
         default: break
         }
         let previous = thread.entries[index - 1].kind
-        if Self.isAside(current) && Self.isAside(previous) { return 4 }
+        if Self.isAside(current) && Self.isAside(previous) { return Theme.Space.xs }
         if Self.isAside(current) { return Theme.Space.step }
         switch current {
         case .approval, .question, .failure, .limits: return Theme.Space.gutter
@@ -842,7 +821,7 @@ struct BotPage: View {
     }
 
     /// The first message from the bot that arrived after you last read it, or nil when there is
-    /// none — nothing new, or a bot you are opening for the first time, where everything is new
+    /// none, nothing new, or a bot you are opening for the first time, where everything is new
     /// and a line above the first message would say nothing.
     private var firstUnreadIndex: Int? {
         guard let seenEntry = model.readBeforeOpening[bot.id], let seen = seenEntry else { return nil }
@@ -869,7 +848,7 @@ struct BotPage: View {
     // MARK: - On its own
 
     private var goals: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.Space.compact) {
             panelHeader("Standing goals", help: "New goal") { showsObjectives = true }
 
             if objectives.isEmpty {
@@ -892,7 +871,7 @@ struct BotPage: View {
                 IconTile(systemName: objective.lastOutcome?.needsAttention == true
                          ? "exclamationmark.triangle" : "checkmark.circle")
             } content: {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     Text(objective.goal)
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
@@ -930,11 +909,11 @@ struct BotPage: View {
     /// How the last check went, as one badge: on track, needs you, or not checked yet.
     private func outcomeBadge(_ objective: Objective) -> some View {
         guard let outcome = objective.lastOutcome else {
-            return Badge(text: "Not checked yet", tone: palette.mutedForeground)
+            return Badge(text: "Not checked yet", tone: .neutral)
         }
         return outcome.needsAttention
-            ? Badge(text: "Needs you", tone: palette.primary)
-            : Badge(text: "On track", tone: palette.success)
+            ? Badge(text: "Needs you", tone: BadgeTone.primary, dot: true)
+            : Badge(text: "On track", tone: .success)
     }
 
     private func checkedLabel(_ objective: Objective) -> String {
@@ -943,7 +922,7 @@ struct BotPage: View {
     }
 
     private var routineSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.Space.compact) {
             panelHeader("Routines", help: "New routine") { showsRoutines = true }
 
             if routines.isEmpty {
@@ -959,7 +938,7 @@ struct BotPage: View {
                             Button { openRoutineID = routine.id } label: {
                                 HStack(spacing: Theme.Space.step) {
                                     IconTile(systemName: "calendar")
-                                    VStack(alignment: .leading, spacing: 5) {
+                                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
                                         Text(routine.name)
                                             .font(Theme.Typography.body)
                                             .foregroundStyle(palette.foreground)
@@ -982,10 +961,11 @@ struct BotPage: View {
                             .accessibilityHint("Opens the routine")
                         } trailing: {
                             // On and off right here, without opening anything.
-                            Toggle("", isOn: Binding(
+                            Toggle("Run \(routine.name)", isOn: Binding(
                                 get: { routine.enabled },
                                 set: { model.setRoutineEnabled(routine, $0) }))
-                                .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                                .labelsHidden()
+                                .bupsySwitch()
                         }
                         .opacity(routine.enabled ? 1 : 0.6)
                     }
@@ -997,7 +977,7 @@ struct BotPage: View {
     /// Folders this bot watches: it runs when files in them change.
     private var watchSection: some View {
         let watches = model.folderWatches.filter { $0.botID == bot.id.rawValue }
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: Theme.Space.compact) {
             panelHeader("Folder watches", help: "New folder watch") { showsNewWatch = true }
             if watches.isEmpty {
                 EmptyRow(text: "No folder watches yet.") { showsNewWatch = true }
@@ -1021,7 +1001,7 @@ struct BotPage: View {
             IconTile(systemName: missing ? "questionmark.folder" : "folder")
         } content: {
             Button { editingWatch = watch } label: {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     Text(watch.name)
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
@@ -1056,7 +1036,8 @@ struct BotPage: View {
                     Toggle("Watch \(watch.name)", isOn: Binding(
                         get: { watch.enabled },
                         set: { model.setFolderWatchEnabled(watch, $0) }))
-                        .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        .labelsHidden()
+                        .bupsySwitch()
                 }
                 Menu {
                     Button("Show in Finder") {
@@ -1070,7 +1051,7 @@ struct BotPage: View {
                     Image(systemName: "ellipsis")
                         .font(.system(size: Theme.scaled(13), weight: .semibold))
                         .foregroundStyle(palette.mutedForeground)
-                        .frame(width: 28, height: 28)
+                        .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                         .contentShape(.rect)
                 }
                 .menuStyle(.borderlessButton)
@@ -1097,7 +1078,7 @@ struct BotPage: View {
     /// What a bot has actually done, including while nobody was watching.
     ///
     /// Every run and its events have been stored since the first commit; nothing read them back,
-    /// so unattended work was invisible even after it happened — which is most of the reason to
+    /// so unattended work was invisible even after it happened, which is most of the reason to
     /// have done it unattended.
     @ViewBuilder
     private var history: some View {
@@ -1116,7 +1097,7 @@ struct BotPage: View {
                         CardRow {
                             IconTile(systemName: run.host == "local" ? "laptopcomputer" : "server.rack")
                         } content: {
-                            VStack(alignment: .leading, spacing: 5) {
+                            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                                 Text(run.prompt ?? "No prompt recorded")
                                     .font(Theme.Typography.body)
                                     .foregroundStyle(palette.foreground)
@@ -1150,10 +1131,10 @@ struct BotPage: View {
 
     /// Done, Failed or Running, in words rather than an icon you have to decode.
     private func runBadge(_ run: RunSummary) -> some View {
-        if run.endedAt == nil { return Badge(text: "Running") }
+        if run.endedAt == nil { return Badge(text: "Running", tone: .info, dot: true) }
         return run.succeeded
-            ? Badge(text: "Done", tone: palette.success)
-            : Badge(text: "Failed", tone: palette.destructive)
+            ? Badge(text: "Done", tone: .success)
+            : Badge(text: "Failed", tone: .destructive)
     }
 
     private func durationLabel(_ seconds: TimeInterval) -> String {
@@ -1186,18 +1167,29 @@ struct Topbar<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: Theme.Space.snug) {
+            // The crumbs give way one at a time rather than all truncating together: "Bupsy"
+            // first, then each earlier crumb, so the page you are on keeps its name longest.
             HStack(spacing: Theme.Space.tight) {
-                Text("Bupsy").foregroundStyle(palette.mutedForeground)
+                Text("Bupsy")
+                    .foregroundStyle(palette.mutedForeground)
+                    .layoutPriority(0)
                 ForEach(Array(trail.enumerated()), id: \.offset) { index, part in
-                    Text("|").foregroundStyle(palette.border)
+                    Text("|")
+                        .foregroundStyle(palette.border)
+                        .fixedSize()
                     Text(part)
                         .foregroundStyle(index == trail.count - 1
                                          ? palette.foreground.opacity(0.8) : palette.mutedForeground)
                         .fontWeight(index == trail.count - 1 ? .medium : .regular)
+                        .truncationMode(.tail)
+                        .layoutPriority(Double(index + 1))
                 }
             }
             .font(.system(size: Theme.scaled(14)))
             .lineLimit(1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel((["Bupsy"] + trail).joined(separator: ", "))
+            .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: Theme.Space.step)
             HStack(spacing: Theme.Space.step) { trailing }
@@ -1263,7 +1255,13 @@ struct EmptyRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack {
+            HStack(spacing: Theme.Space.step) {
+                // The compact empty state: the same grey napping bot as `EmptyState`, held still
+                // so a panel of empty sections does not snore in chorus.
+                BotFace(hue: 0, mood: .sleeping, size: 24, shape: .bup, colour: 0, still: true)
+                    .saturation(0)
+                    .opacity(0.7)
+                    .accessibilityHidden(true)
                 Text(text).font(Theme.Typography.body).foregroundStyle(palette.mutedForeground)
                 Spacer(minLength: 0)
                 Image(systemName: "plus").font(.system(size: Theme.scaled(11)))
@@ -1442,7 +1440,7 @@ struct InlineLabelField: View {
     var body: some View {
         Group {
             if editing {
-                TextField("", text: $text, prompt: Text("PA, Finance, Research..."))
+                TextField("", text: $text, prompt: Text("PA, Finance, Research…"))
                     .textFieldStyle(.plain)
                     .font(Theme.Typography.caption)
                     .frame(maxWidth: 160)
@@ -1465,8 +1463,8 @@ struct InlineLabelField: View {
                             .labelStyle(.titleAndIcon)
                             .font(.system(size: Theme.scaled(10), weight: .medium))
                             .foregroundStyle(palette.mutedForeground)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, Theme.Space.tight)
+                            .padding(.vertical, Theme.Space.hairline)
                             .overlay(Capsule().strokeBorder(palette.border, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
                     }
                 }
@@ -1576,7 +1574,7 @@ private struct BotPanelMenuRow<Items: View>: View {
         Menu {
             items
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.Space.xs) {
                 // Coloured here rather than left to the enclosing style: a borderless menu
                 // adopts the app tint for its label otherwise.
                 Text(value)

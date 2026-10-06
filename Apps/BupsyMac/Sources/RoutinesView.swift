@@ -81,10 +81,11 @@ struct RoutineRow: View {
             Image(systemName: "clock.fill")
                 .font(.system(size: Theme.scaled(13)))
                 .foregroundStyle(palette.mutedForeground)
-                .frame(width: 36, height: 36)
+                .frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
                 .background(palette.background, in: .rect(cornerRadius: Theme.Radius.control))
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 Text(routine.name)
                     .font(Theme.Typography.body)
                     .fontWeight(.medium)
@@ -102,24 +103,15 @@ struct RoutineRow: View {
                 .lineLimit(1)
             }
             Spacer(minLength: 0)
-            Toggle("", isOn: Binding(
+            Toggle("Run \(routine.name)", isOn: Binding(
                 get: { routine.enabled },
                 set: { model.setRoutineEnabled(routine, $0) }
             ))
             .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            Button {
+            .bupsySwitch()
+            SetupIconButton(systemName: "trash", help: "Delete routine") {
                 model.deleteRoutine(routine)
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: Theme.scaled(12)))
-                    .foregroundStyle(palette.mutedForeground)
-                    .frame(width: 28, height: 28)
-                    .contentShape(.rect)
             }
-            .buttonStyle(.plain)
-            .help("Delete routine")
         }
         .padding(Theme.Space.step)
         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
@@ -145,13 +137,11 @@ struct RoutineKindPicker: View {
     }
 
     var body: some View {
-        Picker("", selection: $selection) {
-            Text("Routine").tag(RoutineSheetKind.routine)
-            Text("Standing goal").tag(RoutineSheetKind.goal)
-            Text("Folder watch").tag(RoutineSheetKind.folderWatch)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        Segmented(selection: $selection, options: [
+            SegmentedOption(RoutineSheetKind.routine, "Routine"),
+            SegmentedOption(RoutineSheetKind.goal, "Standing goal"),
+            SegmentedOption(RoutineSheetKind.folderWatch, "Folder watch"),
+        ], full: true)
         .frame(maxWidth: .infinity)
     }
 }
@@ -530,8 +520,12 @@ struct NewRoutineSheet: View {
 
 /// "Runs": all three tiers, always shown, so you can see what a machine would add even before
 /// you have one. A tier this bot can't use is shown but can't be picked, with why underneath.
+///
+/// Drawn to match `Segmented` exactly rather than built on it, because `Segmented` has no way to
+/// show an option that can't be picked, and hiding "On a machine" would hide what it offers.
 struct RoutineTierPicker: View {
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var selection: Routine.Tier
     let machineAvailable: Bool
     let machineHint: String
@@ -544,13 +538,14 @@ struct RoutineTierPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
-            HStack(spacing: 2) {
+            HStack(spacing: Theme.Space.hairline) {
                 ForEach(Routine.Tier.allCases, id: \.self) { tier in
                     segment(tier)
                 }
             }
-            .padding(2)
-            .background(palette.secondary, in: .rect(cornerRadius: Theme.Radius.control))
+            .padding(Theme.Space.hairline)
+            .background(colorScheme == .dark ? palette.sidebar : palette.card,
+                        in: .rect(cornerRadius: Theme.Radius.lg))
 
             if !machineAvailable {
                 Text("On a machine: \(machineHint)")
@@ -568,13 +563,20 @@ struct RoutineTierPicker: View {
             selection = tier
         } label: {
             Text(tier.shortLabel)
-                .font(Theme.Typography.label)
-                .fontWeight(picked ? Font.Weight.medium : Font.Weight.regular)
+                .font(.system(size: Theme.scaled(13), weight: picked ? .medium : .regular))
                 .foregroundStyle(picked ? palette.foreground : palette.mutedForeground)
                 .lineLimit(1)
+                .padding(.horizontal, Theme.Space.step)
                 .frame(maxWidth: .infinity)
-                .frame(height: 28)
-                .background(picked ? palette.background : Color.clear, in: .rect(cornerRadius: 6))
+                .frame(height: Theme.Size.controlMd - 2 * Theme.Space.hairline)
+                .background(picked ? (colorScheme == .dark ? palette.cardHover : palette.background) : Color.clear,
+                            in: .rect(cornerRadius: Theme.Radius.md))
+                .overlay {
+                    if picked {
+                        RoundedRectangle(cornerRadius: Theme.Radius.md)
+                            .strokeBorder(palette.border)
+                    }
+                }
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -623,7 +625,7 @@ struct RoutineCustomTimeEditor: View {
                     .labelsHidden()
                     .datePickerStyle(.field)
                     .fixedSize()
-                HStack(spacing: 4) {
+                HStack(spacing: Theme.Space.xs) {
                     ForEach(Self.order, id: \.self) { day in
                         dayButton(day)
                     }
@@ -643,7 +645,7 @@ struct RoutineCustomTimeEditor: View {
                 .font(Theme.Typography.caption)
                 .fontWeight(.medium)
                 .foregroundStyle(on ? palette.background : palette.mutedForeground)
-                .frame(width: 26, height: 26)
+                .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                 .background(on ? palette.foreground : palette.secondary,
                             in: .rect(cornerRadius: Theme.Radius.control))
                 .contentShape(.rect)

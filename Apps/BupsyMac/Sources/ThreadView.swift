@@ -92,7 +92,7 @@ struct Bubble: View {
     /// sideways as the pointer moves down a thread. VoiceOver gets the same two as actions on the
     /// message itself, so these are hidden from it.
     private func replyButton(author: String, text: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Theme.Space.xs) {
             if onReply != nil {
                 hoverAction("arrowshape.turn.up.left", label: "Reply", help: "Reply to this message", tag: 0) {
                     onReply?(author, text)
@@ -113,7 +113,7 @@ struct Bubble: View {
             Image(systemName: symbol)
                 .font(.system(size: Theme.scaled(11)))
                 .foregroundStyle(palette.mutedForeground)
-                .frame(width: 26, height: 26)
+                .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                 .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
                 .contentShape(.rect)
         }
@@ -161,7 +161,7 @@ struct Bubble: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, Theme.Space.gutter)
-        .padding(.vertical, 10)
+        .padding(.vertical, Theme.Space.compact)
         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
         .accessibilityElement(children: .combine)
     }
@@ -220,7 +220,7 @@ struct Bubble: View {
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, Theme.Space.gutter)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, Theme.Space.compact)
                             .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
                             .frame(maxWidth: 600, alignment: .leading),
                         author: botName, text: text)
@@ -252,7 +252,7 @@ struct Bubble: View {
                 // the sender's side of "Message from", not a raw tool call.
                 botAligned {
                     VStack(alignment: .leading, spacing: Theme.Space.tight) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: Theme.Space.xs) {
                             Text("Messaged")
                             if let recipient = model.bots.first(where: { $0.name.caseInsensitiveCompare(to) == .orderedSame }) {
                                 BotFace(bot: recipient, mood: .idle, size: Theme.scaled(14))
@@ -264,7 +264,7 @@ struct Bubble: View {
                         .foregroundStyle(palette.mutedForeground)
                         FormattedReply(markdown: text)
                             .padding(.horizontal, Theme.Space.gutter)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, Theme.Space.compact)
                             .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
                             .opacity(failed ? 0.5 : 1)
                     }
@@ -302,7 +302,7 @@ struct Bubble: View {
                     .foregroundStyle(palette.mutedForeground)
                     .frame(maxWidth: .infinity,
                            alignment: ThreadRowContext.holdsQueuedNote(entry.kind) ? .trailing : .center)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, Theme.Space.hairline)
             }
 
         case .limits(let limits):
@@ -317,7 +317,7 @@ struct Bubble: View {
                     .foregroundStyle(palette.mutedForeground)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, Theme.Space.hairline)
             } else {
                 botAligned { FailureNotice(failure: failure, bot: bot, entryID: entry.id) }
             }
@@ -345,7 +345,7 @@ struct Bubble: View {
             // The name beside it says who this is. Read aloud, the face only said "idle".
             .accessibilityHidden(true)
             messageActions(
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                     if showsAvatar {
                         HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
                             Text(bot.name)
@@ -483,14 +483,15 @@ struct ToolAside: View {
                 }
                 .font(Theme.Typography.body)
                 .foregroundStyle(palette.mutedForeground)
-                .padding(.vertical, 4)
-                .padding(.leading, 6)
+                .padding(.vertical, Theme.Space.xs)
+                .padding(.leading, Theme.Space.tight)
                 .padding(.trailing, Theme.Space.snug)
-                .background(hovering ? palette.card : .clear, in: .rect(cornerRadius: 6))
+                .background(hovering ? palette.card : .clear, in: .rect(cornerRadius: Theme.Radius.sm))
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .padding(.leading, -6)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .padding(.leading, -Theme.Space.tight)
             .onHover { hovering = $0 }
             .onChange(of: running) { wasRunning, isRunningNow in
                 if wasRunning && !isRunningNow && finishedAt == nil { finishedAt = Date() }
@@ -603,14 +604,15 @@ struct ThinkingAside: View {
                 }
                 .font(Theme.Typography.body)
                 .foregroundStyle(palette.mutedForeground)
-                .padding(.vertical, 4)
-                .padding(.leading, 6)
+                .padding(.vertical, Theme.Space.xs)
+                .padding(.leading, Theme.Space.tight)
                 .padding(.trailing, Theme.Space.snug)
-                .background(hovering ? palette.card : .clear, in: .rect(cornerRadius: 6))
+                .background(hovering ? palette.card : .clear, in: .rect(cornerRadius: Theme.Radius.sm))
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .padding(.leading, -6)
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            .padding(.leading, -Theme.Space.tight)
             .onHover { hovering = $0 }
 
             if expanded {
@@ -666,7 +668,7 @@ struct FailureNotice: View {
                         .accessibilityHidden(true)
                 }
             }
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                 Text(title)
                     .font(.system(size: Theme.scaled(13.5), weight: .medium))
                     .foregroundStyle(palette.foreground)
@@ -695,7 +697,7 @@ struct FailureNotice: View {
         .padding(.leading, Theme.Space.step)
         .padding(.trailing, Theme.Space.gutter)
         .background(isDark ? palette.card : palette.background, in: .rect(cornerRadius: Theme.Radius.base))
-        .padding(2)
+        .padding(Theme.Space.hairline)
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: Theme.Radius.bubble)
@@ -857,6 +859,7 @@ struct TypingIndicator: View {
 struct Composer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dropping = false
     @FocusState private var focused: Bool
     @Binding var draft: String
@@ -876,7 +879,7 @@ struct Composer: View {
         self.onStop = onStop
     }
 
-    private let corner: CGFloat = 14
+    private let corner: CGFloat = Theme.Radius.xl
 
     var body: some View {
         // One column for the reply bar and the box, so on a wide window the bar sits exactly
@@ -885,7 +888,7 @@ struct Composer: View {
             if let target = replyingTo { replyBar(target) }
             field
         }
-        .padding(.horizontal, 32)
+        .padding(.horizontal, Theme.Space.pageSide)
         .padding(.top, Theme.Space.snug)
         .padding(.bottom, Theme.Space.section)
         .frame(maxWidth: ThreadLayout.columnMaxWidth)
@@ -926,7 +929,7 @@ struct Composer: View {
                 Image(systemName: "xmark")
                     .font(.system(size: Theme.scaled(9), weight: .semibold))
                     .foregroundStyle(palette.mutedForeground)
-                    .frame(width: 24, height: 24)
+                    .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -945,7 +948,7 @@ struct Composer: View {
                 Image(systemName: "plus")
                     .font(.system(size: Theme.scaled(14), weight: .regular))
                     .foregroundStyle(palette.foreground)
-                    .frame(width: 36, height: 36)
+                    .frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -959,7 +962,7 @@ struct Composer: View {
                 .foregroundStyle(palette.foreground)
                 .lineLimit(1...8)
                 .padding(.vertical, Theme.Space.snug)
-                .frame(minHeight: 36)
+                .frame(minHeight: Theme.Size.controlMd)
                 .focused($focused)
                 .onSubmit(send)
                 // Esc lets go of the message you were replying to, the way it closes anything
@@ -976,7 +979,7 @@ struct Composer: View {
                     Image(systemName: "stop.fill")
                         .font(.system(size: Theme.scaled(10), weight: .bold))
                         .foregroundStyle(palette.foreground)
-                        .frame(width: 36, height: 36)
+                        .frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
                         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
                         .contentShape(.rect)
                 }
@@ -992,8 +995,8 @@ struct Composer: View {
                 Button(action: send) {
                     Image(systemName: "arrow.up")
                         .font(.system(size: Theme.scaled(13), weight: .bold))
-                        .foregroundStyle(Color.white)
-                        .frame(width: 36, height: 36)
+                        .foregroundStyle(palette.onPrimary)
+                        .frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
                         .background(palette.primary.opacity(sendEnabled ? 1 : 0.45),
                                     in: .rect(cornerRadius: Theme.Radius.control))
                         .contentShape(.rect)
@@ -1036,7 +1039,8 @@ struct Composer: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(duration: 0.35), value: isRunning)
+        // Under Reduce Motion the peek simply appears and goes, with no slide.
+        .animation(reduceMotion ? nil : .spring(duration: 0.35), value: isRunning)
     }
 
     /// Sends only real words. A draft of spaces and newlines stays put.

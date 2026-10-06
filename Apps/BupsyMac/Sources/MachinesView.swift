@@ -60,7 +60,7 @@ struct MachinesSheet: View {
                             }
                             .buttonStyle(QuietButton(compact: true))
                         }
-                        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
                     } else {
                         VStack(spacing: Theme.Space.step) {
                             ForEach(model.machines) { machine in
@@ -119,7 +119,7 @@ private struct MachineResidentNote: View {
         HStack(spacing: Theme.Space.gutter) {
             BotFace(bot: bot, mood: machine.state == "running" ? .idle : .sleeping, size: 64)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                 Text("\(bot.name) runs on \(machine.name)")
                     .font(.system(size: Theme.scaled(14), weight: .medium))
                     .foregroundStyle(palette.foreground)
@@ -133,7 +133,7 @@ private struct MachineResidentNote: View {
             Spacer(minLength: 0)
         }
         .padding(Theme.Space.gutter)
-        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.xl, style: .continuous))
     }
 }
 
@@ -242,7 +242,7 @@ struct ComputeKeySetup: View {
                             .buttonStyle(QuietButton())
                             .disabled(checking)
                         }
-                        Button(checking ? "Checking..." : "Save key") { save() }
+                        Button(checking ? "Checking…" : "Save key") { save() }
                             .buttonStyle(PrimaryButton())
                             .disabled(trimmedKey.isEmpty || checking)
                     }
@@ -311,7 +311,7 @@ struct MachineRow: View {
                 if isBusy {
                     ProgressView()
                         .controlSize(.small)
-                        .frame(width: 30, height: 30)
+                        .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
                         .help(busyText)
                         .accessibilityLabel(busyText)
                 } else if isFailed && !existsOnBoat {
@@ -450,7 +450,7 @@ struct NewMachineSheet: View {
                       + "something wakes it, which means your Mac has to be awake."
             ) {
                 Toggle("Keep it running", isOn: $alwaysOn)
-                    .toggleStyle(.switch)
+                    .bupsySwitch()
             }
         } actions: {
             Button("Cancel") { dismiss() }
