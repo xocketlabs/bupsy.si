@@ -15,8 +15,15 @@ struct AgentLimitsCard: View {
     let limits: RateLimit?
     @State private var expanded = false
 
-    /// Claude Code models carry a 200k window unless the model ID asks for 1M.
-    private var capacity: Int { (bot.model ?? "").lowercased().contains("1m") ? 1_000_000 : 200_000 }
+    /// The context window, when it is known. Claude Code models carry a 200k window unless the
+    /// model ID asks for 1M. Other engines do not say, and a guessed size would be a confident
+    /// wrong number, so their card shows only the plan limits.
+    static func contextCapacity(for bot: Bot) -> Int? {
+        guard bot.engine == .claude else { return nil }
+        return (bot.model ?? "").lowercased().contains("1m") ? 1_000_000 : 200_000
+    }
+
+    private var capacity: Int? { Self.contextCapacity(for: bot) }
 
     private struct Segment: Identifiable { let id: String; let tokens: Int; let colour: Color }
 
@@ -36,8 +43,8 @@ struct AgentLimitsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if usage != nil { context }
-            if usage != nil, let limits, !limits.windows.isEmpty {
+            if usage != nil, let capacity { context(capacity) }
+            if usage != nil, capacity != nil, let limits, !limits.windows.isEmpty {
                 Rectangle().fill(palette.border).frame(height: 1).padding(.horizontal, 12)
             }
             if let limits, !limits.windows.isEmpty { plan(limits) }
@@ -45,7 +52,7 @@ struct AgentLimitsCard: View {
         .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
     }
 
-    private var context: some View {
+    private func context(_ capacity: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Button { withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() } } label: {
                 HStack(spacing: 6) {
@@ -82,9 +89,10 @@ struct AgentLimitsCard: View {
             if expanded {
                 VStack(spacing: 7) {
                     ForEach(segments) { segment in
-                        breakdownRow(segment.id, segment.tokens, colour: segment.colour)
+                        breakdownRow(segment.id, segment.tokens, of: capacity, colour: segment.colour)
                     }
-                    breakdownRow("Free", max(0, capacity - used), colour: palette.foreground.opacity(0.15))
+                    breakdownRow("Free", max(0, capacity - used), of: capacity,
+                                 colour: palette.foreground.opacity(0.15))
                 }
                 .padding(.top, 2)
                 .transition(.opacity)
@@ -93,7 +101,7 @@ struct AgentLimitsCard: View {
         .padding(12)
     }
 
-    private func breakdownRow(_ label: String, _ tokens: Int, colour: Color) -> some View {
+    private func breakdownRow(_ label: String, _ tokens: Int, of capacity: Int, colour: Color) -> some View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2).fill(colour).frame(width: 8, height: 8)
             Text(label).foregroundStyle(palette.foreground)
@@ -119,8 +127,10 @@ struct AgentLimitsCard: View {
                         if let reset = window.resetsAt {
                             Text(Self.resets(reset)).foregroundStyle(palette.mutedForeground)
                         }
-                        Text("\(Int((window.utilization * 100).rounded()))%")
-                            .fontWeight(.semibold).foregroundStyle(palette.foreground).monospacedDigit()
+                        Text("\(LimitScale.percent(window.utilization))%")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(LimitScale.tone(window.utilization, palette) ?? palette.foreground)
+                            .monospacedDigit()
                     }
                     .font(Theme.Typography.caption)
                     GeometryReader { proxy in
@@ -137,26 +147,14 @@ struct AgentLimitsCard: View {
         .padding(12)
     }
 
-    /// Quiet until it is worth noticing: the accent, then amber from 70%, red from 85%.
+    /// The bar's fill. See `LimitScale`.
     static func tone(_ utilization: Double, _ palette: Palette.Scheme) -> Color {
-        switch utilization {
-        case 0.85...: palette.destructive
-        case 0.7...: palette.warning
-        default: palette.primary
-        }
+        LimitScale.fill(utilization, palette)
     }
 
     private func percent(_ part: Int, of whole: Int) -> Int { Int((Double(part) / Double(whole) * 100).rounded()) }
 
-    static func label(_ name: String) -> String {
-        switch name {
-        case "five_hour": "5-hour limit"
-        case "seven_day": "Weekly, all models"
-        case "seven_day_opus": "Weekly, Opus"
-        case "seven_day_sonnet": "Weekly, Sonnet"
-        default: name.replacingOccurrences(of: "_", with: " ").capitalized
-        }
-    }
+    static func label(_ name: String) -> String { LimitScale.label(name) }
 
     /// "Resets in 2 hr 46 min" within a day, "Resets Tue 3:00 PM" beyond.
     static func resets(_ date: Date, now: Date = Date()) -> String {
@@ -175,5 +173,56 @@ struct AgentLimitsCard: View {
         case 1_000...: String(format: "%.0fk", Double(value) / 1_000)
         default: "\(value)"
         }
+    }
+}
+
+/// One scale for every plan-limit readout: the topbar badge, the limits card and any gauge.
+///
+/// Neutral under 70%, amber from 70% to 85%, red above. Pink is kept for "needs you", so a limit
+/// that is barely used never wears it. One name per window, wherever it is shown.
+enum LimitScale {
+    enum Level: Equatable { case normal, high, critical }
+
+    static func level(_ utilization: Double) -> Level {
+        switch utilization {
+        case let value where value > 0.85: .critical
+        case 0.7...: .high
+        default: .normal
+        }
+    }
+
+    /// The colour for text and badges, or nil to stay in the neutral style.
+    static func tone(_ utilization: Double, _ palette: Palette.Scheme) -> Color? {
+        switch level(utilization) {
+        case .critical: return palette.destructive
+        case .high: return palette.warning
+        case .normal: return nil
+        }
+    }
+
+    /// The colour a bar fills with: neutral until it is worth noticing.
+    static func fill(_ utilization: Double, _ palette: Palette.Scheme) -> Color {
+        tone(utilization, palette) ?? palette.mutedForeground
+    }
+
+    /// Whole percent, rounded the same way everywhere.
+    static func percent(_ utilization: Double) -> Int { Int((utilization * 100).rounded()) }
+
+    /// Engine window names are snake_case and internal. These are not.
+    static func label(_ name: String) -> String {
+        switch name {
+        case "five_hour": "5-hour limit"
+        case "seven_day": "Weekly limit"
+        case "seven_day_opus": "Weekly Opus limit"
+        case "seven_day_sonnet": "Weekly Sonnet limit"
+        default: name.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    /// "38% of 5-hour limit", for a badge.
+    static func badge(name: String, utilization: Double) -> String {
+        let window = label(name)
+        let lowered: String = window.prefix(1).lowercased() + String(window.dropFirst())
+        return "\(percent(utilization))% of \(lowered)"
     }
 }

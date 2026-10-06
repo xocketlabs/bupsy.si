@@ -130,4 +130,93 @@ struct MarkdownTests {
         let blocks = MarkdownBlock.parse("```diff\n- old line\n+ new line\n```")
         #expect(blocks == [.code(language: "diff", text: "- old line\n+ new line")])
     }
+
+    // MARK: - Headings
+
+    @Test("hash headings become heading blocks at their level")
+    func headings() {
+        let blocks = MarkdownBlock.parse("""
+            # Plan
+            Some words.
+            ## Setup ##
+            ### Details
+            """)
+        #expect(blocks == [
+            .heading(level: 1, text: "Plan"),
+            .prose("Some words."),
+            .heading(level: 2, text: "Setup"),
+            .heading(level: 3, text: "Details"),
+        ])
+    }
+
+    /// A hashtag, an issue number or a shebang is not a heading.
+    @Test("hashes without a space after them stay prose")
+    func hashesThatAreNotHeadings() {
+        #expect(MarkdownBlock.parse("#1 is fixed") == [.prose("#1 is fixed")])
+        #expect(MarkdownBlock.parse("#!/bin/sh") == [.prose("#!/bin/sh")])
+    }
+
+    // MARK: - Numbered and nested lists
+
+    @Test("numbered lines become a numbered list")
+    func numberedList() {
+        let blocks = MarkdownBlock.parse("Steps:\n1. Build\n2. Test\n3) Ship")
+        #expect(blocks == [
+            .prose("Steps:"),
+            .list([.number(1, "Build"), .number(2, "Test"), .number(3, "Ship")]),
+        ])
+    }
+
+    /// Models often write "1." on every line. Every markdown renderer counts on from the first.
+    @Test("a list of 1. lines is numbered 1, 2, 3")
+    func renumbers() {
+        let blocks = MarkdownBlock.parse("1. a\n1. b\n1. c")
+        #expect(blocks == [.list([.number(1, "a"), .number(2, "b"), .number(3, "c")])])
+    }
+
+    @Test("a year in a sentence is not a list")
+    func yearsAreNotNumbers() {
+        #expect(MarkdownBlock.parse("2024. A good year.") == [.prose("2024. A good year.")])
+        #expect(MarkdownBlock.parse("3.5 is the version") == [.prose("3.5 is the version")])
+    }
+
+    @Test("indented bullets keep their nesting level")
+    func nestedBullets() {
+        let blocks = MarkdownBlock.parse("- top\n  - nested\n    - deeper\n- back")
+        #expect(blocks == [.list([
+            .bullet("top"),
+            .bullet("nested", level: 1),
+            .bullet("deeper", level: 2),
+            .bullet("back"),
+        ])])
+    }
+
+    /// Bullets under a numbered step, indented three spaces as models write them, and the count
+    /// carrying on after them.
+    @Test("bullets nested under numbered steps")
+    func bulletsUnderNumbers() {
+        let blocks = MarkdownBlock.parse("1. First\n   - detail\n2. Second")
+        #expect(blocks == [.list([
+            .number(1, "First"),
+            .bullet("detail", level: 1),
+            .number(2, "Second"),
+        ])])
+    }
+
+    @Test("tabs nest like spaces")
+    func tabsNest() {
+        let blocks = MarkdownBlock.parse("- a\n\t- b")
+        #expect(blocks == [.list([.bullet("a"), .bullet("b", level: 1)])])
+    }
+
+    // MARK: - Ids
+
+    /// Two identical paragraphs used to share an id, and SwiftUI drew one of them twice.
+    @Test("identical blocks get different ids")
+    func idsAreUnique() {
+        let identified = MarkdownBlock.identified("Done.\n\n```\nx\n```\n\nDone.")
+        #expect(identified.map(\.id) == [0, 1, 2])
+        #expect(identified[0].block == identified[2].block)
+        #expect(Set(identified.map(\.id)).count == identified.count)
+    }
 }

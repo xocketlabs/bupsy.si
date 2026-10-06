@@ -27,6 +27,11 @@ struct BotPage: View {
     @State private var replyingTo: ReplyTarget?
     @State private var tab = DetailTab.details
     @State private var awayFromBottom = false
+    /// Messages that arrived while you were scrolled up reading, counted on the jump button
+    /// instead of yanking you down to them.
+    @State private var unseenCount = 0
+    /// Briefly true after the folder path is copied, so the button says it worked.
+    @State private var copiedPath = false
     /// The goal whose "what it's learned" notes are open under its row, if any.
     @State private var notesObjectiveID: String?
     /// Set to ask before deleting. Owned by the page, never by a menu, which is gone on click.
@@ -42,8 +47,11 @@ struct BotPage: View {
     }
     private var objectives: [Objective] { model.objectives.filter { $0.botID == bot.id.rawValue } }
 
-    /// The details panel's width beside the chat.
-    private static let detailsWidth: CGFloat = 340
+    /// The details panel's width beside the chat: 340 in a small window, growing with the window
+    /// up to 440, as on the board.
+    private static func detailsWidth(for pageWidth: CGFloat) -> CGFloat {
+        min(440, max(340, (pageWidth * 0.3).rounded()))
+    }
     /// Narrower than this beside the panel and the chat is unreadable, so the panel floats over
     /// the chat instead of squeezing it.
     private static let minimumChatWidth: CGFloat = 420
@@ -100,7 +108,8 @@ struct BotPage: View {
     /// floating over the trailing edge of the chat, with a shadow and a close button, when not.
     @ViewBuilder
     private func pageContent(size: CGSize) -> some View {
-        let floating = size.width - Self.detailsWidth - 1 < Self.minimumChatWidth
+        let panelWidth = Self.detailsWidth(for: size.width)
+        let floating = size.width - panelWidth - 1 < Self.minimumChatWidth
         HStack(spacing: 0) {
             // A routine opened from the panel takes the conversation's place, so its history
             // and schedule have the room they need. Back returns to the chat as it was.
@@ -120,14 +129,14 @@ struct BotPage: View {
 
             if detailsVisible && !floating {
                 Rectangle().fill(palette.border).frame(width: 1)
-                details
+                details(width: panelWidth)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .frame(width: size.width, height: size.height)
         .overlay(alignment: .trailing) {
             if detailsVisible && floating {
-                details
+                details(width: panelWidth)
                     .overlay(alignment: .topTrailing) {
                         Button {
                             withAnimation(.easeOut(duration: 0.16)) { showsDetails = false }
@@ -160,6 +169,10 @@ struct BotPage: View {
     /// question you ask occasionally, so it lives one click away rather than above the thread.
     private var topbar: some View {
         Topbar(trail: crumbs) {
+            if !hasJob {
+                ThreadStatusBadge(text: "No job yet")
+                    .help("\(bot.name) has no job description yet. Add one in Details.")
+            }
             statusBadge
             Button {
                 withAnimation(.easeOut(duration: 0.16)) { showsDetails.toggle() }
@@ -172,6 +185,10 @@ struct BotPage: View {
             .buttonStyle(ThreadButtonStyle(kind: .secondary, height: Theme.Size.control))
             .help("Settings, goals and routines for \(bot.name)")
         }
+    }
+
+    private var hasJob: Bool {
+        !(bot.personaPrompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var crumbs: [String] {
@@ -194,8 +211,10 @@ struct BotPage: View {
             ThreadStatusBadge(text: "Last run failed", tone: palette.destructive, dot: true)
         } else if mood == .sleeping {
             ThreadStatusBadge(text: "Asleep")
-        } else if let badge = limitBadge {
-            ThreadStatusBadge(text: badge, tone: limitIsHigh ? palette.warning : nil)
+        } else if let tightest = thread.latestLimits?.tightest {
+            ThreadStatusBadge(
+                text: LimitScale.badge(name: tightest.name, utilization: tightest.window.utilization),
+                tone: LimitScale.tone(tightest.window.utilization, palette))
         }
     }
 
@@ -209,7 +228,7 @@ struct BotPage: View {
     /// A panel rather than a sheet: changing a bot's trust level or reading why a routine failed
     /// is something you do *while* looking at what it said, and a sheet would cover exactly the
     /// evidence you are deciding from.
-    private var details: some View {
+    private func details(width: CGFloat) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 detailsHead
@@ -222,8 +241,16 @@ struct BotPage: View {
                     routineSection
                     watchSection
                 case .activity:
-                    usage
-                    history
+                    if hasActivity {
+                        usage
+                        history
+                    } else {
+                        EmptyState(title: "No runs yet",
+                                   message: "\(bot.name)'s work shows up here.",
+                                   faceSize: 48)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, Theme.Space.section)
+                    }
                 case .files:
                     BotFilesList(bot: bot)
                 case .computer:
@@ -233,7 +260,7 @@ struct BotPage: View {
             .padding(.horizontal, 20)
             .padding(.vertical, Theme.Space.section)
         }
-        .frame(width: Self.detailsWidth)
+        .frame(width: width)
         // Clipped, because a card wider than the panel should truncate rather than draw over the
         // conversation beside it.
         .clipped()
@@ -241,13 +268,18 @@ struct BotPage: View {
 
     private var isDark: Bool { colorScheme == .dark }
 
+    /// Whether the Activity tab has anything to show: a run, or a limit an engine reported.
+    private var hasActivity: Bool {
+        !model.recentRuns(for: bot).isEmpty || !(thread.latestLimits?.windows.isEmpty ?? true)
+    }
+
     /// Who the bot is: its face, its name and label, and its job in a sentence.
     private var detailsHead: some View {
         VStack(alignment: .leading, spacing: Theme.Space.step) {
             BotFace(bot: bot, mood: mood, size: 64)
             HStack(spacing: Theme.Space.snug) {
                 Text(bot.name)
-                    .font(.system(size: Theme.scaled(16), weight: .semibold))
+                    .font(.system(size: Theme.scaled(18), weight: .semibold))
                     .tracking(-0.3)
                     .foregroundStyle(palette.foreground)
                 InlineLabelField(bot: bot)
@@ -352,7 +384,10 @@ struct BotPage: View {
                 let lastUsage = thread.latestUsage ?? runs.first.flatMap { run in
                     run.inputTokens.map { Usage(inputTokens: $0, outputTokens: run.outputTokens) }
                 }
-                if lastUsage != nil || !windows.isEmpty {
+                // The context half needs a known window size; without one the card shows only the
+                // plan limits, and nothing at all when there are none.
+                if (lastUsage != nil && AgentLimitsCard.contextCapacity(for: bot) != nil)
+                    || !windows.isEmpty {
                     AgentLimitsCard(bot: bot, usage: lastUsage, limits: thread.latestLimits)
                 }
 
@@ -377,14 +412,7 @@ struct BotPage: View {
     }
 
     /// Engine window names are snake_case and internal. These are not.
-    static func windowLabel(_ name: String) -> String {
-        switch name {
-        case "five_hour": "Five hours"
-        case "seven_day": "This week"
-        case "seven_day_opus": "This week, Opus"
-        default: name.replacingOccurrences(of: "_", with: " ").capitalized
-        }
-    }
+    static func windowLabel(_ name: String) -> String { LimitScale.label(name) }
 
     static func compact(_ value: Int) -> String {
         switch value {
@@ -414,6 +442,12 @@ struct BotPage: View {
                         }
                     }
                 }
+                // Each engine keeps its own conversation, so switching mid-run would swap the
+                // thread out from under the work in progress.
+                .disabled(model.isRunning(bot.id))
+                .help(model.isRunning(bot.id)
+                      ? "Stop \(bot.name) or wait for it to finish to switch engines"
+                      : "Each engine keeps its own conversation")
                 BotPanelMenuRow(label: "Model", value: modelLabel ?? "Default") {
                     ModelMenuItems(bot: bot)
                 }
@@ -426,7 +460,7 @@ struct BotPage: View {
                         }
                     }
                 }
-                BotPanelMenuRow(label: "Trust", value: trustLabel, tone: trustTone) {
+                BotPanelMenuRow(label: "Trust", value: bot.autonomy.trustLabel, tone: trustTone) {
                     ForEach(Autonomy.allCases, id: \.self) { level in
                         Button {
                             model.setAutonomy(bot, level)
@@ -438,7 +472,7 @@ struct BotPage: View {
                 }
                 // Claude only: Codex has no way to leave out the apps on its account.
                 if bot.engine == .claude {
-                    BotPanelMenuRow(label: "Apps", value: bot.onlyBupsyApps ? "Only bupsy's" : "All of yours") {
+                    BotPanelMenuRow(label: "Apps", value: bot.onlyBupsyApps ? "Only Bupsy's" : "All of yours") {
                         Button {
                             model.setOnlyBupsyApps(bot, false)
                         } label: {
@@ -448,7 +482,7 @@ struct BotPage: View {
                         Button {
                             model.setOnlyBupsyApps(bot, true)
                         } label: {
-                            Label("Only apps added in bupsy",
+                            Label("Only apps added in Bupsy",
                                   systemImage: bot.onlyBupsyApps ? "checkmark" : "")
                         }
                     }
@@ -498,15 +532,25 @@ struct BotPage: View {
                 Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(model.workingDirectory(for: bot).path, forType: .string)
+                    copiedPath = true
+                    Task { try? await Task.sleep(for: .seconds(1.5)); copiedPath = false }
                 } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: Theme.scaled(11)))
-                        .foregroundStyle(palette.mutedForeground)
-                        .frame(width: 24, height: 24)
-                        .contentShape(.rect)
+                    Group {
+                        if copiedPath {
+                            Text("Copied")
+                                .font(Theme.Typography.caption)
+                        } else {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: Theme.scaled(11)))
+                        }
+                    }
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(minWidth: 24, minHeight: 24)
+                    .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .help("Copy the path")
+                .help(copiedPath ? "Copied" : "Copy the path")
+                .accessibilityLabel(copiedPath ? "Copied" : "Copy the path")
                 Menu {
                     Button("Choose folder...") { model.chooseWorkdir(for: bot) }
                     if bot.workdir != nil {
@@ -576,7 +620,7 @@ struct BotPage: View {
     }
 
     /// Trust levels in the words they mean to a person, not their internal names.
-    private func label(for level: Autonomy) -> String { level.menuLabel }
+    private func label(for level: Autonomy) -> String { level.trustLabel }
 
     private var modelLabel: String? {
         guard bot.model != nil else { return nil }
@@ -601,15 +645,6 @@ struct BotPage: View {
         return machine.name
     }
 
-    private var trustLabel: String {
-        switch bot.autonomy {
-        case .ask: "Asks before everything"
-        case .allowlist: "Asks unless allowed"
-        case .trusted: "Asks before leaving the machine"
-        case .auto: "Never asks"
-        }
-    }
-
     /// Only the setting that removes the brakes gets the accent. The others are ordinary facts.
     private var trustTone: Color? { bot.autonomy == .auto ? palette.destructive : nil }
 
@@ -624,12 +659,20 @@ struct BotPage: View {
                 GeometryReader { geometry in
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
+                        // Worked out once per update, not once per row: it scans the thread.
+                        let unread = firstUnreadIndex
+                        // What each row needs to know about its neighbours, in one pass, so no
+                        // bubble reads the whole thread while it draws.
+                        let rows = ThreadRowContext.rows(for: thread.entries, isRunning: thread.isRunning)
+                        // Lazy, so a long thread only builds the rows on screen. Every row keeps
+                        // its entry id, so scrollTo still finds rows that are not built yet.
+                        LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
                                 VStack(alignment: .leading, spacing: Theme.Space.step) {
                                     if showsDaySeparator(at: index) { DaySeparator(date: entry.at) }
-                                    if index == firstUnreadIndex { NewDivider().id(NewDivider.anchor) }
+                                    if index == unread { NewDivider().id(NewDivider.anchor) }
                                     Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index),
+                                           context: rows.indices.contains(index) ? rows[index] : nil,
                                            onReply: { author, text in
                                                replyingTo = ReplyTarget(author: author, text: text)
                                            })
@@ -675,6 +718,7 @@ struct BotPage: View {
                     .coordinateSpace(name: "thread")
                     .onPreferenceChange(ThreadEndKey.self) { distance in
                         awayFromBottom = distance > 120
+                        if distance <= 120 { unseenCount = 0 }
                     }
                     .overlay(alignment: .bottom) {
                         if awayFromBottom {
@@ -682,16 +726,28 @@ struct BotPage: View {
                                 guard let last = thread.entries.last else { return }
                                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
                             } label: {
-                                Image(systemName: "arrow.down")
-                                    .font(.system(size: Theme.scaled(12), weight: .semibold))
-                                    .foregroundStyle(palette.foreground)
-                                    .frame(width: 32, height: 32)
-                                    .background(palette.background, in: .circle)
-                                    .overlay(Circle().strokeBorder(palette.border))
-                                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.down")
+                                        .font(.system(size: Theme.scaled(12), weight: .semibold))
+                                    if unseenCount > 0 {
+                                        Text(unseenCount == 1 ? "1 new" : "\(unseenCount) new")
+                                            .font(Theme.Typography.caption.weight(.medium))
+                                            .monospacedDigit()
+                                    }
+                                }
+                                .foregroundStyle(palette.foreground)
+                                .padding(.horizontal, unseenCount > 0 ? 12 : 0)
+                                .frame(minWidth: 32, minHeight: 32)
+                                .background(palette.background, in: .capsule)
+                                .overlay(Capsule().strokeBorder(palette.border))
+                                .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                                .contentShape(.capsule)
                             }
                             .buttonStyle(.plain)
                             .help("Jump to the latest message")
+                            .accessibilityLabel(unseenCount > 0
+                                                ? "Jump to the latest message, \(unseenCount) new"
+                                                : "Jump to the latest message")
                             .padding(.bottom, Theme.Space.step)
                             .transition(.opacity)
                         }
@@ -701,20 +757,34 @@ struct BotPage: View {
                     // After a beat, not in onAppear: scrolled before the bubbles were laid out, it
                     // stopped short and left the latest message half under the composer.
                     .task(id: bot.id) {
+                        unseenCount = 0
                         try? await Task.sleep(for: .milliseconds(60))
-                        if firstUnreadIndex != nil {
-                            proxy.scrollTo(NewDivider.anchor, anchor: .top)
+                        // To the row that holds the divider: a lazy stack can only scroll to its
+                        // own rows' ids, not to a view inside a row it has not built yet.
+                        if let unread = firstUnreadIndex, thread.entries.indices.contains(unread) {
+                            proxy.scrollTo(thread.entries[unread].id, anchor: .top)
                         } else if let last = thread.entries.last {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
                     // Keep the "what it's doing" line in view as it appears and changes.
+                    // Only while you are at the end: scrolled up reading, you stay where you are.
                     .onChange(of: thread.isRunning) { _, running in
-                        guard running else { return }
+                        guard running, !awayFromBottom else { return }
                         withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo("thinking", anchor: .bottom) }
                     }
-                    .onChange(of: thread.entries.count) {
+                    .onChange(of: thread.entries.count) { old, new in
                         guard let last = thread.entries.last else { return }
+                        // Your own message always takes you to it; anything else waits for you
+                        // on the jump button while you are reading further up.
+                        var isYours = false
+                        if case .userMessage = last.kind { isYours = true }
+                        if awayFromBottom && !isYours {
+                            let added = thread.entries.suffix(max(0, new - old))
+                            unseenCount += added.filter { Self.countsAsNew($0.kind) }.count
+                            return
+                        }
+                        unseenCount = 0
                         withAnimation(.easeOut(duration: 0.18)) {
                             if thread.isRunning && !model.isWaitingForApproval(bot.id) {
                                 proxy.scrollTo("thinking", anchor: .bottom)
@@ -730,29 +800,14 @@ struct BotPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var limitBadge: String? {
-        guard let tightest = thread.latestLimits?.tightest else { return nil }
-        let window: String
-        switch tightest.name {
-        case "five_hour": window = "5-hour"
-        case "seven_day": window = "weekly"
-        case "seven_day_opus": window = "weekly Opus"
-        default: window = tightest.name.replacingOccurrences(of: "_", with: "-")
-        }
-        return "\(Int(tightest.window.utilization * 100))% of \(window) limit"
-    }
-
-    /// Worth an amber wash once more than half a window is gone.
-    private var limitIsHigh: Bool {
-        (thread.latestLimits?.tightest?.window.utilization ?? 0) >= 0.6
-    }
-
     /// Room between entries: a bot's tool lines stack tight under its words, separate turns
     /// breathe.
     private func gap(before index: Int) -> CGFloat {
         guard index > 0 else { return 0 }
         let current = thread.entries[index].kind
         // Entries that draw nothing take no room.
+        // The queued note is drawn under your bubble, not as a row of its own.
+        if ThreadRowContext.holdsQueuedNote(current) { return 0 }
         switch current {
         case .finished: return 0
         case .tool(let name, let arguments, _, _):
@@ -765,6 +820,14 @@ struct BotPage: View {
         switch current {
         case .approval, .question, .failure, .limits: return Theme.Space.gutter
         default: return 20
+        }
+    }
+
+    /// What the jump button counts: things said or asked, not each tool line or thought.
+    private static func countsAsNew(_ kind: TranscriptEntry.Kind) -> Bool {
+        switch kind {
+        case .assistantText, .messageFrom, .approval, .question, .failure: true
+        default: false
         }
     }
 
@@ -832,19 +895,13 @@ struct BotPage: View {
                         .foregroundStyle(palette.foreground)
                         .lineLimit(1)
                     HStack(spacing: Theme.Space.snug) {
-                        Text(checkedLabel(objective))
-                        MetaDot()
+                        outcomeBadge(objective)
+                            .help(checkedLabel(objective))
                         Text(Schedule.describe(objective.checkCron))
-                        if let outcome = objective.lastOutcome {
-                            MetaDot()
-                            Text(outcome.label)
-                                .foregroundStyle(outcome.needsAttention
-                                                 ? palette.primary : palette.success)
-                        }
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                            .lineLimit(1)
                     }
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-                    .lineLimit(1)
                 }
             } trailing: {
                 HStack(spacing: Theme.Space.tight) {
@@ -865,6 +922,16 @@ struct BotPage: View {
         }
     }
 
+    /// How the last check went, as one badge: on track, needs you, or not checked yet.
+    private func outcomeBadge(_ objective: Objective) -> some View {
+        guard let outcome = objective.lastOutcome else {
+            return Badge(text: "Not checked yet", tone: palette.mutedForeground)
+        }
+        return outcome.needsAttention
+            ? Badge(text: "Needs you", tone: palette.primary)
+            : Badge(text: "On track", tone: palette.success)
+    }
+
     private func checkedLabel(_ objective: Objective) -> String {
         guard let at = objective.lastCheckedAt else { return "Never checked" }
         return "Checked \(Theme.stamp(at))"
@@ -880,22 +947,34 @@ struct BotPage: View {
                 VStack(spacing: Theme.Space.snug) {
                     ForEach(routines) { routine in
                         CardRow {
-                            IconTile(systemName: "calendar")
+                            EmptyView()
                         } content: {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(routine.name)
-                                    .font(Theme.Typography.body)
-                                    .foregroundStyle(palette.foreground)
-                                // Two short lines, not one long one: side by side in a 340pt
-                                // panel they wrapped into a three-line jumble.
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(Schedule.describe(routine.cron))
-                                    Text(routine.tier.shortLabel)
+                            // A button rather than a tap gesture, so the row opens from the
+                            // keyboard and VoiceOver too. The switch stays outside it.
+                            Button { openRoutineID = routine.id } label: {
+                                HStack(spacing: Theme.Space.step) {
+                                    IconTile(systemName: "calendar")
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(routine.name)
+                                            .font(Theme.Typography.body)
+                                            .foregroundStyle(palette.foreground)
+                                        // Two short lines, not one long one: side by side in a
+                                        // narrow panel they wrapped into a three-line jumble.
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(Schedule.describe(routine.cron))
+                                            Text(routine.tier.shortLabel)
+                                        }
+                                        .font(Theme.Typography.caption)
+                                        .foregroundStyle(palette.mutedForeground)
+                                        .lineLimit(1)
+                                    }
                                 }
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(palette.mutedForeground)
-                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(.rect)
                             }
+                            .buttonStyle(.plain)
+                            .help("Open \(routine.name)")
+                            .accessibilityHint("Opens the routine")
                         } trailing: {
                             // On and off right here, without opening anything.
                             Toggle("", isOn: Binding(
@@ -904,9 +983,6 @@ struct BotPage: View {
                                 .labelsHidden().toggleStyle(.switch).controlSize(.small)
                         }
                         .opacity(routine.enabled ? 1 : 0.6)
-                        .contentShape(Rectangle())
-                        .onTapGesture { openRoutineID = routine.id }
-                        .help("Open \(routine.name)")
                     }
                 }
             }
@@ -944,7 +1020,7 @@ struct BotPage: View {
                         }
                     }
                 }
-                Text("Runs while bupsy is open. Changes \(bot.name) makes itself don't set it off again.")
+                Text("Runs while Bupsy is open. Changes \(bot.name) makes itself don't set it off again.")
                     .font(Theme.Typography.caption).foregroundStyle(palette.mutedForeground)
             }
         }
@@ -970,8 +1046,7 @@ struct BotPage: View {
                 VStack(spacing: Theme.Space.snug) {
                     ForEach(runs.prefix(8)) { run in
                         CardRow {
-                            IconTile(systemName: run.succeeded
-                                     ? "checkmark" : (run.endedAt == nil ? "ellipsis" : "xmark"))
+                            IconTile(systemName: run.host == "local" ? "laptopcomputer" : "server.rack")
                         } content: {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(run.prompt ?? "No prompt recorded")
@@ -996,12 +1071,21 @@ struct BotPage: View {
                                 }
                                 .font(Theme.Typography.caption)
                                 .foregroundStyle(palette.mutedForeground)
+                                .lineLimit(1)
                             }
-                        } trailing: { EmptyView() }
+                        } trailing: { runBadge(run) }
                     }
                 }
             }
         }
+    }
+
+    /// Done, Failed or Running, in words rather than an icon you have to decode.
+    private func runBadge(_ run: RunSummary) -> some View {
+        if run.endedAt == nil { return Badge(text: "Running") }
+        return run.succeeded
+            ? Badge(text: "Done", tone: palette.success)
+            : Badge(text: "Failed", tone: palette.destructive)
     }
 
     private func durationLabel(_ seconds: TimeInterval) -> String {
@@ -1144,11 +1228,15 @@ struct EmptyConversation: View {
             Text("Say something to \(bot.name)")
                 .font(Theme.Typography.heading)
                 .foregroundStyle(palette.foreground)
-            Text("Asks before it acts. Nothing beyond reading runs without you.")
+            // In the trust row's own words, so the promise here matches the setting.
+            Text(bot.autonomy.emptyConversationLine)
                 .font(Theme.Typography.label)
                 .foregroundStyle(palette.mutedForeground)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, Theme.Space.section)
         .padding(.vertical, Theme.Space.section)
     }
 }
@@ -1190,9 +1278,9 @@ struct BotFilesList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.snug) {
             if files.isEmpty {
-                Text("Files \(bot.name) writes or edits show up here.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
+                EmptyState(title: "No files changed yet",
+                           message: "Files \(bot.name) writes or edits show up here.",
+                           faceSize: 48)
                     .frame(maxWidth: .infinity)
                     .padding(.top, Theme.Space.section)
             } else {
@@ -1216,9 +1304,10 @@ private struct FileRow: View {
     @State private var hovering = false
 
     private var url: URL { URL(fileURLWithPath: file.path) }
-    private var exists: Bool { FileManager.default.fileExists(atPath: file.path) }
 
     var body: some View {
+        // Asked of the disk once per render, not once per use below.
+        let exists = FileManager.default.fileExists(atPath: file.path)
         VStack(spacing: 0) {
             if showsDivider { Rectangle().fill(palette.border).frame(height: 1) }
             Button {
@@ -1337,13 +1426,27 @@ struct InlineLabelField: View {
 }
 
 extension Autonomy {
-    /// How a trust level reads in every menu that offers it.
-    var menuLabel: String {
+    /// A trust level in one set of words, the same in the details row, its menu and the first-run
+    /// picker, so a setting never reads one way where you see it and another where you change it.
+    var trustLabel: String {
         switch self {
-        case .ask: "Ask before everything"
-        case .allowlist: "Ask unless I've allowed it"
-        case .trusted: "Ask before anything leaves the machine"
-        case .auto: "Never ask"
+        case .ask: "Asks before everything"
+        case .allowlist: "Asks unless allowed"
+        case .trusted: "Asks before leaving the Mac"
+        case .auto: "Never asks"
+        }
+    }
+
+    /// How a trust level reads in every menu that offers it.
+    var menuLabel: String { trustLabel }
+
+    /// The empty conversation's promise, starting with the trust row's own words.
+    var emptyConversationLine: String {
+        switch self {
+        case .ask: "Asks before everything. Even reading files waits for you."
+        case .allowlist: "Asks unless allowed. It reads freely and remembers what you always allow."
+        case .trusted: "Asks before leaving the Mac. Edits, commands and anything online wait for you."
+        case .auto: "Never asks. Everything runs without you, so keep it to throwaway folders."
         }
     }
 }
@@ -1352,7 +1455,7 @@ extension Routine.Tier {
     /// The same answer in fewer words, for a narrow row.
     var shortLabel: String {
         switch self {
-        case .appOpen: "While bupsy's open"
+        case .appOpen: "While Bupsy's open"
         case .launchAgent: "Even when closed"
         case .machine: "On a machine"
         }
@@ -1411,7 +1514,7 @@ struct NewFolderWatchSheet: View {
                     .lineLimit(3...5)
             }
             if onSwitchKind != nil {
-                Text("Runs while bupsy is open. Changes \(bot.name) makes itself don't set it off again.")
+                Text("Runs while Bupsy is open. Changes \(bot.name) makes itself don't set it off again.")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(palette.mutedForeground)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1471,27 +1574,36 @@ private struct BotPanelMenuRow<Items: View>: View {
                 .lineLimit(1)
                 .fixedSize()
             Spacer(minLength: Theme.Space.snug)
-            Menu {
-                items
-            } label: {
-                HStack(spacing: 4) {
-                    // Coloured here rather than left to the enclosing style: a borderless menu
-                    // adopts the app tint for its label otherwise.
-                    Text(value)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(tone ?? palette.foreground)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: Theme.scaled(8), weight: .semibold))
-                        .foregroundStyle(palette.mutedForeground.opacity(hovering ? 1 : 0.45))
-                }
-                .contentShape(.rect)
+            // Its natural width when it fits; otherwise squeezed into the room left, where the
+            // value truncates in the middle instead of running past the panel and being clipped.
+            ViewThatFits(in: .horizontal) {
+                menu.fixedSize()
+                menu.frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
             .onHover { hovering = $0 }
         }
+    }
+
+    private var menu: some View {
+        Menu {
+            items
+        } label: {
+            HStack(spacing: 4) {
+                // Coloured here rather than left to the enclosing style: a borderless menu
+                // adopts the app tint for its label otherwise.
+                Text(value)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(tone ?? palette.foreground)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: Theme.scaled(8), weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground.opacity(hovering ? 1 : 0.45))
+            }
+            .contentShape(.rect)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .help(value)
     }
 }

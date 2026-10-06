@@ -15,21 +15,27 @@ struct AgentThinking: View {
     var body: some View {
         HStack(spacing: 10) {
             BotFace(bot: bot, mood: .working, size: 22)
+            // The breath and the clock run on separate timelines, so Reduce Motion can still the
+            // one without freezing the other: the time is information, not motion.
             TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 // 2.2s in and out, eased, the same breath as the composer's border.
                 let breath = 0.5 - 0.5 * cos((t.truncatingRemainder(dividingBy: 2.2) / 2.2) * 2 * .pi)
-                HStack(spacing: 10) {
-                    Text(status)
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(palette.foreground)
-                        .opacity(reduceMotion ? 1 : 0.55 + 0.45 * breath)
-                        .lineLimit(1)
-                    if let started {
-                        Text(elapsed(since: started, now: timeline.date))
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(palette.mutedForeground)
-                            .monospacedDigit()
+                Text(status)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                    .opacity(reduceMotion ? 1 : 0.55 + 0.45 * breath)
+                    .lineLimit(1)
+            }
+            if let started {
+                if reduceMotion {
+                    // Whole seconds, once a second: still counting, nothing flickering.
+                    TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                        elapsedText(ChatDuration.ticking(timeline.date.timeIntervalSince(started)))
+                    }
+                } else {
+                    TimelineView(.animation(minimumInterval: 1 / 10)) { timeline in
+                        elapsedText(elapsed(since: started, now: timeline.date))
                     }
                 }
             }
@@ -37,8 +43,15 @@ struct AgentThinking: View {
         .padding(.leading, ThreadLayout.gutter)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(bot.name) is \(status.lowercased())")
+    }
+
+    private func elapsedText(_ value: String) -> some View {
+        Text(value)
+            .font(Theme.Typography.caption)
+            .foregroundStyle(palette.mutedForeground)
+            .monospacedDigit()
     }
 
     /// When this run began: the last thing you (or another bot) said.

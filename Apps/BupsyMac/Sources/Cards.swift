@@ -33,15 +33,15 @@ struct ApprovalCard: View {
         ThreadNestedCard(base: lipBase, wash: pending ? palette.primary.opacity(isDark ? 0.22 : 0.16) : nil) {
             head
 
-            if pending && !approval.reason.isEmpty {
-                Text(approval.reason)
+            if pending, let reason {
+                Text(reason)
                     .font(Theme.Typography.body)
                     .foregroundStyle(palette.mutedForeground)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             // The command in full. An approval you cannot read is not an approval.
-            // Paths shortened for reading; Details still shows the full input.
+            // Paths shortened for reading; Show input still shows the full input.
             Text(PathShortener.shorten(approval.summary,
                                        workingDirectory: bot.map { model.workingDirectory(for: $0).path }))
                 .font(ThreadLayout.monoFont)
@@ -69,6 +69,22 @@ struct ApprovalCard: View {
         }
     }
 
+    /// Why the bot wants this, in its own words: the tool's `description` argument when it gave
+    /// one. Never the command again. The gate's reason is the same summary the command line
+    /// below shows, and printing it twice read as a stutter, not an explanation.
+    private var reason: String? {
+        let given = approval.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidates = [ToolCallInfo.object(approval.inputJSON)?["description"] as? String, given]
+        for candidate in candidates {
+            guard let text = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty, text != approval.summary,
+                  text != approval.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            else { continue }
+            return text
+        }
+        return nil
+    }
+
     private var lipBase: Color {
         if pending { return isDark ? palette.sidebar : palette.background }
         return isDark ? palette.sidebar : palette.card
@@ -79,6 +95,7 @@ struct ApprovalCard: View {
         HStack(spacing: Theme.Space.step) {
             if let bot {
                 BotFace(bot: bot, mood: pending ? .waitingForYou : .idle, size: ThreadLayout.avatar)
+                    .accessibilityHidden(true)
             }
             (Text(bot?.name ?? "Your bot")
                 .fontWeight(.medium)
@@ -88,11 +105,18 @@ struct ApprovalCard: View {
                 .font(ThreadLayout.messageFont)
                 .lineLimit(2)
             Spacer(minLength: Theme.Space.snug)
-            // Plain text in the theme rather than `.link`, which drew it in macOS blue.
-            Button(showsDetail ? "Hide details" : "Details") { showsDetail.toggle() }
-                .buttonStyle(.plain)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(palette.mutedForeground)
+            // Plain text in the theme rather than `.link`, which drew it in macOS blue. Named for
+            // what it shows, so it is not mistaken for the topbar's Details panel.
+            Button {
+                showsDetail.toggle()
+            } label: {
+                Text(showsDetail ? "Hide input" : "Show input")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(minHeight: 24)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -277,6 +301,8 @@ struct QuestionCard: View {
         self.bot = bot
     }
 
+    /// Still finishing its turn. The answer waits for it like any message sent meanwhile, so
+    /// this only changes the words under the card, never whether you can answer.
     private var busy: Bool { model.thread(for: bot.id).isRunning }
     private var isDark: Bool { colorScheme == .dark }
 
@@ -285,6 +311,7 @@ struct QuestionCard: View {
             HStack(alignment: .center, spacing: Theme.Space.step) {
                 BotFace(bot: bot, mood: question.answer == nil ? .waitingForYou : .idle,
                         size: ThreadLayout.avatar)
+                    .accessibilityHidden(true)
                 Text(question.question)
                     .font(ThreadLayout.messageFont.weight(.medium))
                     .foregroundStyle(palette.foreground)
@@ -300,6 +327,7 @@ struct QuestionCard: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(palette.mutedForeground)
                     .help("Dismiss without answering")
+                    .accessibilityLabel("Dismiss question")
                 }
             }
 
@@ -344,8 +372,6 @@ struct QuestionCard: View {
                         .onHover { hovered = $0 ? index : (hovered == index ? nil : hovered) }
                     }
                 }
-                .disabled(busy)
-                .opacity(busy ? 0.5 : 1)
 
                 TextField("", text: $custom, prompt: Text("Type your own answer"))
                     .textFieldStyle(.plain)
@@ -357,17 +383,16 @@ struct QuestionCard: View {
                         RoundedRectangle(cornerRadius: Theme.Radius.base)
                             .strokeBorder(palette.border, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                     }
-                    .disabled(busy)
                     .onSubmit {
-                        guard !custom.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                        guard !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                         model.answer(question, with: custom, for: bot)
                     }
             }
         } footer: {
             if question.answer == nil {
-                // While the bot is still finishing its turn an answer sent now would be dropped,
-                // so the line says to wait rather than letting the click vanish.
-                Text(busy ? "\(bot.name) is finishing up. Answer in a moment."
+                // While the bot is still finishing its turn an answer waits for it, so the line
+                // says so rather than leaving you to wonder why nothing happened yet.
+                Text(busy ? "\(bot.name) is finishing up. It reads your answer when it's done."
                           : question.options.isEmpty
                             ? "Type your answer. \(bot.name) waits until you do."
                             : "One click answers. \(bot.name) waits until you do.")

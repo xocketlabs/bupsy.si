@@ -398,8 +398,12 @@ struct GroupPage: View {
                         }
                         // Approvals a member raised inside this group. They stop that bot until
                         // you answer, so they belong in the thread, not only in the inbox.
-                        ForEach(model.pendingApprovals(in: group), id: \.1.id) { bot, approval in
-                            ApprovalCard(approval: approval, owner: bot)
+                        let pending = model.pendingApprovals(in: group)
+                        ForEach(pending, id: \.1.id) { bot, approval in
+                            // Only the newest card answers to Shift Cmd A and D, so a shortcut
+                            // never lands on a card further up that you haven't read.
+                            ApprovalCard(approval: approval, owner: bot,
+                                         showsShortcuts: approval.id == pending.last?.1.id)
                                 .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .leading)
                                 .padding(.leading, Theme.Size.bubbleAvatar + 4 + Theme.Space.step)
                         }

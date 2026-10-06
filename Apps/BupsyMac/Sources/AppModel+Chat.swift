@@ -15,12 +15,17 @@ extension AppModel {
     /// the run was started by something the person typed: a retry re-sends their words, so a
     /// run another bot started, or one bupsy started on their behalf, has nothing of theirs to
     /// send. Anything said after the failure means the conversation moved on, so the card stops
-    /// offering it.
+    /// offering it. A run that took several queued messages is retried with all of them, joined
+    /// the way they were sent the first time.
     func retryPrompt(afterFailure failureID: UUID, for bot: Bot) -> String? {
         let current = thread(for: bot.id)
         guard !current.isRunning, !isRunning(bot.id),
               let failureIndex = current.entries.firstIndex(where: { $0.id == failureID })
         else { return nil }
+        if case .failure(let failure) = current.entries[failureIndex].kind,
+           FailureNotice.isRosterNote(failure) {
+            return nil
+        }
 
         for entry in current.entries[(failureIndex + 1)...] {
             switch entry.kind {
@@ -32,20 +37,79 @@ extension AppModel {
             }
         }
 
-        var index = failureIndex - 1
-        while index >= 0 {
-            switch current.entries[index].kind {
-            case .userMessage(let text):
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed.isEmpty ? nil : text
-            case .messageFrom, .finished, .failure:
-                // The run began somewhere else, or this is an earlier run's end.
-                return nil
-            default:
-                index -= 1
+        guard let messages = Self.failedRunMessages(current.entries, failureIndex: failureIndex)
+        else { return nil }
+        return QueuedMessages.prompt(messages)
+    }
+
+    /// What the person sent to start the run that failed at `failureIndex`, or nil when they
+    /// did not start it.
+    ///
+    /// A run's own messages open it: one typed while the bot was free, or several sent together
+    /// after a reload. Messages queued while the bot was busy sit inside the previous run in a
+    /// live thread, after its opening, because that is when they were typed; a run that opens
+    /// with none of its own took exactly those.
+    nonisolated static func failedRunMessages(_ entries: [TranscriptEntry], failureIndex: Int) -> [String]? {
+        guard failureIndex > 0, failureIndex <= entries.count else { return nil }
+        let start = runStart(entries, before: failureIndex)
+        switch opening(entries, from: start, to: failureIndex) {
+        case .messages(let messages):
+            return messages
+        case .fromElsewhere:
+            return nil
+        case .nothing:
+            // Started from the queue: the messages are in the run before, after its opening.
+            guard start > 0 else { return nil }
+            let previousStart = runStart(entries, before: start - 1)
+            var queued: [String] = []
+            var pastOpening = false
+            for entry in entries[previousStart..<(start - 1)] {
+                switch entry.kind {
+                case .userMessage(let text):
+                    if pastOpening { queued.append(text) }
+                case .note, .question, .limits:
+                    continue
+                default:
+                    pastOpening = true
+                }
+            }
+            return queued.isEmpty ? nil : queued
+        }
+    }
+
+    private enum RunOpening { case messages([String]), fromElsewhere, nothing }
+
+    /// The first index after the end of the run before `index`: after the latest `.finished`
+    /// or `.failure` before it, or 0.
+    private nonisolated static func runStart(_ entries: [TranscriptEntry], before index: Int) -> Int {
+        var cursor = index - 1
+        while cursor >= 0 {
+            switch entries[cursor].kind {
+            case .finished, .failure: return cursor + 1
+            default: cursor -= 1
             }
         }
-        return nil
+        return 0
+    }
+
+    /// How the run in `start..<end` began: with the person's messages, with someone else's,
+    /// or with nothing of either (bupsy's own prompt, or the queue).
+    private nonisolated static func opening(_ entries: [TranscriptEntry], from start: Int, to end: Int) -> RunOpening {
+        var messages: [String] = []
+        for entry in entries[start..<end] {
+            switch entry.kind {
+            case .userMessage(let text):
+                messages.append(text)
+            // Not part of a run's work: bupsy's notes, and a question the bot left before it.
+            case .note, .question, .limits:
+                continue
+            case .messageFrom:
+                return messages.isEmpty ? .fromElsewhere : .messages(messages)
+            default:
+                return messages.isEmpty ? .nothing : .messages(messages)
+            }
+        }
+        return messages.isEmpty ? .nothing : .messages(messages)
     }
 
     /// Re-sends the person's last message to the bot, through the composer's own path.

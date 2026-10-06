@@ -818,36 +818,48 @@ struct ThinkingOrbs: View {
 }
 
 /// A calm, breathing glow around the composer while a bot works, in the app's accent.
+///
+/// Under Reduce Motion it holds still: a plain accent border that says the same thing without
+/// pulsing.
 struct BorderBeam: ViewModifier {
     @Environment(\.palette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var hue: Double = 0.58
     var cornerRadius: CGFloat = 10
     var period: Double = 2.4
+    /// Drawn only while true. The modifier itself stays applied either way, so turning it on
+    /// and off never changes the identity of the view it decorates (which took focus out of the
+    /// composer every time a run started or ended).
+    var active: Bool = true
 
     func body(content: Content) -> some View {
         content.overlay {
-            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-                let phase = timeline.date.timeIntervalSinceReferenceDate
-                    .truncatingRemainder(dividingBy: period) / period
-                // 0 to 1 to 0, eased, so it lingers at the ends of the breath.
-                let breath = 0.5 - 0.5 * cos(phase * 2 * .pi)
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(palette.primary.opacity(0.35 + 0.45 * breath), lineWidth: 1.5)
-                    .shadow(color: palette.primary.opacity(0.18 + 0.27 * breath), radius: 4 + 6 * breath)
+            if active {
+                if reduceMotion {
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .strokeBorder(palette.primary.opacity(0.6), lineWidth: 1.5)
+                        .allowsHitTesting(false)
+                } else {
+                    TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                        let phase = timeline.date.timeIntervalSinceReferenceDate
+                            .truncatingRemainder(dividingBy: period) / period
+                        // 0 to 1 to 0, eased, so it lingers at the ends of the breath.
+                        let breath = 0.5 - 0.5 * cos(phase * 2 * .pi)
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .strokeBorder(palette.primary.opacity(0.35 + 0.45 * breath), lineWidth: 1.5)
+                            .shadow(color: palette.primary.opacity(0.18 + 0.27 * breath), radius: 4 + 6 * breath)
+                    }
+                    .allowsHitTesting(false)
+                }
             }
-            .allowsHitTesting(false)
         }
     }
 }
 
 extension View {
-    /// Applies the beam only while active, so an idle composer costs no animation frames.
-    @ViewBuilder
+    /// Always applies the beam and lets `active` decide whether it draws. An idle composer still
+    /// costs no animation frames: the timeline only exists while active.
     func borderBeam(hue: Double, active: Bool, cornerRadius: CGFloat = 10) -> some View {
-        if active {
-            modifier(BorderBeam(hue: hue, cornerRadius: cornerRadius))
-        } else {
-            self
-        }
+        modifier(BorderBeam(hue: hue, cornerRadius: cornerRadius, active: active))
     }
 }

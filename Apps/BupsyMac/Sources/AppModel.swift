@@ -413,9 +413,13 @@ final class AppModel {
     /// session id means nothing to Codex — so each engine keeps its own conversation, and
     /// switching back returns to where that engine left off. The visible transcript is reloaded
     /// to match, because showing a Claude transcript while talking to Codex would be a lie.
+    /// Not while it runs: the run belongs to the old engine's conversation, and swapping the
+    /// visible thread under it would hide the very work in progress.
     func setEngine(_ bot: Bot, _ engine: EngineID) {
-        guard let index = bots.firstIndex(where: { $0.id == bot.id }), bot.engine != engine
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }), bot.engine != engine,
+              running[bot.id] == nil
         else { return }
+        let previous = bots[index].engine
 
         bots[index].engine = engine
         // A model name from one engine is meaningless to the other.
@@ -423,7 +427,10 @@ final class AppModel {
         try? store?.save(bots[index].record(sortIndex: index))
 
         threads[bot.id] = nil
-        _ = thread(for: bot.id)
+        // Said in the new thread, so the old conversation disappearing never reads as lost.
+        thread(for: bot.id).entries.append(TranscriptEntry(kind: .note(
+            "Switched to \(engine.displayName). Your \(previous.displayName) conversation comes "
+                + "back if you switch back.")))
     }
 
     func setModel(_ bot: Bot, _ model: String?) {
@@ -620,7 +627,7 @@ final class AppModel {
             }
 
             let note = due.isLate
-                ? "\n\n(Running late — this was scheduled for "
+                ? "\n\n(Running late. This was scheduled for "
                     + due.scheduledFor.formatted(date: .omitted, time: .shortened) + ".)"
                 : ""
             let name = due.routine.name
@@ -956,7 +963,7 @@ final class AppModel {
             thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
             queued[bot.id, default: []].append(prompt)
             if queuedNote[bot.id] == nil {
-                let note = TranscriptEntry(kind: .note("Queued — \(bot.name) will read this when it's done."))
+                let note = TranscriptEntry(kind: .note("Queued. \(bot.name) reads this when it's done."))
                 queuedNote[bot.id] = note.id
                 thread.entries.append(note)
             }
@@ -1646,7 +1653,7 @@ final class AppModel {
             thread.speaking = nil
             appendGroupMessage(GroupMessageRecord(
                 groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
-                text: "\(bot.name) is finishing something in another chat — it'll reply here next."),
+                text: "\(bot.name) is finishing something in another chat. It'll reply here next."),
                 to: group)
             waitingForBot[bot.id, default: []].append { [weak self] in
                 self?.runTurns(in: group, queue: [next], taken: taken)
@@ -1763,7 +1770,7 @@ final class AppModel {
         let thread = thread(for: bot.id)
         if let name {
             if isNameTaken(name, except: bot.id) {
-                thread.entries.append(TranscriptEntry(kind: .note("Couldn't rename to “\(name)” — another bot has that name.")))
+                thread.entries.append(TranscriptEntry(kind: .note("Couldn't rename to “\(name)”. Another bot has that name.")))
             } else if name != bot.name {
                 let old = bot.name
                 rename(bot, to: name)
@@ -1979,8 +1986,8 @@ final class AppModel {
             append(message: text, from: sender, to: recipient)
             if recent.count >= Self.autoRunsPerPair {
                 thread(for: recipient.id).entries.append(TranscriptEntry(kind: .note(
-                    "\(sender.name) and \(recipient.name) have handed work back and forth a lot — "
-                        + "this one is waiting for you.")))
+                    "\(sender.name) and \(recipient.name) have handed work back and forth a lot. "
+                        + "This one is waiting for you.")))
             }
             return
         }
@@ -2325,7 +2332,7 @@ final class AppModel {
 
     func copyTranscript(of bot: Bot) {
         let thread = thread(for: bot.id)
-        var lines = ["\(bot.name) — \(bot.engine.displayName)", ""]
+        var lines = ["\(bot.name), on \(bot.engine.displayName)", ""]
 
         for entry in thread.entries {
             switch entry.kind {
@@ -2341,7 +2348,7 @@ final class AppModel {
                 case .expired: "denied, nobody answered"
                 case nil: "waiting"
                 }
-                lines.append("  [approval: \(approval.summary) — \(decision)]")
+                lines.append("  [approval: \(approval.summary), \(decision)]")
             case .failure(let failure): lines.append("  [failed: \(failure.message)]")
             default: continue
             }
