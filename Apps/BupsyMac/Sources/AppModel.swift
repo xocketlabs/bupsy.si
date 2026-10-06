@@ -1424,6 +1424,9 @@ final class AppModel {
                     // Finished, failed or crashed: nothing can answer these any more, so the
                     // cards settle instead of offering an Allow that does nothing.
                     expirePendingApprovals(for: bot.id)
+                    // Nor will a result arrive for a step still open, which must not tick on
+                    // through the next run.
+                    thread.settleOpenTools(stopped: failed)
                     thread.isRunning = false
                     running[bot.id] = nil
                     runTokens[bot.id] = nil
@@ -1450,11 +1453,18 @@ final class AppModel {
                 }
                 lastRunEnded[bot.id] = Date()
                 if ownsSlot { recordRunEnded(bot.id, failed: failed) }
-                // Stopped by Pause: not finished, so its half-written reply is not posted to a
-                // group, read as a goal's answer or announced as done, and nothing queued behind
-                // it starts. `resumeAll` lets the queue go. Decided by what Pause recorded, not by
-                // whether it is still paused, so a quick resume cannot let the reply through.
-                if stoppedByPause.remove(token) == nil {
+                // Stopped, by you or by Pause: not finished, so its half-written reply is not
+                // posted to a group or handed on, read as a goal's answer or announced as done.
+                // Decided by what `stop` recorded, not by whether it is still paused, so a quick
+                // resume cannot let the reply through.
+                if let byPause = stoppedRuns.removeValue(forKey: token) {
+                    if let triggerID { checkingObjectives.remove(triggerID) }
+                    if let groupID, let group = groupThreads[groupID], group.speaking == bot.id {
+                        group.speaking = nil
+                    }
+                    // After Pause, what is queued behind it waits for `resumeAll`.
+                    if !byPause { Task { @MainActor [weak self] in self?.botBecameFree(bot) } }
+                } else {
                     onFinish?(reply)
                     // Next tick, so whatever onFinish started (a group hand-off) claims the bot
                     // first.
@@ -1646,6 +1656,9 @@ final class AppModel {
         // Before the slot is cleared, while the thread the run was in is still known.
         expirePendingApprovals(for: botID)
         let current = activeThread[botID] ?? thread(for: botID)
+        // Marked before ownership goes, so the run's cleanup knows it was stopped, not finished.
+        if let token = runTokens[botID] { stoppedRuns[token] = stoppedRuns[token] ?? false }
+        current.settleOpenTools(stopped: true)
         running[botID]?.cancel()
         running[botID] = nil
         // Releases ownership, so the cancelled run's cleanup leaves a newer run alone.
@@ -1750,7 +1763,7 @@ final class AppModel {
         heldWatchChanges.removeAll()
         // A check dropped while it waited for its bot never reports back, so none stays "Checking…".
         checkingObjectives.removeAll()
-        stoppedByPause.formUnion(runTokens.values)
+        for token in runTokens.values { stoppedRuns[token] = true }
         stopEverything()
         // A stopped turn never reports back, so no group is left showing a bot mid-reply.
         for thread in groupThreads.values { thread.speaking = nil }
@@ -1768,8 +1781,9 @@ final class AppModel {
         for bot in bots where running[bot.id] == nil { botBecameFree(bot) }
     }
 
-    /// Runs Pause stopped, by token, until each one's cleanup has seen it.
-    private var stoppedByPause: Set<UUID> = []
+    /// Runs that were stopped, by token, until each one's cleanup has seen it. True when Pause
+    /// stopped it.
+    private var stoppedRuns: [UUID: Bool] = [:]
 
     func togglePause() {
         if isPaused { resumeAll() } else { pauseAll() }

@@ -432,7 +432,8 @@ struct ToolAside: View {
     /// error: a red "failed" made a "no" the person chose look like something went wrong.
     private var declined: Bool {
         guard failed, let result = result?.lowercased() else { return false }
-        return ["declined", "denied", "nobody answered", "not allowed"].contains { result.contains($0) }
+        return ["declined", "denied", "nobody answered", "not allowed", "stopped before"]
+            .contains { result.contains($0) }
     }
 
     private var running: Bool { result == nil && !failed }
