@@ -50,17 +50,13 @@ public enum BinaryResolver {
         #if os(Windows)
         return nil
         #else
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
-        process.arguments = ["-l", "-c", "printf %s \"$PATH\""]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard let waitForExit = try? process.launchForWaiting() else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        waitForExit()
-        guard process.terminationStatus == 0,
-              let path = String(data: data, encoding: .utf8), !path.isEmpty else { return nil }
+        // Through `LoginShellEnvironment.runLoginShell`, which gives up after a timeout. This
+        // used to wait on the shell with no limit, inside a `static let` every spawn touches —
+        // so one profile that held stdout open hung every engine launch for the rest of the
+        // session. NUL-delimited, because the interactive shell's profile may print around it.
+        guard let output = LoginShellEnvironment.runLoginShell("printf '\\0%s\\0' \"$PATH\""),
+              let path = LoginShellEnvironment.delimited(output), !path.isEmpty
+        else { return nil }
         return path
         #endif
     }()
@@ -93,26 +89,37 @@ public enum BinaryResolver {
     /// matters because a GUI app inherits launchd's minimal PATH and would otherwise find
     /// nothing. Windows has no equivalent problem and no equivalent shell, so it uses `where`.
     private static func resolveViaShell(_ name: String) throws -> URL {
-        let process = Process()
         #if os(Windows)
+        let process = Process()
         process.executableURL = URL(fileURLWithPath: "C:\\Windows\\System32\\where.exe")
         process.arguments = [name]
-        #else
-        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        process.executableURL = URL(fileURLWithPath: shell)
-        // -l so profile files load; command -v is POSIX and avoids shell builtins' quirks.
-        process.arguments = ["-l", "-c", "command -v \(name)"]
-        #endif
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         let waitForExit = try process.launchForWaiting()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         waitForExit()
+        guard process.terminationStatus == 0 else { throw HostError.binaryNotFound(name) }
+        let output = String(data: data, encoding: .utf8)
+        #else
+        // A login shell so profile files load, with the same timeout every login-shell lookup
+        // gets. command -v is POSIX and avoids shell builtins' quirks. The name is single-quoted
+        // so it reaches `command -v` as one word: it can come from Settings, and unquoted a
+        // name holding a space, `;` or `$(…)` was run by the shell rather than looked up.
+        //
+        // The shell is interactive, so it has the person's aliases and functions, and
+        // `command -v` reports those ahead of the binary ("alias claude=…"), which is no path.
+        // They are dropped in this throwaway shell first so the answer is the file on PATH.
+        let word = shellQuoted(name)
+        let script = "unalias \(word) 2>/dev/null; unset -f \(word) 2>/dev/null; "
+            + "printf '\\0'; command -v \(word); printf '\\0'"
+        guard let data = LoginShellEnvironment.runLoginShell(script)
+        else { throw HostError.binaryNotFound(name) }
+        let output = LoginShellEnvironment.delimited(data)
+        #endif
 
         // `where` can return several matches, one per line. The first is what the shell would run.
-        guard process.terminationStatus == 0,
-              let output = String(data: data, encoding: .utf8),
+        guard let output,
               let path = output.split(separator: "\n").first
                   .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }),
               !path.isEmpty,
@@ -120,5 +127,10 @@ public enum BinaryResolver {
         else { throw HostError.binaryNotFound(name) }
 
         return URL(fileURLWithPath: path)
+    }
+
+    /// `name` as one single-quoted shell word, with any `'` inside closed, escaped and reopened.
+    static func shellQuoted(_ name: String) -> String {
+        "'" + name.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
     }
 }

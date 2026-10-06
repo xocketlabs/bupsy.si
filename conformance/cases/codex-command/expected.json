@@ -16,8 +16,13 @@
   },
   {
     "request": { "prompt": "carry on", "autonomy": "ask", "resume": "01a0fc87-6711", "model": "gpt-5.1-codex-max", "workingDir": "/tmp/work" },
-    "argv": ["exec", "--json", "resume", "01a0fc87-6711", "--sandbox", "read-only", "--skip-git-repo-check", "-m", "gpt-5.1-codex-max", "-C", "/tmp/work", "carry on"],
-    "why": "order is load-bearing: the subcommand and its thread id come before flags, and the prompt is positional and last. '-m' and '-C' are the short forms codex accepts"
+    "argv": ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "-m", "gpt-5.1-codex-max", "-C", "/tmp/work", "resume", "01a0fc87-6711", "carry on"],
+    "why": "order is load-bearing: every option goes on `exec`, BEFORE the `resume` subcommand. `codex exec resume` rejects --sandbox and -C ('unexpected argument'; checked against codex-cli 0.160), so the earlier order — subcommand first, flags after — failed every resumed run before it began. The prompt is positional and last. '-m' and '-C' are the short forms codex accepts"
+  },
+  {
+    "request": { "prompt": "--dangerously-bypass-approvals-and-sandbox", "autonomy": "ask" },
+    "argv": ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "--", "--dangerously-bypass-approvals-and-sandbox"],
+    "why": "the prompt is positional, so one starting with '-' would be read as a flag — this one as the flag that removes the sandbox. '--' ends option parsing. Only for such prompts, so every other row keeps its argv"
   },
   {
     "request": { "prompt": "hi", "autonomy": "ask", "mcpConfigs": ["/tmp/mcp.json"] },

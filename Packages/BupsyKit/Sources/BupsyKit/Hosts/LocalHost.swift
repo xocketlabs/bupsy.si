@@ -49,7 +49,16 @@ public struct LocalHost: ExecutionHost {
 /// `@unchecked Sendable` is a deliberate, contained lie: `Process` and `Pipe` are not Sendable,
 /// but this box is created, started and finished on one task, and every mutable field is
 /// guarded by `lock`. Keeping the unsafety here means nothing above it needs to think about it.
-private final class ProcessBox: @unchecked Sendable {
+final class ProcessBox: @unchecked Sendable {
+    /// Where the child is in its life, as far as cancellation is concerned.
+    enum Launch: Equatable {
+        /// Not yet started, and not yet known whether it will be.
+        case pending
+        /// Cancelled before it started, so it never ran.
+        case skipped
+        case launched
+    }
+
     private let process = Process()
     private let stdoutPipe = Pipe()
     private let stderrPipe = Pipe()
@@ -57,10 +66,29 @@ private final class ProcessBox: @unchecked Sendable {
     private let invocation: EngineInvocation
     private let lock = NSLock()
     private var finished = false
+    private var cancelled = false
+    private var launchState = Launch.pending
+    /// Whether the child leads its own process group, so stopping it can reach what it started.
+    private var ownsGroup = false
     private let exitStatus = ExitStatus()
 
-    init(executable: URL, invocation: EngineInvocation) {
+    /// How long a stopped engine gets to exit on SIGTERM before it, and everything in its
+    /// process group, is sent SIGKILL.
+    let killGrace: Duration
+    /// Awaited by the pump just before it launches. Tests use it to land a cancellation in the
+    /// window between `start()` and `run()`; nothing else sets it.
+    var beforeLaunch: (@Sendable () async -> Void)?
+
+    var launch: Launch {
+        lock.lock(); defer { lock.unlock() }
+        return launchState
+    }
+
+    var processIdentifier: Int32 { process.processIdentifier }
+
+    init(executable: URL, invocation: EngineInvocation, killGrace: Duration = .seconds(3)) {
         self.invocation = invocation
+        self.killGrace = killGrace
         process.executableURL = executable
         process.arguments = invocation.arguments
         process.currentDirectoryURL = invocation.workingDirectory
@@ -88,7 +116,12 @@ private final class ProcessBox: @unchecked Sendable {
         AsyncThrowingStream { continuation in
             let pump = Task { [self] in
                 do {
-                    try process.run()
+                    if let beforeLaunch { await beforeLaunch() }
+
+                    guard try launchUnlessCancelled() else {
+                        finish(continuation, throwing: nil)
+                        return
+                    }
 
                     if let stdin = invocation.stdin {
                         try? stdinPipe.fileHandleForWriting.write(contentsOf: Data(stdin.utf8))
@@ -118,11 +151,85 @@ private final class ProcessBox: @unchecked Sendable {
                 }
             }
 
-            continuation.onTermination = { [self] _ in
+            continuation.onTermination = { [self] termination in
+                // `.finished` is the pump's own doing, after the exit or a failed launch: there
+                // is nothing left to stop, and killing the group then would take down anything
+                // the engine deliberately left running.
+                guard case .cancelled = termination else { return }
+                lock.lock()
+                cancelled = true
+                let launched = launchState == .launched
+                lock.unlock()
                 pump.cancel()
-                if process.isRunning { process.terminate() }
+                if launched { stop() }
             }
         }
+    }
+
+    /// Launches the child unless Stop already came, and says whether it did.
+    ///
+    /// Stop can land before the child exists. `onTermination` then found nothing running to
+    /// terminate, and the pump launched it anyway — the engine ran to completion with nobody
+    /// reading it, a bot the person had stopped still working. So launching happens under the
+    /// same lock `onTermination` takes: either Stop comes first and this launches nothing, or
+    /// this comes first and Stop sees a running child to stop. Holding the lock across `run()`
+    /// costs Stop a few milliseconds at most.
+    private func launchUnlessCancelled() throws -> Bool {
+        try lock.withLock {
+            if cancelled {
+                launchState = .skipped
+                return false
+            }
+            try process.run()
+            launchState = .launched
+            #if !os(Windows)
+            // Foundation starts the child as the leader of its own process group on macOS.
+            // Checked rather than assumed, so a platform where it does not is stopped by pid
+            // alone instead of signalling a group that is not ours.
+            let pid = process.processIdentifier
+            ownsGroup = getpgid(pid) == pid
+            #endif
+            return true
+        }
+    }
+
+    /// Stops the engine and whatever it started.
+    ///
+    /// Signals the whole process group, not just the engine: the shell commands and MCP servers
+    /// it spawned are what actually touch the person's files, and `Process.terminate()` reached
+    /// none of them. SIGTERM first so the engine can tidy up, then SIGKILL once `killGrace` has
+    /// passed for anything still alive in the group, since an engine mid-tool-call may never
+    /// get round to exiting on its own.
+    private func stop() {
+        lock.lock()
+        let pid = process.processIdentifier
+        let group = ownsGroup
+        lock.unlock()
+        guard pid > 0 else { return }
+
+        #if os(Windows)
+        if process.isRunning { process.terminate() }
+        #else
+        // Nothing to stop once the engine has exited on its own; its leftovers are then its
+        // business, as they were before.
+        guard process.isRunning else { return }
+        // A negative pid addresses the group. A group's id is not reused while any member is
+        // alive, so the follow-up SIGKILL can only reach something else if the group emptied
+        // and the pid was recycled within the grace period.
+        kill(group ? -pid : pid, SIGTERM)
+
+        let grace = killGrace.components
+        let seconds = Double(grace.seconds) + Double(grace.attoseconds) / 1e18
+        DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [self] in
+            if group {
+                // Anything left in the group — the engine, or a tool it started that ignored
+                // SIGTERM. ESRCH when the group is already empty, which is the common case.
+                kill(-pid, SIGKILL)
+            } else if process.isRunning {
+                kill(pid, SIGKILL)
+            }
+        }
+        #endif
     }
 
     private func drain(_ pipe: Pipe, emit: @Sendable (String) -> Void) async {
