@@ -32,7 +32,7 @@ jobs:
       HAS_SIGNING: ${{ secrets.CERTIFICATE_P12 != '' }}
       HAS_SPARKLE: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Work out the version
         id: version
