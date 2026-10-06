@@ -274,6 +274,13 @@ struct NewRoutineSheet: View {
                 .frame(width: Self.botWidth)
         }
 
+        if let folderRefusal {
+            Text(folderRefusal)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.destructiveText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
         Field(label: "When a file arrives", hint: "It also gets the list of files that changed.") {
             TextField("", text: $watchPrompt,
                       prompt: Text("If it's an invoice, rename it to the date and vendor and move it to ~/Documents/Invoices."),
@@ -300,6 +307,12 @@ struct NewRoutineSheet: View {
         panel.prompt = "Watch"
         if !path.isEmpty { panel.directoryURL = URL(fileURLWithPath: path) }
         if panel.runModal() == .OK, let url = panel.url { path = url.path }
+    }
+
+    /// Why the chosen folder can't be watched (the whole disk, home, ~/Library, where agents
+    /// write), or nil. Shown under the folder and keeps the sheet from saving.
+    private var folderRefusal: String? {
+        path.isEmpty ? nil : FolderWatch.refusal(forFolder: path)
     }
 
     /// The watch's name: the folder's own.
@@ -337,7 +350,7 @@ struct NewRoutineSheet: View {
         case .goal:
             !Self.clean(goal).isEmpty
         case .folderWatch:
-            !path.isEmpty && !Self.clean(watchPrompt).isEmpty
+            !path.isEmpty && folderRefusal == nil && !Self.clean(watchPrompt).isEmpty
         }
     }
 
