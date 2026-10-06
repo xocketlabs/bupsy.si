@@ -199,8 +199,17 @@ struct MenuBarApproval: View {
 
     var body: some View {
         if item.kind.isApproval, let bot, let approval = model.pendingApproval(id: item.id, for: bot.id) {
-            Section(short(item.detail.isEmpty ? item.title : item.detail)) {
-                Button("Allow") { model.decide(approval, allow: true, for: bot) }
+            let request = item.detail.isEmpty ? item.title : item.detail
+            Section(short(request)) {
+                // Allow only beside a request the menu shows whole. Cut short, the hidden tail is
+                // where `&& rm -rf ~` would be, so a long one is reviewed in the window instead.
+                if Self.fitsMenu(request) {
+                    Button("Allow") { model.decide(approval, allow: true, for: bot) }
+                } else {
+                    Button("Review in Bupsy…") {
+                        MenuBarNavigation.show(bot.id, model: model, openWindow: openWindow)
+                    }
+                }
                 Button("Deny") { model.decide(approval, allow: false, for: bot) }
             }
         } else {
@@ -216,10 +225,19 @@ struct MenuBarApproval: View {
         }
     }
 
-    /// Menu items have no room to wrap, and a truncated command is still recognisable.
-    private func short(_ text: String, limit: Int = 44) -> String {
+    /// How much of a request a menu item shows. Menu items have no room to wrap.
+    private static let menuLimit = 44
+
+    /// Menu items have no room to wrap, and a truncated command is still recognisable — enough to
+    /// find it, not enough to approve it (see `fitsMenu`).
+    private func short(_ text: String, limit: Int = Self.menuLimit) -> String {
         let flat = text.replacingOccurrences(of: "\n", with: " ")
         return flat.count <= limit ? flat : flat.prefix(limit) + "…"
+    }
+
+    /// Whether `short` leaves the request whole, line breaks aside.
+    static func fitsMenu(_ text: String) -> Bool {
+        text.count <= menuLimit
     }
 }
 
@@ -336,11 +354,12 @@ private struct MenuBarPanelContent: View {
         .tint(palette.primary)
     }
 
-    /// Rows are 32pt, plus about 34 for the Allow and Deny line under a bot waiting on a tool.
-    /// Measured from the row's own layout rather than read back, so short rosters never scroll.
+    /// Rows are 32pt, plus the request and its Allow and Deny line under a bot waiting on a tool.
+    /// Worked out from the row's own layout rather than read back, so short rosters never scroll.
     private func estimatedHeight(of bots: [Bot]) -> CGFloat {
         bots.reduce(CGFloat(0)) { total, bot in
-            total + 32 + (MenuBarPanelBotRow.pendingApproval(for: bot, in: model) == nil ? 0 : 34)
+            total + 32 + (MenuBarPanelBotRow.pendingApproval(for: bot, in: model)
+                .map(MenuBarPanelBotRow.approvalHeight(for:)) ?? 0)
         }
     }
 
@@ -398,17 +417,34 @@ private struct MenuBarPanelBotRow: View {
             .onHover { hovering = $0 }
 
             if let approval {
-                HStack(spacing: Theme.Space.tight) {
-                    Text(approval.summary.isEmpty ? approval.tool : approval.summary)
+                let request = Self.request(of: approval)
+                // The whole request, wrapped, above the answers: Allow on a line cut short would
+                // approve whatever was past the cut. One too long to read here is reviewed in the
+                // window, where the card has room for all of it, and gets no Allow at all.
+                let whole = Self.fitsPanel(request)
+                VStack(alignment: .trailing, spacing: Theme.Space.xs) {
+                    Text(request)
                         .font(Theme.Typography.caption)
                         .foregroundStyle(palette.mutedForeground)
-                        .lineLimit(1)
+                        .lineLimit(whole ? nil : Self.previewLines)
                         .truncationMode(.tail)
-                    Spacer(minLength: Theme.Space.tight)
-                    Button("Allow") { model.decide(approval, allow: true, for: bot) }
-                        .buttonStyle(QuietButton(compact: true))
-                    Button("Deny") { model.decide(approval, allow: false, for: bot) }
-                        .buttonStyle(QuietButton(compact: true))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                    HStack(spacing: Theme.Space.tight) {
+                        if whole {
+                            Button("Allow") { model.decide(approval, allow: true, for: bot) }
+                                .buttonStyle(QuietButton(compact: true))
+                        } else {
+                            Button("Review…") {
+                                MenuBarNavigation.show(bot.id, model: model, openWindow: openWindow)
+                            }
+                            .buttonStyle(QuietButton(compact: true))
+                            .help("Too long to read here. Opens \(bot.name) to see all of it.")
+                        }
+                        Button("Deny") { model.decide(approval, allow: false, for: bot) }
+                            .buttonStyle(QuietButton(compact: true))
+                    }
                 }
                 .padding(.leading, 22 + Theme.Space.snug + Theme.Space.tight)
                 .padding(.trailing, Theme.Space.tight)
@@ -419,6 +455,33 @@ private struct MenuBarPanelBotRow: View {
 
     private var firstPendingApproval: PendingApproval? {
         Self.pendingApproval(for: bot, in: model)
+    }
+
+    /// What the approval would do, as the row shows it.
+    static func request(of approval: PendingApproval) -> String {
+        approval.summary.isEmpty ? approval.tool : approval.summary
+    }
+
+    /// Lines of a too-long request shown before Review, enough to recognise it.
+    static let previewLines = 3
+    /// The longest request shown whole, with Allow beside it. About eight wrapped lines at the
+    /// panel's width; anything longer makes the roster a wall of text, so it goes to the window.
+    static let wholeLimit = 320
+    static let wholeLines = 8
+
+    static func fitsPanel(_ request: String) -> Bool {
+        request.count <= wholeLimit
+            && request.split(separator: "\n", omittingEmptySubsequences: false).count <= wholeLines
+    }
+
+    /// The approval part of a row's height, for deciding when the roster scrolls. Estimated from
+    /// the text (about 40 caption characters a line at this width) rather than measured.
+    static func approvalHeight(for approval: PendingApproval) -> CGFloat {
+        let request = request(of: approval)
+        let wrapped = request.split(separator: "\n", omittingEmptySubsequences: false)
+            .reduce(0) { $0 + max(1, ($1.count + 39) / 40) }
+        let lines = fitsPanel(request) ? wrapped : min(wrapped, previewLines)
+        return 34 + CGFloat(lines) * 15
     }
 
     /// The first undecided approval wherever the bot raised it, its own chat or a group.

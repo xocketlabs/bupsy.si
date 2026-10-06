@@ -1077,9 +1077,17 @@ struct BotPage: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.prompt = "Watch"
-        if panel.runModal() == .OK, let url = panel.url {
-            model.moveFolderWatch(watch, to: url.path)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // The same check as the New routine sheet: a folder that changes on its own every few
+        // seconds would run the bot again after every run.
+        if let refusal = FolderWatch.refusal(forFolder: url.path) {
+            let alert = NSAlert()
+            alert.messageText = "Can't watch that folder"
+            alert.informativeText = refusal
+            alert.runModal()
+            return
         }
+        model.moveFolderWatch(watch, to: url.path)
     }
 
     /// What a bot has actually done, including while nobody was watching.

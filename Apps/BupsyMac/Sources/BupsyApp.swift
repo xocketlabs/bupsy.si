@@ -19,6 +19,8 @@ struct BupsyApp: App {
         Window("Bupsy", id: MainWindow.id) {
             RootView()
                 .environment(model)
+                // Every link the window shows, bots' replies included, goes through this first.
+                .environment(\.openURL, LinkGuard.action)
                 .preferredColorScheme(model.appearance.scheme)
                 // Below this the chat column gets too narrow to read and pages overflow.
                 .frame(minWidth: 900, minHeight: 600)
@@ -83,7 +85,9 @@ struct BupsyApp: App {
         MenuBarExtra {
             // A drawn panel rather than a native menu, so bots show their live faces and a bot
             // that needs you can be answered right here. MenuBarView is the plain-menu fallback.
-            MenuBarPanel().environment(model)
+            MenuBarPanel()
+                .environment(model)
+                .environment(\.openURL, LinkGuard.action)
         } label: {
             // The label is always on screen, so it is also what reopens a closed window when
             // something without a view (a notification click) asks for it.
@@ -92,6 +96,49 @@ struct BupsyApp: App {
                 .environment(model)
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+/// Opens links with a look first at anything that is not a web page or an email.
+///
+/// A bot's reply is Markdown, and a link in it can point anywhere: `file:///…/Payload.app`,
+/// `x-apple.systempreferences:`, another app's own scheme that acts on open. Without this a single
+/// click in a reply, written by whatever the bot read, would launch it. Web and mail links open as
+/// before; anything else shows the full address and opens only when the person says so.
+@MainActor
+enum LinkGuard {
+    /// Schemes that open in a browser or mail app, never run anything themselves.
+    static let safeSchemes: Set<String> = ["http", "https", "mailto"]
+
+    static var action: OpenURLAction {
+        // SwiftUI calls this on the main thread, from a click.
+        OpenURLAction { url in
+            MainActor.assumeIsolated {
+                if let scheme = url.scheme?.lowercased(), safeSchemes.contains(scheme) {
+                    return .systemAction
+                }
+                return confirm(url) ? open(url) : .discarded
+            }
+        }
+    }
+
+    private static func open(_ url: URL) -> OpenURLAction.Result {
+        NSWorkspace.shared.open(url) ? .handled : .discarded
+    }
+
+    /// Asks before opening. Cancel is the default button, so Return does not open it.
+    private static func confirm(_ url: URL) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Open this link?"
+        alert.informativeText = """
+            It isn't a web link, so it may open a file or another app on your Mac.
+
+            \(url.absoluteString)
+            """
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Open")
+        return alert.runModal() == .alertSecondButtonReturn
     }
 }
 
