@@ -229,46 +229,6 @@ struct ShortcutLabel: View {
     }
 }
 
-/// How much of your own subscription you have used, read from the engine's own report.
-///
-/// Small and in the header rather than in the thread: it is context, not an event. Protecting
-/// someone's quota protects their account, which protects us.
-struct LimitsGauge: View {
-    @Environment(\.palette) private var palette
-    let limits: RateLimit
-
-    var body: some View {
-        if let tightest = limits.tightest {
-            let utilization = tightest.window.utilization
-            let colour = LimitScale.fill(utilization, palette)
-            HStack(spacing: Theme.Space.xs) {
-                Circle()
-                    .trim(from: 0, to: max(0.02, min(utilization, 1)))
-                    .stroke(colour, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 12, height: 12)
-                Text("\(LimitScale.percent(utilization))%")
-                    .font(Theme.Typography.badge.monospacedDigit())
-                    .foregroundStyle(colour)
-            }
-            .help(tooltip)
-        }
-    }
-
-    private var tooltip: String {
-        var lines = ["Your subscription usage, as the engine reports it:"]
-        for (name, window) in limits.windows.sorted(by: { $0.key < $1.key }) {
-            var line = "  \(LimitScale.label(name)): "
-                + "\(LimitScale.percent(window.utilization))%"
-            if let resets = window.resetsAt {
-                line += ", resets \(resets.formatted(date: .omitted, time: .shortened))"
-            }
-            lines.append(line)
-        }
-        return lines.joined(separator: "\n")
-    }
-}
-
 /// A bot's multiple-choice question: lettered answers, plus a field for your own.
 ///
 /// One click answers. Answers are lettered so a long list can be scanned and talked about ("B"),

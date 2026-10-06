@@ -153,11 +153,11 @@ Paths are under `Apps/BupsyMac/Sources` unless stated. The fixes are grouped int
 
 ## Batch 8: assets, docs and cleanup
 
-- [ ] **P2** App icon has no dark or tinted appearance variants; About shows a live mark instead of the icon and "Releases" instead of "Check for updates". (SYS-28)
-- [ ] **P2** README hero screenshot and docs/logo.png show the retired look. (SYS-28)
-- [ ] **P2** docs/06-design.md describes the old icon, dead thinking components and misses the shared parts files. (SYS-29)
-- [ ] **P2** Dead code: inline sidebar search, RenameBotSheet, NewBotSheet, TypingIndicator, DotWave, ShimmerText, ThinkingOrbs, LimitsGauge paths, MachineButton, ObjectivesSheet, RoutinesSheet. (CHAT-34, NAV-37, SYS-29, SET-3)
-- [ ] **P2** Empty `Label(systemImage: "")` in menus logs warnings and misaligns. (ONB-25, CHAT-23)
+- [x] **P2** App icon has no dark or tinted appearance variants; About shows a live mark instead of the icon and "Releases" instead of "Check for updates". (SYS-28) About now shows the real app icon and an honest "Check releases on GitHub" (no update feed yet). Dark and tinted icon variants need the macOS 26 Icon Composer format; skipped while the app targets macOS 14.
+- [x] **P2** README hero screenshot and docs/logo.png show the retired look. (SYS-28)
+- [x] **P2** docs/06-design.md describes the old icon, dead thinking components and misses the shared parts files. (SYS-29)
+- [x] **P2** Dead code: inline sidebar search, RenameBotSheet, NewBotSheet, TypingIndicator, DotWave, ShimmerText, ThinkingOrbs, LimitsGauge paths, MachineButton, ObjectivesSheet, RoutinesSheet. (CHAT-34, NAV-37, SYS-29, SET-3)
+- [x] **P2** Empty `Label(systemImage: "")` in menus logs warnings and misaligns. (ONB-25, CHAT-23)
 
 ## Not code: decisions for you
 

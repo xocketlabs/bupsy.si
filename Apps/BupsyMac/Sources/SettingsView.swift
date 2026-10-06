@@ -184,7 +184,9 @@ private struct SettingsContent: View {
     private var about: some View {
         SettingsGroup(title: "About") {
             HStack(spacing: Theme.Space.gutter) {
-                BupsyIconMark(size: 56)
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 64, height: 64)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: Theme.Space.hairline) {
                     Text("Bupsy")
@@ -198,9 +200,11 @@ private struct SettingsContent: View {
                         .foregroundStyle(palette.mutedForeground)
                 }
                 Spacer(minLength: Theme.Space.snug)
-                Button("Releases") { NSWorkspace.shared.open(Updater.releasesURL) }
+                // No update feed yet (GitHub Releases only), so this says what it does rather than
+                // pretending to check. Matches the app menu's "Releases on GitHub…".
+                Button("Check releases on GitHub") { NSWorkspace.shared.open(Updater.releasesURL) }
                     .buttonStyle(QuietButton(compact: true))
-                    .help("Opens the releases page on GitHub")
+                    .help("Opens the releases page, where new versions are published")
             }
             .padding(Theme.Space.step)
         }

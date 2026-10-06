@@ -152,7 +152,6 @@ struct TranscriptEntry: Identifiable, Sendable {
         /// Something bupsy itself records in the thread — "Named itself Researcher". Never a
         /// bot's words, so it is drawn as a quiet line, not a bubble.
         case note(String)
-        case limits(RateLimit)
         case failure(EngineFailure)
         case finished(Outcome)
     }

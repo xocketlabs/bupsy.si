@@ -25,10 +25,8 @@ struct NavRail: View {
     /// The one sheet the rail has up, if any. One `.sheet(item:)` for all of them: several
     /// chained `.sheet`s on one view and SwiftUI silently drops all but one.
     @State private var sheet: RailSheet?
-    @State private var isSearching = false
     @State private var showsYouMenu = false
     @State private var hoveringAccount = false
-    @State private var query = ""
     /// Set to ask before deleting. Owned here, not by the context menu, which is gone on click.
     @State private var deletingBot: Bot?
     @State private var deletingGroup: ChatGroup?
@@ -40,7 +38,6 @@ struct NavRail: View {
     /// Sections folded shut, kept across launches. A JSON array of section keys, shared with the
     /// New section sheet's "Fold it in the sidebar by default". See `SidebarFolds`.
     @AppStorage(SidebarFolds.key, store: AppHome.defaults) private var foldedJSON = "[]"
-    @FocusState private var searchFocused: Bool
 
     enum Destination: Hashable {
         case bot(BotID)
@@ -92,9 +89,6 @@ struct NavRail: View {
         VStack(alignment: .leading, spacing: 0) {
             header
                 .padding(.bottom, Theme.Space.gutter)
-            if isSearching {
-                searchField.padding(.bottom, Theme.Space.snug)
-            }
             places
                 .padding(.bottom, Theme.Space.snug)
 
@@ -249,51 +243,6 @@ struct NavRail: View {
         .accessibilityLabel(label)
     }
 
-    private var searchField: some View {
-        HStack(spacing: Theme.Space.tight) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: Theme.scaled(10)))
-                .foregroundStyle(palette.sidebarMuted)
-            TextField("", text: $query, prompt: Text("Search bots"))
-                .textFieldStyle(.plain)
-                .font(Theme.Typography.body)
-                .foregroundStyle(palette.foreground)
-                .focused($searchFocused)
-                .onSubmit { selectFirstMatch() }
-            if !query.isEmpty {
-                Button { query = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: Theme.scaled(11)))
-                        .foregroundStyle(palette.sidebarMuted)
-                        .frame(width: Theme.Size.controlSm, height: Theme.Size.controlSm)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .help("Clear search")
-                .accessibilityLabel("Clear search")
-            }
-        }
-        .padding(.horizontal, Theme.Space.snug)
-        .frame(height: Theme.Size.controlSm)
-        .background(palette.sidebarAccent, in: .rect(cornerRadius: Theme.Radius.control))
-        // Escape closes the field rather than only clearing it, so the shortcut that opened it
-        // also puts things back exactly as they were.
-        .onExitCommand {
-            isSearching = false
-            query = ""
-        }
-    }
-
-    /// Enter in the search field opens the one you were looking for, rather than making you
-    /// reach for the mouse to finish a keyboard gesture.
-    private func selectFirstMatch() {
-        if let first = ranked.first {
-            destination = .bot(first.bot.id)
-            isSearching = false
-            query = ""
-        }
-    }
-
     // MARK: - Fixed places
 
     /// "Waiting on you" and "Team": always in the same spot, so they can be found without looking.
@@ -313,65 +262,61 @@ struct NavRail: View {
     private var conversations: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-                if searching {
-                    results
-                } else {
-                    if !model.pinnedBots.isEmpty {
-                        VStack(alignment: .leading, spacing: Theme.Space.hairline) {
-                            sectionHeader("Pinned")
-                            ForEach(model.pinnedBots) { row(for: $0) }
-                        }
+                if !model.pinnedBots.isEmpty {
+                    VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                        sectionHeader("Pinned")
+                        ForEach(model.pinnedBots) { row(for: $0) }
                     }
-
-                    ForEach(model.folders, id: \.self) { folder in
-                        let members = model.bots(in: folder)
-                        if !members.isEmpty {
-                            VStack(alignment: .leading, spacing: Theme.Space.hairline) {
-                                sectionHeader(folder, key: folder, members: members,
-                                              addHelp: "Set up a bot yourself in \(folder)",
-                                              onAdd: { startAdding(to: folder) })
-                                    .contextMenu {
-                                        Button("Rename section…") {
-                                            sheet = .renameFolder(folder)
-                                        }
-                                        // Named for what it does. "Delete folder" would read as
-                                        // deleting the bots inside it, which it never does.
-                                        Button("Move these bots to Unassigned") {
-                                            model.dissolveFolder(folder)
-                                        }
-                                    }
-                                if !collapsed.contains(folder) {
-                                    ForEach(members) { row(for: $0) }
-                                }
-                            }
-                        }
-                    }
-
-                    groupsSection
-
-                    let loose = model.ungroupedBots
-                    if !loose.isEmpty {
-                        VStack(alignment: .leading, spacing: Theme.Space.hairline) {
-                            // Only headed once anything else in the list has a heading: with no
-                            // sections these are simply the list. The Groups header counts even
-                            // with no groups in it, or these bots would read as its groups.
-                            if !model.folders.isEmpty || showsGroupsSection
-                                || !model.pinnedBots.isEmpty || !hiddenBots.isEmpty {
-                                sectionHeader(model.folders.isEmpty ? "Bots" : "Unassigned",
-                                              key: Self.unassignedKey, members: loose,
-                                              addHelp: "Set up a bot yourself",
-                                              onAdd: { startAdding(to: nil) })
-                            }
-                            if !collapsed.contains(Self.unassignedKey) {
-                                ForEach(loose) { row(for: $0) }
-                            }
-                        }
-                    }
-
-                    hiddenSection
-
-                    if model.bots.isEmpty { empty }
                 }
+
+                ForEach(model.folders, id: \.self) { folder in
+                    let members = model.bots(in: folder)
+                    if !members.isEmpty {
+                        VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                            sectionHeader(folder, key: folder, members: members,
+                                          addHelp: "Set up a bot yourself in \(folder)",
+                                          onAdd: { startAdding(to: folder) })
+                                .contextMenu {
+                                    Button("Rename section…") {
+                                        sheet = .renameFolder(folder)
+                                    }
+                                    // Named for what it does. "Delete folder" would read as
+                                    // deleting the bots inside it, which it never does.
+                                    Button("Move these bots to Unassigned") {
+                                        model.dissolveFolder(folder)
+                                    }
+                                }
+                            if !collapsed.contains(folder) {
+                                ForEach(members) { row(for: $0) }
+                            }
+                        }
+                    }
+                }
+
+                groupsSection
+
+                let loose = model.ungroupedBots
+                if !loose.isEmpty {
+                    VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                        // Only headed once anything else in the list has a heading: with no
+                        // sections these are simply the list. The Groups header counts even
+                        // with no groups in it, or these bots would read as its groups.
+                        if !model.folders.isEmpty || showsGroupsSection
+                            || !model.pinnedBots.isEmpty || !hiddenBots.isEmpty {
+                            sectionHeader(model.folders.isEmpty ? "Bots" : "Unassigned",
+                                          key: Self.unassignedKey, members: loose,
+                                          addHelp: "Set up a bot yourself",
+                                          onAdd: { startAdding(to: nil) })
+                        }
+                        if !collapsed.contains(Self.unassignedKey) {
+                            ForEach(loose) { row(for: $0) }
+                        }
+                    }
+                }
+
+                hiddenSection
+
+                if model.bots.isEmpty { empty }
             }
             .padding(.top, Theme.Space.snug)
             .padding(.bottom, Theme.Space.snug)
@@ -483,50 +428,6 @@ struct NavRail: View {
         }
     }
 
-    private var searching: Bool {
-        !query.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    /// Search results are a flat ranked list, not the same folders with gaps in them.
-    @ViewBuilder
-    private var results: some View {
-        let hits = ranked
-        if hits.isEmpty {
-            noMatches
-        } else {
-            VStack(alignment: .leading, spacing: Theme.Space.hairline) {
-                sectionHeader(hits.count == 1 ? "1 result" : "\(hits.count) results")
-                ForEach(hits) { hit in
-                    row(for: hit.bot, matchedOn: hit.matchedPreview ? hit.bot.id : nil)
-                }
-            }
-        }
-    }
-
-    /// Name matches first, then matches on what the bot said, each ordered by how early the
-    /// match lands in the string.
-    private var ranked: [SearchHit] {
-        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return [] }
-
-        return model.bots.compactMap { bot -> SearchHit? in
-            let name = bot.name.lowercased()
-            if let position = name.range(of: needle)?.lowerBound {
-                return SearchHit(bot: bot, rank: 0,
-                                 offset: name.distance(from: name.startIndex, to: position),
-                                 matchedPreview: false)
-            }
-            let preview = (model.thread(for: bot.id).preview ?? "").lowercased()
-            if let position = preview.range(of: needle)?.lowerBound {
-                return SearchHit(bot: bot, rank: 1,
-                                 offset: preview.distance(from: preview.startIndex, to: position),
-                                 matchedPreview: true)
-            }
-            return nil
-        }
-        .sorted { ($0.rank, $0.offset) < ($1.rank, $1.offset) }
-    }
-
     /// A small uppercase label. With a key it folds; with `onAdd` it carries a "+" on the right.
     private func sectionHeader(
         _ text: String, key: String? = nil, members: [Bot] = [], count: Int? = nil,
@@ -557,15 +458,13 @@ struct NavRail: View {
         )
     }
 
-    private func row(for bot: Bot, matchedOn previewOf: BotID? = nil) -> some View {
+    private func row(for bot: Bot) -> some View {
         BotRow(
             bot: bot,
             preview: model.thread(for: bot.id).preview,
             mood: mood(for: bot),
             selected: destination == .bot(bot.id),
             unread: model.isUnread(bot),
-            // Says *why* a bot is in the results when the name does not contain what you typed.
-            matchedOnMessage: previewOf == bot.id,
             action: { destination = .bot(bot.id) }
         )
         // Cmd 1 to 9 are not on the rows: see `numberShortcuts`.
@@ -600,14 +499,6 @@ struct NavRail: View {
                 .padding(.horizontal, Theme.Space.snug)
                 .padding(.vertical, Theme.Space.xs)
         }
-    }
-
-    private var noMatches: some View {
-        Text("Nothing matches “\(query)”")
-            .font(Theme.Typography.caption)
-            .foregroundStyle(palette.sidebarMuted)
-            .padding(.horizontal, Theme.Space.snug)
-            .padding(.top, Theme.Space.snug)
     }
 
     // MARK: - Below the list
@@ -1038,7 +929,7 @@ struct SidebarIconButtonBody: View {
 /// One bot in the list: face, name, role tag.
 ///
 /// One line, as the dashboard sidebar draws it. What it last said is still there, as the row's
-/// tooltip and in search, but the list itself reads as a column of faces: the state lives on the
+/// tooltip, but the list itself reads as a column of faces: the state lives on the
 /// face (a dot for working or needs you), not in a second line of text. VoiceOver gets the same
 /// state in words, since the dot is colour only.
 struct BotRow: View {
@@ -1049,19 +940,17 @@ struct BotRow: View {
     let mood: BotMood
     let selected: Bool
     var unread = false
-    var matchedOnMessage = false
     let action: () -> Void
 
     @State private var hovering = false
 
     init(bot: Bot, preview: String?, mood: BotMood, selected: Bool, unread: Bool = false,
-         matchedOnMessage: Bool = false, action: @escaping () -> Void) {
+         action: @escaping () -> Void) {
         self.bot = bot
         self.preview = preview
         self.mood = mood
         self.selected = selected
         self.unread = unread
-        self.matchedOnMessage = matchedOnMessage
         self.action = action
     }
 
@@ -1083,13 +972,6 @@ struct BotRow: View {
                                                         palette: palette))
                     .lineLimit(1)
                     .layoutPriority(1)
-
-                if matchedOnMessage {
-                    Image(systemName: "text.quote")
-                        .font(.system(size: Theme.scaled(9)))
-                        .foregroundStyle(palette.sidebarMuted)
-                        .help("Matched on what \(bot.name) said")
-                }
 
                 Spacer(minLength: 0)
 
@@ -1135,7 +1017,6 @@ struct BotRow: View {
         case .idle: break
         }
         if unread { parts.append("Unread") }
-        if matchedOnMessage { parts.append("Matched on a message") }
         return parts.joined(separator: ", ")
     }
 
@@ -1234,26 +1115,6 @@ struct RenameFolderSheet: View {
         SidebarFolds.rename(folder, to: trimmed)
         dismiss()
     }
-}
-
-/// `sheet(item:)` needs an Identifiable. A wrapper rather than a retroactive conformance on
-/// String: that conformance would apply everywhere in the app and can quietly change which
-/// SwiftUI overload gets picked somewhere unrelated.
-/// One search result, with enough about *how* it matched to rank it and to explain itself.
-struct SearchHit: Identifiable {
-    let bot: Bot
-    /// 0 for a name match, 1 for a match on what the bot said.
-    let rank: Int
-    /// Where in the string the match started. Earlier reads as more relevant.
-    let offset: Int
-    let matchedPreview: Bool
-
-    var id: BotID { bot.id }
-}
-
-struct FolderName: Identifiable, Hashable {
-    let id: String
-    init(_ name: String) { id = name }
 }
 
 /// Files one bot into a folder that does not exist yet.

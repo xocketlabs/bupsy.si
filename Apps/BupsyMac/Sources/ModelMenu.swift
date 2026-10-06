@@ -33,7 +33,30 @@ struct ModelMenuItems: View {
         Button {
             model.setModel(bot, option.id)
         } label: {
-            Label(option.label, systemImage: bot.model == option.id ? "checkmark" : "")
+            MenuCheckLabel(option.label, checked: bot.model == option.id)
+        }
+    }
+}
+
+/// A menu item's label with a tick when it is the current choice.
+///
+/// Unticked items are plain text. `Label` with an empty system image logs a missing-symbol
+/// warning on every menu open and nudges the title sideways, so the image is only there when it
+/// is a real one.
+struct MenuCheckLabel: View {
+    let text: String
+    let checked: Bool
+
+    init(_ text: String, checked: Bool) {
+        self.text = text
+        self.checked = checked
+    }
+
+    var body: some View {
+        if checked {
+            Label(text, systemImage: "checkmark")
+        } else {
+            Text(text)
         }
     }
 }

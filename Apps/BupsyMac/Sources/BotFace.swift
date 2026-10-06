@@ -791,34 +791,6 @@ enum BotShape: String, CaseIterable, Sendable {
     static let palette: [Color] = rgbPalette.map(\.color)
 }
 
-/// Dotted orbs for "thinking", the most-seen animation in the app. Kept small and quiet.
-struct ThinkingOrbs: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var hue: Double = 0.58
-    var dotSize: CGFloat = 5
-    var count: Int = 3
-
-    var body: some View {
-        // Reduce Motion pauses the timeline, so the dots hold on one calm frame.
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
-            let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: dotSize * 0.6) {
-                ForEach(0..<count, id: \.self) { index in
-                    let phase = time * 2.2 - Double(index) * 0.55
-                    let lift = CGFloat(sin(phase)) * dotSize * 0.42
-                    Circle()
-                        .fill(Color(hue: hue, saturation: 0.45, brightness: 0.95))
-                        .frame(width: dotSize, height: dotSize)
-                        .opacity(0.35 + 0.65 * (0.5 + 0.5 * sin(phase)))
-                        .offset(y: -lift)
-                }
-            }
-        }
-        .frame(height: dotSize * 2)
-        .accessibilityLabel("Thinking")
-    }
-}
-
 /// A calm, breathing glow around the composer while a bot works, in the app's accent.
 ///
 /// Under Reduce Motion it holds still: a plain accent border that says the same thing without

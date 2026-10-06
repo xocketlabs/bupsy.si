@@ -1,14 +1,16 @@
 <div align="center">
 
-# bupsy
+<img src="docs/logo.png" width="128" alt="Bupsy app icon">
+
+# Bupsy
 
 **A Mac app where your AI bots live. They use the subscriptions you already pay for.**
 
 </div>
 
-![bupsy](docs/screenshots/bupsy.png)
+![Bupsy: Scout asks before running a command](docs/screenshots/bupsy.png)
 
-Each bot is a real agent — `claude` or `codex` running under **your own sign-in**, on your Mac or
+Each bot is a real agent: `claude` or `codex` running under **your own sign-in**, on your Mac or
 on a machine you rent. Give one a job, a schedule, or a standing goal. They ask before they act.
 
 > **Pre-alpha.** Not yet downloadable: the signed build needs an Apple Developer certificate.

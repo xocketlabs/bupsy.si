@@ -67,7 +67,7 @@ extension AppModel {
                 switch entry.kind {
                 case .userMessage(let text):
                     if pastOpening { queued.append(text) }
-                case .note, .question, .limits:
+                case .note, .question:
                     continue
                 default:
                     pastOpening = true
@@ -101,7 +101,7 @@ extension AppModel {
             case .userMessage(let text):
                 messages.append(text)
             // Not part of a run's work: bupsy's notes, and a question the bot left before it.
-            case .note, .question, .limits:
+            case .note, .question:
                 continue
             case .messageFrom:
                 return messages.isEmpty ? .fromElsewhere : .messages(messages)

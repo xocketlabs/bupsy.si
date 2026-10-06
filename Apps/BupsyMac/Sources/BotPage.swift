@@ -423,8 +423,7 @@ struct BotPage: View {
                         Button {
                             model.setEngine(bot, engine)
                         } label: {
-                            Label(engine.displayName,
-                                  systemImage: bot.engine == engine ? "checkmark" : "")
+                            MenuCheckLabel(engine.displayName, checked: bot.engine == engine)
                         }
                     }
                 }
@@ -451,8 +450,7 @@ struct BotPage: View {
                         Button {
                             model.setAutonomy(bot, level)
                         } label: {
-                            Label(label(for: level),
-                                  systemImage: bot.autonomy == level ? "checkmark" : "")
+                            MenuCheckLabel(label(for: level), checked: bot.autonomy == level)
                         }
                     }
                 }
@@ -462,14 +460,12 @@ struct BotPage: View {
                         Button {
                             model.setOnlyBupsyApps(bot, false)
                         } label: {
-                            Label("Everything on your Claude account",
-                                  systemImage: bot.onlyBupsyApps ? "" : "checkmark")
+                            MenuCheckLabel("Everything on your Claude account", checked: !bot.onlyBupsyApps)
                         }
                         Button {
                             model.setOnlyBupsyApps(bot, true)
                         } label: {
-                            Label("Only apps added in Bupsy",
-                                  systemImage: bot.onlyBupsyApps ? "checkmark" : "")
+                            MenuCheckLabel("Only apps added in Bupsy", checked: bot.onlyBupsyApps)
                         }
                     }
                 }
@@ -478,7 +474,7 @@ struct BotPage: View {
                         Button {
                             model.setFolder(bot, folder)
                         } label: {
-                            Label(folder, systemImage: bot.folder == folder ? "checkmark" : "")
+                            MenuCheckLabel(folder, checked: bot.folder == folder)
                         }
                     }
                     if bot.folder != nil {
@@ -800,7 +796,7 @@ struct BotPage: View {
         if Self.isAside(current) && Self.isAside(previous) { return Theme.Space.xs }
         if Self.isAside(current) { return Theme.Space.step }
         switch current {
-        case .approval, .question, .failure, .limits: return Theme.Space.gutter
+        case .approval, .question, .failure: return Theme.Space.gutter
         default: return 20
         }
     }
@@ -1196,40 +1192,6 @@ struct Topbar<Trailing: View>: View {
         }
         .padding(.horizontal, Theme.Space.section)
         .frame(height: 64)
-    }
-}
-
-struct MachineButton: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.palette) private var palette
-    let bot: Bot
-
-    var body: some View {
-        Menu {
-            Button("This Mac") { model.assign(bot, to: nil) }
-            if !model.machines.isEmpty {
-                Divider()
-                ForEach(model.machines) { machine in
-                    Button(machine.name) { model.assign(bot, to: machine.id) }
-                }
-            }
-        } label: {
-            HStack(spacing: Theme.Space.tight) {
-                Image(systemName: bot.machineID == nil ? "laptopcomputer" : "server.rack")
-                    .font(.system(size: Theme.scaled(11)))
-                Text(label).font(Theme.Typography.body)
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .foregroundStyle(palette.foreground)
-    }
-
-    private var label: String {
-        guard let id = bot.machineID,
-              let machine = model.machines.first(where: { $0.id == id })
-        else { return "This Mac" }
-        return machine.name
     }
 }
 

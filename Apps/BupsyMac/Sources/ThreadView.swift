@@ -305,9 +305,6 @@ struct Bubble: View {
                     .padding(.vertical, Theme.Space.hairline)
             }
 
-        case .limits(let limits):
-            botAligned { LimitsGauge(limits: limits) }
-
         case .failure(let failure):
             if FailureNotice.isRosterNote(failure) {
                 // Not a run that broke: bupsy telling you a message had nowhere to go. A note,
@@ -833,18 +830,6 @@ struct FailureNotice: View {
         case .cancelled: "Stopped"
         case .unknown: "Something went wrong"
         }
-    }
-}
-
-struct TypingIndicator: View {
-    let bot: Bot
-
-    var body: some View {
-        HStack(spacing: Theme.Space.tight) {
-            ThinkingOrbs(hue: bot.avatarHue, dotSize: 6)
-            Spacer(minLength: 0)
-        }
-        .padding(.leading, ThreadLayout.gutter)
     }
 }
 
