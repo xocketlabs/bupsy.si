@@ -138,7 +138,8 @@ struct ToolNameTests {
 struct BupsyOwnToolsPolicyTests {
     @Test("are not gated twice — bupsy asks about their effects itself")
     func bupsyToolsSkipTheGate() {
-        for tool in ["mcp__bupsy__create_bot", "mcp__bupsy__message_bot", "mcp__bupsy__list_bots"] {
+        for tool in ["mcp__bupsy__create_bot", "mcp__bupsy__message_bot", "mcp__bupsy__list_bots",
+                     "mcp__bupsy__update_me", "mcp__bupsy__ask_person"] {
             for autonomy in [Autonomy.ask, .allowlist, .trusted] {
                 if case .ask = AutonomyPolicy.decide(tool: tool, autonomy: autonomy) {
                     Issue.record("\(tool) asked under \(autonomy)")
@@ -148,6 +149,15 @@ struct BupsyOwnToolsPolicyTests {
         // Another server's tools still ask.
         if case .allow = AutonomyPolicy.decide(tool: "mcp__bupsyx__send", autonomy: .trusted) {
             Issue.record("a lookalike server was let through")
+        }
+        // A connector named `bupsy__x` yields `mcp__bupsy__x__…`, which a prefix match let
+        // through at every level. Only bupsy's exact tool names skip the gate.
+        for tool in ["mcp__bupsy__x__send", "mcp__bupsy__delete_everything"] {
+            for autonomy in [Autonomy.ask, .allowlist, .trusted] {
+                if case .allow = AutonomyPolicy.decide(tool: tool, autonomy: autonomy) {
+                    Issue.record("\(tool) was let through under \(autonomy)")
+                }
+            }
         }
     }
 }

@@ -116,12 +116,13 @@ public struct CodexAdapter: EngineAdapter {
     }
 
     public func invocation(for request: RunRequest) -> EngineInvocation {
+        // Every option goes on `exec`, before any `resume`. `codex exec resume` accepts only a
+        // subset of exec's flags and rejects `--sandbox` and `-C` outright ("unexpected argument
+        // '--sandbox' found"), which failed every resumed run before it began. The flags it does
+        // share (`--json`, `-m`, `--skip-git-repo-check`, the bypass) are accepted on `exec`
+        // ahead of the subcommand too, so one ordering serves both shapes. Checked against
+        // `codex exec --help` and `codex exec resume --help` (codex-cli 0.160).
         var arguments = ["exec", "--json"]
-
-        if let resume = request.resume {
-            // `exec resume <thread_id>` continues a thread; the prompt follows.
-            arguments += ["resume", resume.rawValue]
-        }
 
         let sandbox = Self.sandbox(for: request.autonomy)
         arguments += ["--sandbox", sandbox]
@@ -149,6 +150,18 @@ public struct CodexAdapter: EngineAdapter {
         }
         if let cwd = request.workingDirectory {
             arguments += ["-C", cwd.path]
+        }
+        if let resume = request.resume {
+            // `exec [options] resume <thread_id>` continues a thread; the prompt follows.
+            arguments += ["resume", resume.rawValue]
+        }
+        if ClaudeAdapter.startsLikeOption(request.prompt) {
+            // The prompt is positional, so one starting with "-" (a persona line such as
+            // "- be terse", a pasted flag) was read as an option — and
+            // "--dangerously-bypass-approvals-and-sandbox" is one. "--" ends option parsing;
+            // both `exec` and `exec resume` honour it. Only for such prompts, matching bupsy-run,
+            // so ordinary ones keep the argv the conformance cases pin.
+            arguments.append("--")
         }
         arguments.append(request.prompt)
 

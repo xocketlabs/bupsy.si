@@ -78,6 +78,20 @@ struct LocalHostTests {
         #expect(output.contains(.exit(code: 0)))
     }
 
+    /// `read(upToCount: 4096)` waited for a full 4 KB or the end of the pipe, so a short line sat
+    /// unseen until the engine wrote more or exited — a live run that looked frozen.
+    @Test("a line arrives as soon as it is written, not when the process exits")
+    func linesArriveLive() async throws {
+        let stream = try await host.spawn(EngineInvocation(
+            executable: "sh", arguments: ["-c", "echo early; exec sleep 10"]))
+        let clock = ContinuousClock()
+        let started = clock.now
+        var iterator = stream.makeAsyncIterator()
+        let first = try await iterator.next()
+        #expect(first == .stdout("early"))
+        #expect(clock.now - started < .seconds(5), "the line waited for the process to exit")
+    }
+
     @Test("reports a non-zero exit rather than swallowing it")
     func reportsExitCode() async throws {
         let output = try await collect(EngineInvocation(executable: "sh", arguments: ["-c", "exit 3"]))
@@ -189,5 +203,117 @@ struct LineReaderTests {
     func keepsEmptyLines() {
         var reader = LineReader(FileHandle.nullDevice)
         #expect(reader.take(Data("a\n\nb\n".utf8)) == ["a", "", "b"])
+    }
+
+    /// A line built up over many chunks used to be rescanned from its start on every chunk,
+    /// so one long line cost quadratic time. 4 MB in 4 KB reads is a thousand chunks.
+    @Test("a long line built from many chunks is reassembled whole")
+    func longLineAcrossManyChunks() {
+        var reader = LineReader(FileHandle.nullDevice)
+        let piece = Data(repeating: UInt8(ascii: "x"), count: 4096)
+        for _ in 0..<1024 { #expect(reader.take(piece).isEmpty) }
+        let lines = reader.take(Data("y\nnext\n".utf8))
+        #expect(lines.count == 2)
+        #expect(lines.first?.count == 4096 * 1024 + 1)
+        #expect(lines.last == "next")
+    }
+
+    /// Past the limit a line is dropped and flagged, not held: a process that never writes a
+    /// newline would otherwise grow the buffer until the app ran out of memory.
+    @Test("a line past the limit is dropped and flagged, and reading carries on")
+    func capsLineLength() {
+        var reader = LineReader(FileHandle.nullDevice, maximumLineLength: 10)
+        #expect(reader.take(Data("short\n".utf8)) == ["short"])
+        #expect(reader.take(Data("0123456789AB".utf8)) == [LineReader.truncatedLineMarker])
+        // The rest of the runaway line is discarded up to its newline, then normal service.
+        #expect(reader.take(Data("more junk".utf8)).isEmpty)
+        #expect(reader.take(Data("tail\nok\n".utf8)) == ["ok"])
+        // Over-long within a single chunk too.
+        #expect(reader.take(Data("0123456789ABCDEF\nfine\n".utf8))
+            == [LineReader.truncatedLineMarker, "fine"])
+        #expect(reader.flush().isEmpty)
+    }
+}
+
+@Suite("Stopping a run")
+struct ProcessStopTests {
+    private func scratch() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bupsy-stop-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// Waits for a condition with a deadline, so a regression fails instead of hanging.
+    private func eventually(
+        within: Duration = .seconds(5), _ condition: () -> Bool
+    ) async throws -> Bool {
+        let clock = ContinuousClock()
+        let end = clock.now + within
+        while clock.now < end {
+            if condition() { return true }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
+    private func isAlive(_ pid: Int32) -> Bool { kill(pid, 0) == 0 }
+
+    /// Stop pressed in the gap between `spawn` and the child actually starting. The termination
+    /// handler found nothing running, and the pump then launched the engine anyway — a bot the
+    /// person had stopped, working on with nobody reading it.
+    @Test("a stream cancelled before launch never runs the process")
+    func cancelledBeforeLaunchNeverRuns() async throws {
+        let folder = try scratch()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let marker = folder.appendingPathComponent("ran").path
+
+        let box = ProcessBox(
+            executable: URL(fileURLWithPath: "/bin/sh"),
+            invocation: EngineInvocation(
+                executable: "/bin/sh", arguments: ["-c", "touch '\(marker)'; exec /bin/sleep 30"]))
+        let (gate, open) = AsyncStream<Void>.makeStream()
+        box.beforeLaunch = { for await _ in gate { return } }
+
+        let stream = box.start()
+        let consumer = Task { for try await _ in stream {} }
+        consumer.cancel()
+        _ = try? await consumer.value
+        open.yield()
+
+        #expect(try await eventually { box.launch != .pending })
+        #expect(box.launch == .skipped)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(!FileManager.default.fileExists(atPath: marker), "the process ran after Stop")
+    }
+
+    /// Stop must reach what the engine started — the shell commands and servers that do the
+    /// actual work — and must not be defeated by one that ignores SIGTERM.
+    @Test("stopping a run kills its whole process group, escalating past an ignored SIGTERM")
+    func stopKillsTheGroup() async throws {
+        let box = ProcessBox(
+            executable: URL(fileURLWithPath: "/bin/sh"),
+            invocation: EngineInvocation(
+                executable: "/bin/sh",
+                // Ignored signals survive exec, so the grandchild shrugs off SIGTERM too.
+                arguments: ["-c", "trap '' TERM; /bin/sleep 30 & echo $!; wait"]),
+            killGrace: .milliseconds(300))
+
+        let stream = box.start()
+        let (pids, found) = AsyncStream<Int32>.makeStream()
+        let consumer = Task {
+            for try await output in stream {
+                if case .stdout(let line) = output, let pid = Int32(line) { found.yield(pid) }
+            }
+        }
+        var iterator = pids.makeAsyncIterator()
+        let grandchild = try #require(await iterator.next())
+        let engine = box.processIdentifier
+        #expect(isAlive(grandchild))
+
+        consumer.cancel()
+
+        #expect(try await eventually { !isAlive(engine) }, "the engine survived Stop")
+        #expect(try await eventually { !isAlive(grandchild) }, "a tool it started survived Stop")
     }
 }

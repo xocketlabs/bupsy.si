@@ -215,17 +215,65 @@ struct CloudHostTests {
 
     @Test("translates cron into a systemd OnCalendar expression")
     func cronTranslation() throws {
-        #expect(try CloudHost.onCalendar(fromCron: "0 7 * * 1-5") == "Mon..Fri *-*-* 7:0:00")
-        #expect(try CloudHost.onCalendar(fromCron: "30 9 * * *") == "*-*-* 9:30:00")
-        #expect(try CloudHost.onCalendar(fromCron: "0 6 1 * *") == "*-*-1 6:0:00")
-        #expect(try CloudHost.onCalendar(fromCron: "0 8 * * 1,3") == "Mon,Wed *-*-* 8:0:00")
+        #expect(try CloudHost.onCalendar(fromCron: "0 7 * * 1-5") == ["Mon..Fri *-*-* 7:0:00"])
+        #expect(try CloudHost.onCalendar(fromCron: "30 9 * * *") == ["*-*-* 9:30:00"])
+        #expect(try CloudHost.onCalendar(fromCron: "0 6 1 * *") == ["*-*-1 6:0:00"])
+        #expect(try CloudHost.onCalendar(fromCron: "0 8 * * 1,3") == ["Mon,Wed *-*-* 8:0:00"])
+    }
+
+    /// Splitting the text on "," and "-" read `1-3,5` as `Mon..Tue..Wed..Fri`, which systemd
+    /// rejects, and put an hour range's "-" where systemd expects the date separator.
+    @Test("translates mixed lists and ranges into systemd's own syntax")
+    func cronListsAndRanges() throws {
+        #expect(try CloudHost.onCalendar(fromCron: "0 9 * * 1-3,5")
+            == ["Mon..Wed,Fri *-*-* 9:0:00"])
+        #expect(try CloudHost.onCalendar(fromCron: "0,30 9-17 * * *")
+            == ["*-*-* 9..17:0,30:00"])
+        #expect(try CloudHost.onCalendar(fromCron: "0 7 1-3,15 6-8 *")
+            == ["*-6..8-1..3,15 7:0:00"])
+        // Sunday is 0 or 7 in cron and last in systemd's Monday-first week.
+        #expect(try CloudHost.onCalendar(fromCron: "0 10 * * 5-7") == ["Fri..Sun *-*-* 10:0:00"])
+        #expect(try CloudHost.onCalendar(fromCron: "0 10 * * 0,6") == ["Sat,Sun *-*-* 10:0:00"])
+    }
+
+    /// cron fires when EITHER restricted day field matches; one systemd expression needs both.
+    @Test("day-of-month and weekday together become two calendars, as cron's either-or")
+    func cronDayFieldsUnion() throws {
+        #expect(try CloudHost.onCalendar(fromCron: "0 9 1 * 1")
+            == ["*-*-1 9:0:00", "Mon *-*-* 9:0:00"])
     }
 
     /// A schedule that quietly fires at the wrong time is worse than one that refuses to install.
-    @Test("refuses step syntax rather than mistranslating it")
+    @Test("refuses step syntax and other unsupported forms rather than mistranslating them")
     func rejectsUnsupportedCron() {
-        #expect(throws: HostError.self) { try CloudHost.onCalendar(fromCron: "*/5 * * * *") }
-        #expect(throws: HostError.self) { try CloudHost.onCalendar(fromCron: "0 7 * *") }
+        for cron in ["*/5 * * * *", "0 7 * *", "0 9 * * MON", "0 9 * * 5-1", "0 25 * * *",
+                     "0 9 * JAN *"] {
+            #expect(throws: HostError.self, "\(cron)") { try CloudHost.onCalendar(fromCron: cron) }
+        }
+    }
+
+    /// systemd expands `$` and `%` on an ExecStart line, even inside quotes, so the command is
+    /// shipped as a script file and ExecStart names only that file.
+    @Test("the routine's command reaches bash verbatim, never through ExecStart")
+    func triggerCommandIsAScript() async throws {
+        MockProtocol.reply(200, #"{"ok":true,"exitCode":0,"stdout":"","stderr":""}"#)
+        let command = #"bupsy-run "50% done" $HOME 'it''s'"#
+        try await host().installTrigger(
+            HostTrigger(id: "brief", cron: "0 7 * * 1-5", command: command))
+        let body = try #require(MockProtocol.lastBody)
+        let install = (body["command"] as? String) ?? ""
+        #expect(install.contains("'/tmp/bupsy-brief.sh' '/usr/local/lib/bupsy/bupsy-brief.sh'"))
+        #expect(!install.contains("50%"))
+    }
+
+    @Test("refuses a routine id that is not safe as a unit and file name")
+    func rejectsUnsafeTriggerID() async throws {
+        for id in ["a b", "x;rm -rf /", "../up", "", "it's"] {
+            await #expect(throws: HostError.self, "\(id)") {
+                try await host().installTrigger(
+                    HostTrigger(id: id, cron: "0 7 * * *", command: "true"))
+            }
+        }
     }
 
     @Test("installs a systemd timer, not a crontab")
@@ -236,7 +284,7 @@ struct CloudHostTests {
 
         let body = try #require(MockProtocol.lastBody)
         let command = (body["command"] as? String) ?? ""
-        #expect(command.contains("systemctl enable --now bupsy-brief.timer"))
+        #expect(command.contains("systemctl enable --now 'bupsy-brief.timer'"))
         #expect(command.contains("daemon-reload"))
         #expect(!command.contains("crontab"))
     }
