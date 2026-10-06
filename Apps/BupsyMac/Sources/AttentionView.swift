@@ -165,7 +165,7 @@ struct AttentionRow: View {
                     }
                 }
             } trailing: {
-                Button("Open") { model.selectedBotID = bot?.id }
+                Button("Open") { if let id = bot?.id { model.open(id) } }
                     .buttonStyle(QuietButton(compact: true))
             }
         }

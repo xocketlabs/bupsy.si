@@ -17,6 +17,11 @@ struct RoutineDetailView: View {
     /// Worked out off the main thread: a schedule that rarely matches can take a while to search.
     @State private var nextRun: Date?
     @State private var scheduleReadable = true
+    /// The width the page's content has, measured, so the two panels can stack when narrow.
+    @State private var contentWidth: CGFloat = 800
+
+    /// Below this the schedule and "what it does" panels sit one above the other.
+    private static let stackBelow: CGFloat = 640
 
     init(routine: Routine, bot: Bot, onClose: @escaping () -> Void) {
         self.routine = routine
@@ -29,6 +34,10 @@ struct RoutineDetailView: View {
     var body: some View {
         let runs = model.runs(of: routine)
         let stats = RoutineRunStats(runs: runs, cron: routine.cron)
+        let stacked = contentWidth < Self.stackBelow
+        let panels = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.gutter))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Space.gutter))
 
         VStack(spacing: 0) {
             topbar
@@ -37,15 +46,22 @@ struct RoutineDetailView: View {
                     header
                     if !routine.enabled { pausedBanner }
                     statTiles(stats)
-                    HStack(alignment: .top, spacing: Theme.Space.gutter) {
+                    panels {
                         schedulePanel
-                            .frame(minWidth: 220, maxWidth: 340)
+                            .frame(minWidth: stacked ? nil : 220, maxWidth: stacked ? .infinity : 340)
                         whatItDoesPanel
                             .frame(maxWidth: .infinity)
                     }
                     lastRuns(runs)
                 }
                 .frame(maxWidth: Theme.Size.contentMaxWidth, alignment: .leading)
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { contentWidth = proxy.size.width }
+                            .onChange(of: proxy.size.width) { _, width in contentWidth = width }
+                    }
+                }
                 .padding(.horizontal, Theme.Space.section + Theme.Space.snug)
                 .padding(.top, Theme.Space.snug)
                 .padding(.bottom, Theme.Space.section)
@@ -161,7 +177,9 @@ struct RoutineDetailView: View {
     // MARK: - Numbers
 
     private func statTiles(_ stats: RoutineRunStats) -> some View {
-        HStack(spacing: Theme.Space.step) {
+        // Wraps onto more rows when there is no room for three across.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: Theme.Space.step)],
+                  alignment: .leading, spacing: Theme.Space.step) {
             RoutineStatTile(
                 icon: "play.fill", label: "Runs this week",
                 value: "\(stats.runsThisWeek)",

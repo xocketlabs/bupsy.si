@@ -21,6 +21,14 @@ struct StartChatPalette: View {
 
     @State private var query = ""
     @State private var highlighted = 0
+    /// Worked out once per change of what was typed, not on every read: the list, its height,
+    /// the arrow keys and Return all read it, and each read used to walk every thread again.
+    @State private var rows: [PaletteItem] = []
+    /// True when what was typed matched nothing and the only row is "Make a bot called ...".
+    @State private var matchesNothing = false
+    /// The full bot creator, opened from "Make a bot called ..." with the name filled in.
+    @State private var isCreatingNamed = false
+    @State private var namedDraft = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,11 +40,27 @@ struct StartChatPalette: View {
                 hints
             }
         }
-        .frame(width: 640)
+        .frame(maxWidth: .infinity)
         .background(palette.popover, in: .rect(cornerRadius: Theme.Radius.bubble))
         .clipShape(.rect(cornerRadius: Theme.Radius.bubble))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.bubble).strokeBorder(palette.border))
         .shadow(color: .black.opacity(0.18), radius: 32, y: 14)
+        .onAppear(perform: refreshRows)
+        .onChange(of: query) { refreshRows() }
+        .onChange(of: model.bots.count) { refreshRows() }
+        .onChange(of: model.groups.count) { refreshRows() }
+        // Hung on the palette, which stays up behind it, so the sheet is not torn down with it.
+        // Closing the creator, by saving or cancelling, closes the palette too.
+        .sheet(isPresented: $isCreatingNamed, onDismiss: onDismiss) {
+            BotCreatorSheet(name: namedDraft)
+        }
+    }
+
+    private func refreshRows() {
+        let (items, nothing) = buildRows()
+        rows = items
+        matchesNothing = nothing
+        if !rows.indices.contains(highlighted) { highlighted = 0 }
     }
 
     private var needle: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
@@ -74,6 +98,21 @@ struct StartChatPalette: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
+                    if matchesNothing {
+                        // A napping grey bot: nothing found is not an error.
+                        HStack(spacing: Theme.Space.step) {
+                            BotFace(hue: 0, mood: .sleeping, size: 48, shape: .bup, colour: 0)
+                                .saturation(0)
+                                .opacity(0.7)
+                                .accessibilityHidden(true)
+                            Text("Nothing matches \"\(query)\"")
+                                .font(.system(size: Theme.scaled(13.5)))
+                                .foregroundStyle(palette.mutedForeground)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, Theme.Space.snug)
+                    }
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         if index == 0 || rows[index - 1].section != row.section {
                             Text(row.section)
@@ -88,21 +127,6 @@ struct StartChatPalette: View {
                         }
                         .id(row.id)
                         .onHover { if $0 { highlighted = index } }
-                    }
-                    if rows.isEmpty {
-                        // A napping grey bot: nothing found is not an error.
-                        HStack(spacing: Theme.Space.step) {
-                            BotFace(hue: 0, mood: .sleeping, size: 48, shape: .bup, colour: 0)
-                                .saturation(0)
-                                .opacity(0.7)
-                                .accessibilityHidden(true)
-                            Text("Nothing matches \"\(query)\"")
-                                .font(.system(size: Theme.scaled(13.5)))
-                                .foregroundStyle(palette.mutedForeground)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 20)
                     }
                 }
                 .padding(8)
@@ -120,6 +144,7 @@ struct StartChatPalette: View {
         guard !rows.isEmpty else { return 104 }
         let sections = Set(rows.map(\.section)).count
         let height = rows.reduce(0) { $0 + ($1.isMessage ? 62 : 58) } + CGFloat(sections) * 30 + 16
+            + (matchesNothing ? 72 : 0)
         return min(height, 420)
     }
 
@@ -146,7 +171,7 @@ struct StartChatPalette: View {
         .padding(.vertical, 10)
     }
 
-    private var rows: [PaletteItem] {
+    private func buildRows() -> ([PaletteItem], Bool) {
         let needle = self.needle
         var items: [PaletteItem] = []
         let create: [PaletteItem] = [
@@ -171,7 +196,7 @@ struct StartChatPalette: View {
 
         if needle.isEmpty {
             items += searchFirst ? chats + create : create + chats
-            return items
+            return (items, false)
         }
 
         items += chats.filter { $0.title.lowercased().contains(needle) }
@@ -194,11 +219,31 @@ struct StartChatPalette: View {
                                             title: bot.name, subtitle: PlainPreview.of(text)))
             }
         }
-        items += messages.sorted {
-            if case .message(_, let a) = $0.kind, case .message(_, let b) = $1.kind { return a > b }
-            return false
-        }.prefix(12)
-        return items
+        // Group chats too: a message said in a group is as findable as one said to a bot.
+        for group in model.groups {
+            var count = 0
+            for message in model.groupThread(for: group).messages.reversed() {
+                guard count < 3 else { break }
+                guard message.author != GroupMessageRecord.systemAuthor,
+                      message.text.lowercased().contains(needle) else { continue }
+                count += 1
+                let who = message.isFromUser ? "You" : message.authorName
+                messages.append(PaletteItem(kind: .groupMessage(group, message.at), section: "Messages",
+                                            title: "\(who) in \(group.name)",
+                                            subtitle: PlainPreview.of(message.text)))
+            }
+        }
+        items += messages.sorted { ($0.messageDate ?? .distantPast) > ($1.messageDate ?? .distantPast) }
+            .prefix(12)
+        if items.isEmpty {
+            // Nothing by that name: offer to make one, in the full creator, already named.
+            let name = query.trimmingCharacters(in: .whitespaces)
+            items.append(PaletteItem(kind: .createNamed(name), section: "Create",
+                                     title: "Make a bot called \"\(name)\"",
+                                     subtitle: "Opens the bot creator with this name filled in"))
+            return (items, true)
+        }
+        return (items, false)
     }
 
     private func move(_ delta: Int) {
@@ -216,8 +261,11 @@ struct StartChatPalette: View {
         case .create: onCreate()
         case .createManually: onCreateManually()
         case .createGroup: onCreateGroup()
+        case .createNamed(let name):
+            namedDraft = name
+            isCreatingNamed = true
         case .bot(let bot), .message(let bot, _): onPick(bot.id)
-        case .group(let group): onPickGroup(group.id)
+        case .group(let group), .groupMessage(let group, _): onPickGroup(group.id)
         }
     }
 }
@@ -230,13 +278,25 @@ struct PaletteItem: Identifiable {
         case bot(Bot)
         case group(ChatGroup)
         case message(Bot, Date)
+        case groupMessage(ChatGroup, Date)
+        case createNamed(String)
     }
     let kind: Kind
     var section: String
     var title: String
     var subtitle: String
 
-    var isMessage: Bool { if case .message = kind { return true } else { return false } }
+    var isMessage: Bool { messageDate != nil }
+
+    var isCreateNamed: Bool { if case .createNamed = kind { return true } else { return false } }
+
+    /// When the message was said, for either kind of message row.
+    var messageDate: Date? {
+        switch kind {
+        case .message(_, let at), .groupMessage(_, let at): return at
+        default: return nil
+        }
+    }
 
     var id: String {
         switch kind {
@@ -246,6 +306,8 @@ struct PaletteItem: Identifiable {
         case .bot(let bot): "bot-" + bot.id.rawValue
         case .group(let group): "group-" + group.id
         case .message(let bot, let at): "msg-\(bot.id.rawValue)-\(at.timeIntervalSince1970)"
+        case .groupMessage(let group, let at): "gmsg-\(group.id)-\(at.timeIntervalSince1970)"
+        case .createNamed: "create-named"
         }
     }
 }
@@ -263,7 +325,7 @@ private struct PaletteRow: View {
             HStack(spacing: Theme.Space.step) {
                 icon.frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 1) {
-                    if case .message(_, let at) = row.kind {
+                    if let at = row.messageDate {
                         // Who said it and when, then the words, with the match marked.
                         Text("\(row.title), \(Theme.stamp(at))")
                             .font(Theme.Typography.label)
@@ -305,10 +367,11 @@ private struct PaletteRow: View {
         switch row.kind {
         case .bot(let bot), .message(let bot, _):
             BotFace(bot: bot, mood: mood(for: bot), size: 36)
-        case .group(let group):
+        case .group(let group), .groupMessage(let group, _):
             StackedFaces(bots: model.bots.filter { group.memberIDs.contains($0.id) }, size: 30)
-        case .create, .createGroup, .createManually:
-            let symbol = row.kind == .create ? "plus" : (row.kind == .createGroup ? "person.2.fill" : "gearshape.fill")
+        case .create, .createGroup, .createManually, .createNamed:
+            let symbol = row.kind == .createGroup ? "person.2.fill"
+                : (row.kind == .createManually ? "gearshape.fill" : "plus")
             Image(systemName: symbol)
                 .font(.system(size: Theme.scaled(13), weight: .medium))
                 .foregroundStyle(palette.foreground)
@@ -316,7 +379,7 @@ private struct PaletteRow: View {
                 .background {
                     ZStack {
                         RoundedRectangle(cornerRadius: Theme.Radius.base).fill(palette.card)
-                        if row.kind == .create {
+                        if row.kind == .create || row.isCreateNamed {
                             // The one thing the palette is mostly opened for gets the accent.
                             RoundedRectangle(cornerRadius: Theme.Radius.base).fill(palette.primary.opacity(0.16))
                         }

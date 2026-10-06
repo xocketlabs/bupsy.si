@@ -171,6 +171,10 @@ final class ApprovalNotificationActions: NSObject, UNUserNotificationCenterDeleg
     }
 
     private func handle(action: String, info: [String: String]) {
+        if action == UNNotificationDefaultActionIdentifier {
+            openBot(info: info)
+            return
+        }
         guard action == Self.allowAction || action == Self.denyAction else { return }
         guard let model else {
             waiting.append((action: action, info: info))
@@ -184,6 +188,22 @@ final class ApprovalNotificationActions: NSObject, UNUserNotificationCenterDeleg
               let approval = Self.pending(for: bot, info: info, in: model)
         else { return }
         model.decide(approval, allow: action == Self.allowAction, for: bot)
+    }
+
+    /// A click on the banner itself: the window comes forward (reopened if it was closed) on the
+    /// bot the banner was about. Every banner carries the bot's id; the name is the fallback for
+    /// one posted before ids were included.
+    private func openBot(info: [String: String]) {
+        guard let model else {
+            waiting.append((action: UNNotificationDefaultActionIdentifier, info: info))
+            return
+        }
+        let byID = info[Self.botIDKey].flatMap { id in model.bots.first { $0.id.rawValue == id } }
+        let byName = info[Self.botKey].flatMap { name in model.bots.first { $0.name == name } }
+        model.showMainWindow()
+        if let bot = byID ?? (info[Self.botIDKey] == nil ? byName : nil) {
+            model.open(bot.id)
+        }
     }
 
     /// The undecided request the banner was about: by id when it carried one, otherwise the one

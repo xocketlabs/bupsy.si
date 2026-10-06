@@ -14,6 +14,8 @@ struct BotCreatorSheet: View {
 
     /// The bot being edited, or nil to make a new one.
     var editing: Bot? = nil
+    /// A name to start a new bot with, such as what was typed into the palette.
+    var initialName: String? = nil
 
     @State private var name = ""
     @State private var role = ""
@@ -29,8 +31,9 @@ struct BotCreatorSheet: View {
     @State private var faceChanged = false
     @State private var loaded = false
 
-    init(editing: Bot? = nil) {
+    init(editing: Bot? = nil, name: String? = nil) {
         self.editing = editing
+        self.initialName = name
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
@@ -304,6 +307,7 @@ struct BotCreatorSheet: View {
             shape = bot.effectiveShape
             colour = bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue)
         } else {
+            if let initialName { name = initialName }
             // A fresh bot starts on a shape nobody else wears.
             shape = BotShape.allCases.first { !taken.contains($0) } ?? .bup
             colour = Int.random(in: 0..<BotShape.palette.count - 1)

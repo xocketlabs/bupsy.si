@@ -208,7 +208,7 @@ private struct UsageRow: View {
 
     var body: some View {
         Button {
-            model.selectedBotID = bot.id
+            model.open(bot.id)
         } label: {
             HStack(spacing: Theme.Space.gutter) {
                 BotFace(bot: bot, mood: working ? .working : .idle, size: 40)

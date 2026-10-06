@@ -32,7 +32,7 @@ struct KeyboardShortcutsSheet: View {
         ShortcutGroup(title: "Anywhere", shortcuts: [
             Shortcut(keys: ["Cmd", "N"], action: "Start a chat"),
             Shortcut(keys: ["Cmd", "F"], action: "Search bots"),
-            Shortcut(keys: ["Cmd", "1 to 9"], action: "Open one of your first nine bots"),
+            Shortcut(keys: ["Cmd", "1 to 9"], action: "Open the first nine bots in the sidebar, top to bottom"),
             Shortcut(keys: ["Cmd", ","], action: "Settings"),
             Shortcut(keys: ["Cmd", "/"], action: "Keyboard shortcuts"),
         ]),

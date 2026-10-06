@@ -29,18 +29,18 @@ Paths are under `Apps/BupsyMac/Sources` unless stated. The fixes are grouped int
 
 ## Batch 2: getting around, window and navigation
 
-- [ ] **P1** No minimum window size. At 900 wide with details open the chat column is about 270pt; the routine page and palette overflow; onboarding (620) and routine sheets (680) are taller than a 600 window. Add 900x600 min, auto-hide or overlay details below about 1100, size-bound sheets with scrolling. (CHAT-8, SET-8, NAV-14, SYS-8)
-- [ ] **P1** With 0 bots the sidebar highlights Machines; deleting the last bot shows "No bot selected" instead of the empty roster. BupsyApp.swift:118, :184. (ONB-3, ONB-4, NAV-4)
-- [ ] **P1** "Open" from Waiting on you, Usage rows, the menu bar and notifications does nothing when that bot is already selected. Route all through `pendingDestination`. (NAV-5, SET-15)
-- [ ] **P1** Deleting or hiding the selected bot from Team throws you into another bot's chat. AppModel.swift:2070,1877. (NAV-6)
-- [ ] **P1** Menu bar "Open Bupsy" and "New bot" can't reopen a closed window; Cmd N/O shown but not wired; no scroll for long rosters. MenuBar.swift:242-259. (SET-16, SYS-7, SET-34)
-- [ ] **P1** Clicking a notification body does nothing; notifications carry no bot id. Notifications.swift:150. (SET-18)
-- [ ] **P1** Cmd N may hit File > New Window and open a second window. Replace the newItem command group. (NAV-16, SYS-26)
-- [ ] **P1** Several `.sheet`s chained on one view in the rail and root; the code's own comments say one gets dropped. Move to a single `.sheet(item:)` enum. NavRail.swift:82-85, BupsyApp.swift:194. (NAV-17, ONB-26)
-- [ ] **P1** Palette has no scrim or click-outside to close, is fixed 640 wide, and recomputes search rows about 5 times per render; group messages not searched; no "make a bot called X" on empty. BupsyApp.swift:141, StartChat.swift:35,149. (NAV-13, NAV-38)
-- [ ] **P1** Cmd 1 to 9 follows the model order (including hidden bots), not the sidebar order, and stops working when a section folds. NavRail.swift:400,629. (NAV-15)
-- [ ] **P1** With 2+ bots and no sections, loose bots render under the GROUPS header and look like groups. NavRail.swift:251-268. (NAV-3)
-- [ ] **P1** Hide from sidebar is one-way; hidden bots can never be unhidden. Team says "No bots yet" when all are hidden. RosterView.swift:71, TeamView.swift:87. (NAV-11, ONB-27)
+- [x] **P1** No minimum window size. At 900 wide with details open the chat column is about 270pt; the routine page and palette overflow; onboarding (620) and routine sheets (680) are taller than a 600 window. Add 900x600 min, auto-hide or overlay details below about 1100, size-bound sheets with scrolling. (CHAT-8, SET-8, NAV-14, SYS-8)
+- [x] **P1** With 0 bots the sidebar highlights Machines; deleting the last bot shows "No bot selected" instead of the empty roster. BupsyApp.swift:118, :184. (ONB-3, ONB-4, NAV-4)
+- [x] **P1** "Open" from Waiting on you, Usage rows, the menu bar and notifications does nothing when that bot is already selected. Route all through `pendingDestination`. (NAV-5, SET-15)
+- [x] **P1** Deleting or hiding the selected bot from Team throws you into another bot's chat. AppModel.swift:2070,1877. (NAV-6)
+- [x] **P1** Menu bar "Open Bupsy" and "New bot" can't reopen a closed window; Cmd N/O shown but not wired; no scroll for long rosters. MenuBar.swift:242-259. (SET-16, SYS-7, SET-34)
+- [x] **P1** Clicking a notification body does nothing; notifications carry no bot id. Notifications.swift:150. (SET-18)
+- [x] **P1** Cmd N may hit File > New Window and open a second window. Replace the newItem command group. (NAV-16, SYS-26)
+- [x] **P1** Several `.sheet`s chained on one view in the rail and root; the code's own comments say one gets dropped. Move to a single `.sheet(item:)` enum. NavRail.swift:82-85, BupsyApp.swift:194. (NAV-17, ONB-26)
+- [x] **P1** Palette has no scrim or click-outside to close, is fixed 640 wide, and recomputes search rows about 5 times per render; group messages not searched; no "make a bot called X" on empty. BupsyApp.swift:141, StartChat.swift:35,149. (NAV-13, NAV-38)
+- [x] **P1** Cmd 1 to 9 follows the model order (including hidden bots), not the sidebar order, and stops working when a section folds. NavRail.swift:400,629. (NAV-15)
+- [x] **P1** With 2+ bots and no sections, loose bots render under the GROUPS header and look like groups. NavRail.swift:251-268. (NAV-3)
+- [x] **P1** Hide from sidebar is one-way; hidden bots can never be unhidden. Team says "No bots yet" when all are hidden. RosterView.swift:71, TeamView.swift:87. (NAV-11, ONB-27)
 
 ## Batch 3: one truth for "needs you" and the mascot's mood
 

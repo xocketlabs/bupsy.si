@@ -86,7 +86,19 @@ struct TeamView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.page - 8) {
                     header
-                    if visibleBots.isEmpty {
+                    if visibleBots.isEmpty && !model.bots.isEmpty {
+                        // Every bot is hidden from the sidebar, not gone: say so, and offer them back.
+                        EmptyState(title: "All your bots are hidden",
+                                   message: "They're still here, with their chats and routines. Show them to put them back in the sidebar and on this page.") {
+                            Button {
+                                for bot in model.bots where bot.hidden { model.toggleHidden(bot) }
+                            } label: {
+                                Label("Show them", systemImage: "eye")
+                            }
+                            .buttonStyle(PrimaryButton())
+                        }
+                        .padding(.top, Theme.Space.page)
+                    } else if visibleBots.isEmpty {
                         EmptyState(title: "No bots yet",
                                    message: "Make one and it shows up here, ready to file into a section.") {
                             Button { isAddingBot = true } label: {

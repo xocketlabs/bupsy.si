@@ -21,16 +21,12 @@ struct NavRail: View {
     /// rail does not contain.
     var onStartChat: () -> Void = {}
     var onSearch: () -> Void = {}
-    @State private var isAddingBot = false
-    @State private var isAddingGroup = false
+    /// The one sheet the rail has up, if any. One `.sheet(item:)` for all of them: several
+    /// chained `.sheet`s on one view and SwiftUI silently drops all but one.
+    @State private var sheet: RailSheet?
     @State private var isSearching = false
     @State private var showsYouMenu = false
-    @State private var showsShortcuts = false
     @State private var query = ""
-    @State private var renamingFolder: FolderName?
-    @State private var filingBot: Bot?
-    @State private var renamingBot: Bot?
-    @State private var renamingGroup: ChatGroup?
     /// Set to ask before deleting. Owned here, not by the context menu, which is gone on click.
     @State private var deletingBot: Bot?
     @State private var deletingGroup: ChatGroup?
@@ -45,7 +41,6 @@ struct NavRail: View {
     /// The section a bot made from its "+" should land in, and which bots existed before, so the
     /// new one can be told apart when the sheet closes.
     @State private var addingToSection: String?
-    @State private var isAddingToSection = false
     @State private var botsBeforeAdding: Set<BotID> = []
     @FocusState private var searchFocused: Bool
 
@@ -61,9 +56,39 @@ struct NavRail: View {
         case groups
     }
 
+    /// Every sheet the rail presents.
+    enum RailSheet: Identifiable {
+        case addBot
+        /// A new bot that is filed into `addingToSection` once the sheet closes.
+        case addBotToSection
+        case renameFolder(String)
+        case fileBot(Bot)
+        case editBot(Bot)
+        case customModel(Bot)
+        case addGroup
+        case renameGroup(ChatGroup)
+        case shortcuts
+
+        var id: String {
+            switch self {
+            case .addBot: "add-bot"
+            case .addBotToSection: "add-bot-to-section"
+            case .renameFolder(let name): "rename-folder-" + name
+            case .fileBot(let bot): "file-bot-" + bot.id.rawValue
+            case .editBot(let bot): "edit-bot-" + bot.id.rawValue
+            case .customModel(let bot): "custom-model-" + bot.id.rawValue
+            case .addGroup: "add-group"
+            case .renameGroup(let group): "rename-group-" + group.id
+            case .shortcuts: "shortcuts"
+            }
+        }
+    }
+
     /// Keys for the fixed collapsible sections, kept apart from section names people type.
     private static let groupsKey = "\u{1}groups"
     private static let unassignedKey = "\u{1}unassigned"
+    /// The Hidden section is folded unless this key is in the folded set: folded by default.
+    private static let hiddenOpenKey = "\u{1}hidden-open"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -87,32 +112,23 @@ struct NavRail: View {
         .padding(.bottom, Theme.Space.snug)
         .frame(width: 276)
         .background(palette.sidebar)
-        .sheet(isPresented: $isAddingBot) { BotCreatorSheet() }
-        .sheet(item: $renamingFolder) { RenameFolderSheet(folder: $0.id) }
-        .sheet(item: $filingBot) { NewFolderSheet(bot: $0) }
-        .sheet(item: $renamingBot) { BotCreatorSheet(editing: $0) }
-        // On its own empty view: two sheets on one view and SwiftUI silently drops one.
-        .background {
-            Color.clear.sheet(item: Binding(get: { model.customModelBot },
-                                            set: { model.customModelBot = $0 })) {
-                CustomModelSheet(bot: $0)
+        // Cmd 1 to 9, registered once here rather than on the rows, so they follow the order the
+        // list shows and keep working while a section is folded.
+        .background { numberShortcuts }
+        // `fileNewBots` only does anything after the section "+", which sets `addingToSection`.
+        .sheet(item: sheetBinding, onDismiss: { fileNewBots() }) { item in
+            switch item {
+            case .addBot, .addBotToSection: BotCreatorSheet()
+            case .renameFolder(let name): RenameFolderSheet(folder: name)
+            case .fileBot(let bot): NewFolderSheet(bot: bot)
+            case .editBot(let bot): BotCreatorSheet(editing: bot)
+            case .customModel(let bot): CustomModelSheet(bot: bot)
+            case .addGroup: NewGroupSheet(onCreated: { group in destination = .group(group.id) })
+            case .renameGroup(let group): RenameGroupSheet(group: group)
+            case .shortcuts: KeyboardShortcutsSheet()
             }
         }
-        .background {
-            Color.clear.sheet(isPresented: $isAddingToSection, onDismiss: { fileNewBots() }) {
-                BotCreatorSheet()
-            }
-        }
-        .background {
-            Color.clear.sheet(isPresented: $isAddingGroup) {
-                NewGroupSheet(onCreated: { group in destination = .group(group.id) })
-            }
-        }
-        .sheet(item: $renamingGroup) { RenameGroupSheet(group: $0) }
-        .background {
-            Color.clear.sheet(isPresented: $showsShortcuts) { KeyboardShortcutsSheet() }
-        }
-        // Each on its own empty view, for the same reason as the sheets above.
+        // Each on its own empty view: two dialogs on one view and SwiftUI silently drops one.
         .background {
             Color.clear.confirmsBotDeletion($deletingBot) { bot in
                 model.deleteBot(bot)
@@ -149,8 +165,45 @@ struct NavRail: View {
         // Help > Keyboard shortcuts (Cmd /) lives on the app; the sheet hangs here.
         .onReceive(NotificationCenter.default.publisher(for: .bupsyShowKeyboardShortcuts)) { _ in
             showsYouMenu = false
-            showsShortcuts = true
+            sheet = .shortcuts
         }
+    }
+
+    /// The rail's own sheet, or else the custom-model sheet the model asks for (opened from the
+    /// bot page's menu as well as the rail's, so the request lives on the model).
+    private var sheetBinding: Binding<RailSheet?> {
+        Binding(
+            get: { sheet ?? model.customModelBot.map { RailSheet.customModel($0) } },
+            set: { newValue in
+                if let newValue {
+                    sheet = newValue
+                } else if sheet != nil {
+                    sheet = nil
+                } else {
+                    model.customModelBot = nil
+                }
+            })
+    }
+
+    /// The bots in the order the list shows them: pinned, then each section in order, then the
+    /// unassigned ones. Hidden bots are left out. Folding a section does not change it.
+    private var visibleOrder: [Bot] {
+        model.pinnedBots + model.folders.flatMap { model.bots(in: $0) } + model.ungroupedBots
+    }
+
+    /// Invisible buttons carrying Cmd 1 to Cmd 9 for the first nine bots in `visibleOrder`.
+    private var numberShortcuts: some View {
+        let order = Array(visibleOrder.prefix(9))
+        return ZStack {
+            ForEach(Array(order.enumerated()), id: \.element.id) { index, bot in
+                Button("Open \(bot.name)") { destination = .bot(bot.id) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            }
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// The folded set, read from and written back to the saved JSON.
@@ -176,7 +229,6 @@ struct NavRail: View {
                 .keyboardShortcut("f", modifiers: .command)
 
             headerButton("plus", help: "Start a chat (Cmd N)") { onStartChat() }
-                .keyboardShortcut("n", modifiers: .command)
         }
         .padding(.leading, Theme.Space.snug)
         .padding(.trailing, 2)
@@ -275,7 +327,7 @@ struct NavRail: View {
                                               onAdd: { startAdding(to: folder) })
                                     .contextMenu {
                                         Button("Rename section…") {
-                                            renamingFolder = FolderName(folder)
+                                            sheet = .renameFolder(folder)
                                         }
                                         // Named for what it does. "Delete folder" would read as
                                         // deleting the bots inside it, which it never does.
@@ -295,10 +347,11 @@ struct NavRail: View {
                     let loose = model.ungroupedBots
                     if !loose.isEmpty {
                         VStack(alignment: .leading, spacing: 2) {
-                            // Only headed once anything above has a heading: with no sections
-                            // these are simply the list.
-                            if !model.folders.isEmpty || !model.groups.isEmpty
-                                || !model.pinnedBots.isEmpty {
+                            // Only headed once anything else in the list has a heading: with no
+                            // sections these are simply the list. The Groups header counts even
+                            // with no groups in it, or these bots would read as its groups.
+                            if !model.folders.isEmpty || showsGroupsSection
+                                || !model.pinnedBots.isEmpty || !hiddenBots.isEmpty {
                                 sectionHeader(model.folders.isEmpty ? "Bots" : "Unassigned",
                                               key: Self.unassignedKey, members: loose,
                                               addHelp: "New bot",
@@ -310,6 +363,8 @@ struct NavRail: View {
                         }
                     }
 
+                    hiddenSection
+
                     if model.bots.isEmpty { empty }
                 }
             }
@@ -320,15 +375,82 @@ struct NavRail: View {
         .frame(maxHeight: .infinity)
     }
 
+    private var showsGroupsSection: Bool {
+        !model.groups.isEmpty || model.bots.count >= 2
+    }
+
+    private var hiddenBots: [Bot] { model.bots.filter(\.hidden) }
+
+    /// Bots taken out of the sidebar, folded at the bottom so they can be put back. Only there
+    /// when something is hidden.
+    @ViewBuilder
+    private var hiddenSection: some View {
+        let hidden = hiddenBots
+        if !hidden.isEmpty {
+            let isOpen = collapsed.contains(Self.hiddenOpenKey)
+            VStack(alignment: .leading, spacing: 2) {
+                SidebarSectionHeader(
+                    title: "Hidden",
+                    collapsible: true,
+                    collapsed: !isOpen,
+                    count: isOpen ? nil : hidden.count,
+                    countIsUrgent: false,
+                    addHelp: "",
+                    onToggle: {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            var folded = collapsed
+                            if folded.contains(Self.hiddenOpenKey) {
+                                folded.remove(Self.hiddenOpenKey)
+                            } else {
+                                folded.insert(Self.hiddenOpenKey)
+                            }
+                            collapsed = folded
+                        }
+                    },
+                    onAdd: nil,
+                    onTitle: nil)
+                if isOpen {
+                    ForEach(hidden) { bot in
+                        HStack(spacing: 2) {
+                            BotRow(
+                                bot: bot,
+                                preview: model.thread(for: bot.id).preview,
+                                mood: mood(for: bot),
+                                selected: destination == .bot(bot.id),
+                                unread: model.isUnread(bot),
+                                action: { destination = .bot(bot.id) })
+                            Button { model.toggleHidden(bot) } label: {
+                                Image(systemName: "eye")
+                                    .font(.system(size: Theme.scaled(11), weight: .medium))
+                                    .foregroundStyle(palette.sidebarMuted)
+                                    .frame(width: 26, height: 26)
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(SidebarIconButtonStyle())
+                            .help("Show in sidebar")
+                            .accessibilityLabel("Show \(bot.name) in sidebar")
+                        }
+                        .contextMenu {
+                            Button("Show in sidebar") { model.toggleHidden(bot) }
+                            Button("Open chat") { destination = .bot(bot.id) }
+                            Divider()
+                            Button("Delete bot…", role: .destructive) { deletingBot = bot }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Group chats: always present once there are bots to put in one, so its "+" is findable.
     @ViewBuilder
     private var groupsSection: some View {
-        if !model.groups.isEmpty || model.bots.count >= 2 {
+        if showsGroupsSection {
             VStack(alignment: .leading, spacing: 2) {
                 sectionHeader("Groups", key: Self.groupsKey, members: [],
                               count: model.groups.count,
                               addHelp: "New group chat",
-                              onAdd: { isAddingGroup = true },
+                              onAdd: { sheet = .addGroup },
                               onTitle: { destination = .groups })
                 if !collapsed.contains(Self.groupsKey) {
                     ForEach(model.groups) { group in
@@ -337,7 +459,7 @@ struct NavRail: View {
                                  action: { destination = .group(group.id) })
                         .contextMenu {
                             Button("Open chat") { destination = .group(group.id) }
-                            Button("Rename group…") { renamingGroup = group }
+                            Button("Rename group…") { sheet = .renameGroup(group) }
                             Divider()
                             // The conversation only. Its bots are untouched.
                             Button("Delete group…", role: .destructive) {
@@ -434,15 +556,13 @@ struct NavRail: View {
             matchedOnMessage: previewOf == bot.id,
             action: { destination = .bot(bot.id) }
         )
-        // The shortcut goes on the row *before* the context menu, never after: applied after, it
-        // propagated into every button inside the menu, Delete bot included.
-        .keyboardShortcut(shortcut(for: bot), modifiers: .command)
+        // Cmd 1 to 9 are not on the rows: see `numberShortcuts`.
         .contextMenu {
             Button("Open chat") { destination = .bot(bot.id) }
             Divider()
             BotMenu(bot: bot,
-                    onNewFolder: { filingBot = bot },
-                    onRename: { renamingBot = bot },
+                    onNewFolder: { sheet = .fileBot(bot) },
+                    onRename: { sheet = .editBot(bot) },
                     onDelete: { deletingBot = bot })
         }
     }
@@ -450,12 +570,12 @@ struct NavRail: View {
     /// Opens the new-bot sheet, and files whatever it made into `section` once it closes.
     private func startAdding(to section: String?) {
         guard let section else {
-            isAddingBot = true
+            sheet = .addBot
             return
         }
         botsBeforeAdding = Set(model.bots.map(\.id))
         addingToSection = section
-        isAddingToSection = true
+        sheet = .addBotToSection
     }
 
     private func fileNewBots() {
@@ -524,7 +644,7 @@ struct NavRail: View {
                     // is dropped.
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(250))
-                        showsShortcuts = true
+                        sheet = .shortcuts
                     }
                 }
                 accountItems
@@ -670,16 +790,6 @@ struct NavRail: View {
         // first thing for someone who just opened the app to read.
         let answered = EngineID.supported.allSatisfy { model.engineStatus[$0] != nil }
         return answered ? "No engine signed in" : "Checking sign-in…"
-    }
-
-    /// Cmd 1 to Cmd 9 for the first nine bots, in the order they appear.
-    private func shortcut(for bot: Bot) -> KeyEquivalent {
-        guard let index = model.bots.firstIndex(where: { $0.id == bot.id }), index < 9 else {
-            // No shortcut rather than a wrong one: KeyEquivalent has no "none", so a bot past
-            // the ninth gets a key nobody presses.
-            return KeyEquivalent("\u{0}")
-        }
-        return KeyEquivalent(Character("\(index + 1)"))
     }
 
     private func mood(for bot: Bot) -> BotMood {

@@ -75,7 +75,7 @@ struct OnboardingSheet: View {
             column
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 900, height: 620)
+        .frame(minWidth: 860, idealWidth: 900, maxWidth: 1040, minHeight: 540, idealHeight: 620, maxHeight: 700)
         .background(palette.popover)
         .interactiveDismissDisabled()
         .onAppear(perform: load)

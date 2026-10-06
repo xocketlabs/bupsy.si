@@ -42,32 +42,22 @@ struct BotPage: View {
     }
     private var objectives: [Objective] { model.objectives.filter { $0.botID == bot.id.rawValue } }
 
+    /// The details panel's width beside the chat.
+    private static let detailsWidth: CGFloat = 340
+    /// Narrower than this beside the panel and the chat is unreadable, so the panel floats over
+    /// the chat instead of squeezing it.
+    private static let minimumChatWidth: CGFloat = 420
+
+    /// The details are shown unless a routine page is open: that page needs the room, and the
+    /// remembered choice is left as it was, so Back brings the panel back.
+    private var detailsVisible: Bool { showsDetails && openRoutine == nil }
+
     var body: some View {
         // One card, like every page: the chat on the left and, when open, the bot's details on
         // the right behind a hairline, so the two read as one object rather than two windows.
         PanelSurface {
-            HStack(spacing: 0) {
-                // A routine opened from the panel takes the conversation's place, so its history
-                // and schedule have the room they need. Back returns to the chat as it was.
-                if let routine = openRoutine {
-                    RoutineDetailView(routine: routine, bot: bot, onClose: { openRoutineID = nil })
-                        .frame(maxWidth: .infinity)
-                } else {
-                    VStack(spacing: 0) {
-                        topbar
-                        conversation
-                        Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
-                                 replyingTo: $replyingTo,
-                                 onSend: send, onStop: { model.stop(bot.id) })
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-
-                if showsDetails {
-                    Rectangle().fill(palette.border).frame(width: 1)
-                    details
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
+            GeometryReader { proxy in
+                pageContent(size: proxy.size)
             }
         }
         .padding([.top, .bottom, .trailing], 8)
@@ -103,6 +93,62 @@ struct BotPage: View {
         .onChange(of: model.tourSheet, initial: true) { _, new in
             showsRoutines = new == "newRoutine"
             if new == "editBot" { editingBot = bot } else { editingBot = nil }
+        }
+    }
+
+    /// The page laid out for the width it has: details beside the chat when both fit, and
+    /// floating over the trailing edge of the chat, with a shadow and a close button, when not.
+    @ViewBuilder
+    private func pageContent(size: CGSize) -> some View {
+        let floating = size.width - Self.detailsWidth - 1 < Self.minimumChatWidth
+        HStack(spacing: 0) {
+            // A routine opened from the panel takes the conversation's place, so its history
+            // and schedule have the room they need. Back returns to the chat as it was.
+            if let routine = openRoutine {
+                RoutineDetailView(routine: routine, bot: bot, onClose: { openRoutineID = nil })
+                    .frame(maxWidth: .infinity)
+            } else {
+                VStack(spacing: 0) {
+                    topbar
+                    conversation
+                    Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
+                             replyingTo: $replyingTo,
+                             onSend: send, onStop: { model.stop(bot.id) })
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            if detailsVisible && !floating {
+                Rectangle().fill(palette.border).frame(width: 1)
+                details
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .overlay(alignment: .trailing) {
+            if detailsVisible && floating {
+                details
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.16)) { showsDetails = false }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: Theme.scaled(11), weight: .semibold))
+                                .foregroundStyle(palette.mutedForeground)
+                                .frame(width: 28, height: 28)
+                                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Hide details")
+                        .accessibilityLabel("Hide details")
+                        .padding(Theme.Space.snug)
+                    }
+                    .frame(maxHeight: .infinity)
+                    .background(palette.background)
+                    .shadow(color: .black.opacity(0.22), radius: 24, x: -6)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
     }
 
@@ -185,7 +231,7 @@ struct BotPage: View {
             .padding(.horizontal, 20)
             .padding(.vertical, Theme.Space.section)
         }
-        .frame(width: 340)
+        .frame(width: Self.detailsWidth)
         // Clipped, because a card wider than the panel should truncate rather than draw over the
         // conversation beside it.
         .clipped()

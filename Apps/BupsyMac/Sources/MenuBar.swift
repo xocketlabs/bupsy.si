@@ -15,6 +15,7 @@ import SwiftUI
 /// panel, for `.menuBarExtraStyle(.window)`.
 struct MenuBarView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let bots = model.bots.filter { !$0.hidden }
@@ -29,15 +30,14 @@ struct MenuBarView: View {
         Divider()
 
         Button {
-            if let id = model.quickCreateBot() { model.selectedBotID = id }
-            NSApp.activate(ignoringOtherApps: true)
+            MenuBarNavigation.show(model.quickCreateBot(), model: model, openWindow: openWindow)
         } label: {
             Label("New bot", systemImage: "plus")
         }
         .keyboardShortcut("n")
 
         Button {
-            NSApp.activate(ignoringOtherApps: true)
+            MenuBarNavigation.show(nil, model: model, openWindow: openWindow)
         } label: {
             Label("Open Bupsy", systemImage: "macwindow")
         }
@@ -97,6 +97,18 @@ struct MenuBarStatus {
     }
 }
 
+/// Brings the main window forward from the menu bar, reopening it if it was closed, then goes
+/// to a bot when there is one. Activating the app alone did nothing once the window was closed.
+@MainActor
+enum MenuBarNavigation {
+    static func show(_ botID: BotID?, model: AppModel, openWindow: OpenWindowAction) {
+        // `Window` scene: brings the existing window forward, or reopens it, never a second one.
+        openWindow(id: MainWindow.id)
+        NSApp.activate(ignoringOtherApps: true)
+        if let botID { model.open(botID) }
+    }
+}
+
 /// One bot in the native menu: its face, its name and what it is doing.
 ///
 /// A bot waiting on an approval opens a submenu with both answers. If a decision can be made from
@@ -104,6 +116,7 @@ struct MenuBarStatus {
 /// and a gate people switch off.
 struct MenuBarBotItem: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     let bot: Bot
 
     var body: some View {
@@ -138,8 +151,7 @@ struct MenuBarBotItem: View {
     }
 
     private func open() {
-        model.selectedBotID = bot.id
-        NSApp.activate(ignoringOtherApps: true)
+        MenuBarNavigation.show(bot.id, model: model, openWindow: openWindow)
     }
 }
 
@@ -147,6 +159,7 @@ struct MenuBarBotItem: View {
 /// way into the bot.
 struct MenuBarApproval: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     let item: AttentionItem
 
     private var bot: Bot? { model.bots.first { $0.id == item.botID } }
@@ -159,8 +172,7 @@ struct MenuBarApproval: View {
             }
         } else {
             Button(short(item.title)) {
-                model.selectedBotID = bot?.id
-                NSApp.activate(ignoringOtherApps: true)
+                MenuBarNavigation.show(bot?.id, model: model, openWindow: openWindow)
             }
         }
     }
@@ -212,6 +224,11 @@ struct MenuBarPanel: View {
 private struct MenuBarPanelContent: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
+    @Environment(\.openWindow) private var openWindow
+
+    /// The roster's height before it scrolls, so a long roster cannot push New bot and Quit off
+    /// the bottom of the screen.
+    private static let rosterCap: CGFloat = 360
 
     var body: some View {
         let bots = model.bots.filter { !$0.hidden }
@@ -231,6 +248,15 @@ private struct MenuBarPanelContent: View {
                     .foregroundStyle(palette.mutedForeground)
                     .padding(.horizontal, Theme.Space.step)
                     .padding(.vertical, Theme.Space.tight)
+            } else if estimatedHeight(of: bots) > Self.rosterCap {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(bots) { bot in
+                            MenuBarPanelBotRow(bot: bot)
+                        }
+                    }
+                }
+                .frame(height: Self.rosterCap)
             } else {
                 ForEach(bots) { bot in
                     MenuBarPanelBotRow(bot: bot)
@@ -240,12 +266,13 @@ private struct MenuBarPanelContent: View {
             separator
 
             MenuBarPanelAction(icon: "plus", title: "New bot", shortcut: "Cmd N") {
-                if let id = model.quickCreateBot() { model.selectedBotID = id }
-                NSApp.activate(ignoringOtherApps: true)
+                MenuBarNavigation.show(model.quickCreateBot(), model: model, openWindow: openWindow)
             }
+            .keyboardShortcut("n")
             MenuBarPanelAction(icon: "macwindow", title: "Open Bupsy", shortcut: "Cmd O") {
-                NSApp.activate(ignoringOtherApps: true)
+                MenuBarNavigation.show(nil, model: model, openWindow: openWindow)
             }
+            .keyboardShortcut("o")
             MenuBarPanelAction(icon: "stop.fill", title: "Stop all bots", shortcut: nil) {
                 model.stopEverything()
             }
@@ -264,6 +291,14 @@ private struct MenuBarPanelContent: View {
         .tint(palette.primary)
     }
 
+    /// Rows are 32pt, plus about 34 for the Allow and Deny line under a bot waiting on a tool.
+    /// Measured from the row's own layout rather than read back, so short rosters never scroll.
+    private func estimatedHeight(of bots: [Bot]) -> CGFloat {
+        bots.reduce(CGFloat(0)) { total, bot in
+            total + 32 + (MenuBarPanelBotRow.pendingApproval(for: bot, in: model) == nil ? 0 : 34)
+        }
+    }
+
     private var separator: some View {
         Rectangle()
             .fill(palette.border)
@@ -277,6 +312,7 @@ private struct MenuBarPanelContent: View {
 private struct MenuBarPanelBotRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
+    @Environment(\.openWindow) private var openWindow
     let bot: Bot
     @State private var hovering = false
 
@@ -288,8 +324,7 @@ private struct MenuBarPanelBotRow: View {
 
         VStack(alignment: .leading, spacing: 4) {
             Button {
-                model.selectedBotID = bot.id
-                NSApp.activate(ignoringOtherApps: true)
+                MenuBarNavigation.show(bot.id, model: model, openWindow: openWindow)
             } label: {
                 HStack(spacing: Theme.Space.snug) {
                     BotFace(bot: bot, mood: mood, size: 22)
@@ -341,6 +376,10 @@ private struct MenuBarPanelBotRow: View {
     }
 
     private var firstPendingApproval: PendingApproval? {
+        Self.pendingApproval(for: bot, in: model)
+    }
+
+    static func pendingApproval(for bot: Bot, in model: AppModel) -> PendingApproval? {
         model.thread(for: bot.id).entries.compactMap { entry -> PendingApproval? in
             if case .approval(let approval) = entry.kind, approval.decided == nil { return approval }
             return nil

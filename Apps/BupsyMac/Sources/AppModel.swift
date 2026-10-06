@@ -52,6 +52,13 @@ final class AppModel {
     /// A page the model wants the window to show next (set from flows outside the window, such
     /// as onboarding's "Connect apps first"). The root view moves there and clears it.
     var pendingDestination: NavRail.Destination?
+    /// A page to show, set through `open(_:)` (AppModel+Navigation.swift). The root view moves
+    /// there and clears it; its id makes a repeat request for the same page still count.
+    var navigationRequest: NavigationRequest?
+    /// Set by `startChat(searchFirst:)`, the Cmd N command: the root view opens the palette.
+    var startChatRequest: StartChatRequest?
+    /// Set by `showMainWindow()`: the menu bar icon reopens the main window if it was closed.
+    var windowRequest: UUID?
 
     // Hooks for the debug tour (TourMode); nil in normal use.
     var tourDestination: NavRail.Destination?
@@ -1339,7 +1346,9 @@ final class AppModel {
         bot.avatarColour = colour
         bots.append(bot)
         try? store?.save(bot.record(sortIndex: bots.count - 1))
-        selectedBotID = bot.id
+        // Opened, not just selected: selecting no longer moves the window off a page that is
+        // not a chat (see RootView.followSelection), and a bot you just made is one you want.
+        open(bot.id)
     }
 
     /// Clones a bot's setup, not its history.
@@ -1366,7 +1375,7 @@ final class AppModel {
 
         bots.append(copy)
         try? store?.save(copy.record(sortIndex: bots.count - 1))
-        selectedBotID = copy.id
+        open(copy.id)
     }
 
     // MARK: - Group threads
@@ -1766,10 +1775,13 @@ final class AppModel {
             return
         }
         let selected = selectedBotID
+        let request = navigationRequest
         addBot(name: creation.name, engine: creation.from.engine, job: creation.job,
                folder: creation.from.folder)
         // addBot opens the new bot; a request from the background should not pull you away.
+        // Both put back in the same turn, so the root view never sees the open request.
         selectedBotID = selected
+        navigationRequest = request
         guard var created = bots.first(where: { $0.name == creation.name }) else { return }
         if let role = creation.role {
             setRole(created, role)
@@ -2074,6 +2086,8 @@ final class AppModel {
     func toggleHidden(_ bot: Bot) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         bots[index].hidden.toggle()
+        // Moves the selection only. The window follows it only while it is showing that bot's
+        // chat (RootView.followSelection), so hiding a bot from Team leaves you on Team.
         if bots[index].hidden, selectedBotID == bot.id {
             selectedBotID = bots.first { !$0.hidden }?.id
         }
@@ -2267,6 +2281,11 @@ final class AppModel {
         bots.removeAll { $0.id == bot.id }
         threads[bot.id] = nil
         try? store?.deleteBot(id: bot.id.rawValue)
-        if selectedBotID == bot.id { selectedBotID = bots.first?.id }
+        // Selection only, as in toggleHidden: deleting from Team must not throw you into another
+        // bot's chat. A visible bot is preferred so the sidebar has something to highlight; with
+        // none left the selection is nil and the window shows the empty roster.
+        if selectedBotID == bot.id {
+            selectedBotID = bots.first { !$0.hidden }?.id ?? bots.first?.id
+        }
     }
 }
