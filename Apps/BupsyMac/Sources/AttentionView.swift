@@ -3,7 +3,31 @@ import SwiftUI
 
 /// Something that cannot move without a person.
 struct AttentionItem: Identifiable, Hashable {
-    enum Kind: Hashable { case approval, objective }
+    enum Kind: Hashable {
+        /// A tool request in the bot's own chat.
+        case approval
+        case objective
+        /// A question the bot asked you in its chat and is waiting on.
+        case question
+        /// A tool request from the bot's turn inside a group. Carries the group id.
+        case groupApproval(String)
+        /// A group that reached its turn limit and is waiting for you to speak. Carries the group id.
+        case pausedGroup(String)
+
+        /// Settled right here with Allow and Deny, wherever it was raised.
+        var isApproval: Bool {
+            switch self {
+            case .approval, .groupApproval: true
+            default: false
+            }
+        }
+
+        /// Belongs to a group rather than to the bot whose face it borrows.
+        var isPausedGroup: Bool {
+            if case .pausedGroup = self { return true }
+            return false
+        }
+    }
 
     let id: String
     let botID: BotID
@@ -14,6 +38,8 @@ struct AttentionItem: Identifiable, Hashable {
     let detail: String
     /// Shown in a fixed-width font. In a proportional one `ls` reads as "Is".
     var detailIsCommand = false
+    /// The group it came from, for group approvals and paused groups.
+    var groupName: String? = nil
 }
 
 /// One place for everything waiting on you.
@@ -30,8 +56,12 @@ struct AttentionInbox: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
 
-    private var approvals: [AttentionItem] { model.attentionItems.filter { $0.kind == .approval } }
+    private var approvals: [AttentionItem] { model.attentionItems.filter { $0.kind.isApproval } }
     private var goals: [AttentionItem] { model.attentionItems.filter { $0.kind == .objective } }
+    /// Questions bots asked and groups that paused: things to go and answer, not decide here.
+    private var others: [AttentionItem] {
+        model.attentionItems.filter { !$0.kind.isApproval && $0.kind != .objective }
+    }
 
     var body: some View {
         ScrollView {
@@ -61,7 +91,18 @@ struct AttentionInbox: View {
                                 AttentionRow(item: item, showsShortcuts: index == 0)
                             }
                         }
-                        if !approvals.isEmpty && !goals.isEmpty {
+                        if !approvals.isEmpty && !others.isEmpty {
+                            Rectangle().fill(palette.border).frame(height: 1)
+                        }
+                        if !others.isEmpty {
+                            AttentionSectionHeader(icon: "bubble.left", title: "Waiting for a reply", badge: nil)
+                            VStack(spacing: Theme.Space.snug) {
+                                ForEach(others) { item in
+                                    AttentionRow(item: item)
+                                }
+                            }
+                        }
+                        if (!approvals.isEmpty || !others.isEmpty) && !goals.isEmpty {
                             Rectangle().fill(palette.border).frame(height: 1)
                         }
                         if !goals.isEmpty {
@@ -134,15 +175,22 @@ struct AttentionRow: View {
     var body: some View {
         // An approval is settled right here, on the same card the thread shows. A stuck goal needs
         // its thread, so that one links out instead of pretending to offer a decision.
-        if item.kind == .approval, let bot, let approval = pendingApproval(for: bot) {
-            ApprovalCard(approval: approval, owner: bot, showsShortcuts: showsShortcuts)
+        if item.kind.isApproval, let bot, let approval = model.pendingApproval(id: item.id, for: bot.id) {
+            VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                if let groupName = item.groupName {
+                    Text("In \(groupName)")
+                        .font(Theme.Typography.label)
+                        .foregroundStyle(palette.mutedForeground)
+                }
+                ApprovalCard(approval: approval, owner: bot, showsShortcuts: showsShortcuts)
+            }
         } else {
             CardRow {
                 Group {
                     if let bot {
-                        BotFace(bot: bot, mood: .waitingForYou, size: 36)
+                        BotFace(bot: bot, mood: faceMood, size: 36)
                     } else {
-                        BotFace(hue: item.hue, mood: .waitingForYou, size: 36)
+                        BotFace(hue: item.hue, mood: faceMood, size: 36)
                     }
                 }
             } content: {
@@ -165,16 +213,57 @@ struct AttentionRow: View {
                     }
                 }
             } trailing: {
-                Button("Open") { if let id = bot?.id { model.open(id) } }
-                    .buttonStyle(QuietButton(compact: true))
+                HStack(spacing: Theme.Space.tight) {
+                    if item.kind == .objective, let objective {
+                        Button("Mark as handled") { model.markObjectiveHandled(objective) }
+                            .buttonStyle(AttentionGhostButton())
+                            .help("Clear this goal from Waiting on you. Its next check runs as usual.")
+                    }
+                    Button(openTitle) { open() }
+                        .buttonStyle(QuietButton(compact: true))
+                }
             }
         }
     }
 
-    private func pendingApproval(for bot: Bot) -> PendingApproval? {
-        model.thread(for: bot.id).entries.compactMap {
-            if case .approval(let approval) = $0.kind, approval.id == item.id { return approval }
-            return nil
-        }.first
+    /// A stuck goal is something that went wrong; a question or a paused group is the bot
+    /// waiting on you.
+    private var faceMood: BotMood {
+        item.kind == .objective ? .failed : .waitingForYou
+    }
+
+    private var objective: Objective? {
+        model.objectives.first { $0.id == item.id }
+    }
+
+    /// Says where the button goes: the bot by name, or the group.
+    private var openTitle: String {
+        if case .pausedGroup = item.kind { return "Open group" }
+        return "Open \(bot?.name ?? item.botName)"
+    }
+
+    private func open() {
+        switch item.kind {
+        case .pausedGroup(let groupID), .groupApproval(let groupID):
+            model.open(.group(groupID))
+        default:
+            if let id = bot?.id { model.open(id) }
+        }
+    }
+}
+
+/// A text-only button for the secondary action beside Open, so the two never compete.
+private struct AttentionGhostButton: ButtonStyle {
+    @Environment(\.palette) private var palette
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Theme.Typography.body)
+            .foregroundStyle(palette.mutedForeground)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .background(configuration.isPressed ? palette.cardHover : Color.clear,
+                        in: .rect(cornerRadius: Theme.Radius.control))
+            .contentShape(.rect)
     }
 }

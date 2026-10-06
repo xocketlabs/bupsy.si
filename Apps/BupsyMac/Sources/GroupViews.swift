@@ -13,7 +13,8 @@ struct StackedFaces: View {
         let small = size * 0.66
         ZStack(alignment: .topLeading) {
             ForEach(Array(bots.prefix(2).enumerated()), id: \.offset) { index, bot in
-                BotFace(bot: bot, mood: .idle, size: small)
+                // Small and many: held still, as every list of faces is.
+                BotFace(bot: bot, mood: .idle, size: small, still: true)
                     .offset(x: CGFloat(index) * size * 0.34, y: CGFloat(index) * size * 0.3)
             }
             if bots.count > 2 {
@@ -40,7 +41,7 @@ struct GroupFaceRow: View {
     var body: some View {
         HStack(spacing: -size * 0.3) {
             ForEach(Array(bots.prefix(limit).enumerated()), id: \.offset) { index, bot in
-                BotFace(bot: bot, mood: .idle, size: size)
+                BotFace(bot: bot, mood: .idle, size: size, still: true)
                     .zIndex(Double(limit - index))
             }
             if bots.count > limit {
@@ -483,7 +484,11 @@ struct GroupPage: View {
                     let isAddressed = addressed.contains(bot.id)
                     Button { mention(bot) } label: {
                         HStack(spacing: 5) {
-                            BotFace(bot: bot, mood: .idle, size: 18)
+                            // What each member is up to, from the model's one truth; still
+                            // unless something is going on.
+                            let memberMood = model.mood(for: bot)
+                            BotFace(bot: bot, mood: memberMood, size: 18,
+                                    still: memberMood == .idle)
                             Text("@\(bot.name)")
                                 .font(Theme.Typography.label)
                                 .lineLimit(1)
@@ -636,7 +641,8 @@ struct GroupBubble: View {
             HStack(alignment: .top, spacing: Theme.Space.step) {
                 Group {
                     if let bot {
-                        BotFace(bot: bot, mood: .idle, size: avatarSize)
+                        // A transcript of breathing faces is noise: bubbles hold still.
+                        BotFace(bot: bot, mood: .idle, size: avatarSize, still: true)
                     } else {
                         // The bot has since been deleted; its words stay, as a transcript's do.
                         Circle().fill(palette.secondary)
@@ -812,7 +818,7 @@ struct NewGroupSheet: View {
 
     private func memberRow(_ bot: Bot) -> some View {
         HStack(spacing: Theme.Space.snug) {
-            BotFace(bot: bot, mood: .idle, size: 26)
+            BotFace(bot: bot, mood: .idle, size: 26, still: true)
             Text(bot.name)
                 .font(Theme.Typography.body)
                 .foregroundStyle(palette.foreground)

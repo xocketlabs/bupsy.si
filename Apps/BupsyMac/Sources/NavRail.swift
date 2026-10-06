@@ -449,6 +449,7 @@ struct NavRail: View {
             VStack(alignment: .leading, spacing: 2) {
                 sectionHeader("Groups", key: Self.groupsKey, members: [],
                               count: model.groups.count,
+                              urgent: groupsNeedYou,
                               addHelp: "New group chat",
                               onAdd: { sheet = .addGroup },
                               onTitle: { destination = .groups })
@@ -469,6 +470,14 @@ struct NavRail: View {
                     }
                 }
             }
+        }
+    }
+
+    /// A group paused at its turn limit, or holding an approval a member raised in it, is
+    /// waiting on you: the folded Groups count turns pink for it, as a bot folder's does.
+    private var groupsNeedYou: Bool {
+        model.groups.contains { group in
+            model.groupThread(for: group).isWaitingOnYou || !model.pendingApprovals(in: group).isEmpty
         }
     }
 
@@ -519,11 +528,12 @@ struct NavRail: View {
     /// A small uppercase label. With a key it folds; with `onAdd` it carries a "+" on the right.
     private func sectionHeader(
         _ text: String, key: String? = nil, members: [Bot] = [], count: Int? = nil,
+        urgent urgentOverride: Bool? = nil,
         addHelp: String = "", onAdd: (() -> Void)? = nil, onTitle: (() -> Void)? = nil
     ) -> some View {
         let isCollapsed = key.map { collapsed.contains($0) } ?? false
         let shown = count ?? members.count
-        let urgent = members.contains { model.isWaitingForApproval($0.id) }
+        let urgent = urgentOverride ?? members.contains { model.needsYou($0) }
         return SidebarSectionHeader(
             title: text,
             collapsible: key != nil,
@@ -792,10 +802,10 @@ struct NavRail: View {
         return answered ? "No engine signed in" : "Checking sign-in…"
     }
 
+    /// One truth for the face and the dot: the model's mood, so the sidebar, Team, the menu bar
+    /// and Waiting on you never disagree about who needs you.
     private func mood(for bot: Bot) -> BotMood {
-        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
-        if model.isRunning(bot.id) { return .working }
-        return .idle
+        model.mood(for: bot)
     }
 }
 
@@ -981,9 +991,12 @@ struct BotRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Theme.Space.step) {
-                BotFace(bot: bot, mood: mood, size: Theme.scaled(22))
+                // Still when idle and not selected: a sidebar of faces all breathing at 30fps is
+                // noise and battery. The face is 22pt, so the frame is too (no overhang).
+                BotFace(bot: bot, mood: mood, size: Theme.scaled(22),
+                        still: mood == .idle && !selected)
                     .overlay(alignment: .bottomTrailing) { statusDot }
-                    .frame(width: 20)
+                    .frame(width: Theme.scaled(22), height: Theme.scaled(22))
 
                 Text(bot.name)
                     .font(Theme.Typography.body)
@@ -1025,8 +1038,10 @@ struct BotRow: View {
         switch mood {
         case .waitingForYou: "\(bot.name) needs you"
         case .working: preview.map { "Working. \($0)" } ?? "\(bot.name) is working"
-        case .failed: preview ?? "Last run failed"
-        case .idle, .done, .sleeping: preview ?? bot.name
+        case .failed: preview.map { "Last run failed. \($0)" } ?? "Last run failed"
+        case .done: preview.map { "Done. \($0)" } ?? "\(bot.name) is done"
+        case .sleeping: "\(bot.name) is asleep"
+        case .idle: preview ?? bot.name
         }
     }
 

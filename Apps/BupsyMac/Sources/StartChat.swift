@@ -366,7 +366,10 @@ private struct PaletteRow: View {
     @ViewBuilder private var icon: some View {
         switch row.kind {
         case .bot(let bot), .message(let bot, _):
-            BotFace(bot: bot, mood: mood(for: bot), size: 36)
+            // A palette of breathing faces is noise: only the highlighted row or a bot with
+            // something going on moves.
+            let botMood = mood(for: bot)
+            BotFace(bot: bot, mood: botMood, size: 36, still: botMood == .idle && !highlighted)
         case .group(let group), .groupMessage(let group, _):
             StackedFaces(bots: model.bots.filter { group.memberIDs.contains($0.id) }, size: 30)
         case .create, .createGroup, .createManually, .createNamed:
@@ -390,8 +393,7 @@ private struct PaletteRow: View {
 
     /// The face matches what the bot is up to, so the list doubles as a glance at the team.
     private func mood(for bot: Bot) -> BotMood {
-        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
-        return model.thread(for: bot.id).isRunning ? .working : .idle
+        model.mood(for: bot)
     }
 
     /// For a long message, the part around the match. The start of a paragraph rarely is.

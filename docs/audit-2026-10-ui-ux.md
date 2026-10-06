@@ -44,14 +44,14 @@ Paths are under `Apps/BupsyMac/Sources` unless stated. The fixes are grouped int
 
 ## Batch 3: one truth for "needs you" and the mascot's mood
 
-- [ ] **P1** "Needs you" is computed two ways: group approvals never reach Waiting on you or the menu bar count; stuck goals make a bot wave in the menu bar but not elsewhere. Add one `mood(for:)` and use it everywhere. AppModel.swift:639-667 vs 762. (SYS-5, NAV-9)
-- [ ] **P1** Paused groups (turn limit) and group approvals don't appear in Waiting on you. (NAV-9, features follow-up)
-- [ ] **P1** Waiting on you: no way to clear a stuck goal ("Mark as handled"); "Open" should name the bot; stuck goal face should be the error mood. AttentionView.swift:167. (NAV-10)
-- [ ] **P1** Done, asleep and failed moods never appear for live bots, so "Last run failed" branches can never fire. Done for a few seconds after a run, asleep when paused or on a stopped machine, failed after a failed run. (SYS-6)
-- [ ] **P1** Every face animates at 30fps forever (sidebar, Team, menu bar, palette). Add a `still` mode and animate only the selected or non-idle bot. BotFace.swift:57. (SYS-4)
-- [ ] **P1** Menu bar icon is SF circles, not the Bupsy template glyph with a pink dot; no VoiceOver label. MenuBar.swift:401. (SET-17, SYS-7)
-- [ ] **P2** Menu bar status says only Needs you / Working / Idle; use the live status text and next routine time ("Asleep until 2am"); "Stop all bots" vs board's "Pause all bots". (SET-34, SYS-6)
-- [ ] **P2** At sidebar size (16 to 25pt) the antenna and status light are under 1pt and vanish; error spiral eyes smudge. Set minimum stroke and bulb size when mini; frame overhang in BotRow. BotFace.swift:143, NavRail.swift:829. (SYS-19)
+- [x] **P1** "Needs you" is computed two ways: group approvals never reach Waiting on you or the menu bar count; stuck goals make a bot wave in the menu bar but not elsewhere. Add one `mood(for:)` and use it everywhere. AppModel.swift:639-667 vs 762. (SYS-5, NAV-9)
+- [x] **P1** Paused groups (turn limit) and group approvals don't appear in Waiting on you. (NAV-9, features follow-up)
+- [x] **P1** Waiting on you: no way to clear a stuck goal ("Mark as handled"); "Open" should name the bot; stuck goal face should be the error mood. AttentionView.swift:167. (NAV-10)
+- [x] **P1** Done, asleep and failed moods never appear for live bots, so "Last run failed" branches can never fire. Done for a few seconds after a run, asleep when paused or on a stopped machine, failed after a failed run. (SYS-6)
+- [x] **P1** Every face animates at 30fps forever (sidebar, Team, menu bar, palette). Add a `still` mode and animate only the selected or non-idle bot. BotFace.swift:57. (SYS-4)
+- [x] **P1** Menu bar icon is SF circles, not the Bupsy template glyph with a pink dot; no VoiceOver label. MenuBar.swift:401. (SET-17, SYS-7)
+- [x] **P2** Menu bar status says only Needs you / Working / Idle; use the live status text and next routine time ("Asleep until 2am"); "Stop all bots" vs board's "Pause all bots". (SET-34, SYS-6)
+- [x] **P2** At sidebar size (16 to 25pt) the antenna and status light are under 1pt and vanish; error spiral eyes smudge. Set minimum stroke and bulb size when mini; frame overhang in BotRow. BotFace.swift:143, NavRail.swift:829. (SYS-19)
 - [ ] **P2** Sidebar unread dot is 6pt blue (`info`); board is 8pt pink. Decide and align. (NAV-25)
 
 ## Batch 4: chat

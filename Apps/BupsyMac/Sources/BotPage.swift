@@ -183,22 +183,24 @@ struct BotPage: View {
     /// At most one status at a time, in order of how much it needs you.
     @ViewBuilder
     private var statusBadge: some View {
-        if model.isWaitingForApproval(bot.id) {
+        if model.needsYou(bot) {
             ThreadStatusBadge(text: "Needs you", tone: palette.primary, dot: true)
         } else if thread.isRunning {
             // What it is doing right now ("Running npm test", "Editing login.ts"), not just
             // that it is busy. Same words as the line under the thread.
             ThreadStatusBadge(text: ChatLiveStatus.text(for: thread.entries),
                               tone: palette.infoText, dot: true)
+        } else if mood == .failed {
+            ThreadStatusBadge(text: "Last run failed", tone: palette.destructive, dot: true)
+        } else if mood == .sleeping {
+            ThreadStatusBadge(text: "Asleep")
         } else if let badge = limitBadge {
             ThreadStatusBadge(text: badge, tone: limitIsHigh ? palette.warning : nil)
         }
     }
 
-    private var mood: BotMood {
-        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
-        return thread.isRunning ? .working : .idle
-    }
+    /// The model's one truth, so this page, the sidebar and the menu bar agree.
+    private var mood: BotMood { model.mood(for: bot) }
 
     // MARK: - Everything that is not the conversation
 

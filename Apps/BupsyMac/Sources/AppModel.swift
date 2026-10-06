@@ -17,6 +17,9 @@ final class AppModel {
         // the bot shown at launch — selected by default, never opened — so it lit up as unread
         // the moment you moved to another bot, having been on screen the whole time.
         didSet {
+            // Opening a bot is seeing what went wrong with its last run, so the face stops
+            // showing the failure once you have looked at it.
+            if let current = selectedBotID, current != oldValue { lastFailedAt[current] = nil }
             guard let previous = oldValue, previous != selectedBotID,
                   let bot = bots.first(where: { $0.id == previous }) else { return }
             markRead(bot)
@@ -81,6 +84,14 @@ final class AppModel {
     /// Each bot's hidden thread inside each group, keyed "botID|groupID". Holds that engine
     /// session and any approval it raises; the group page shows the approvals, not the thread.
     private var groupSideThreads: [String: Thread] = [:]
+    /// When each bot last finished a run that went well. Drives the short "done" face, which
+    /// `mood(for:)` (AppModel+Mood.swift) shows for a few seconds after a run ends.
+    var lastFinishedAt: [BotID: Date] = [:]
+    /// When each bot's most recent run failed. Cleared when it runs again or you open it.
+    var lastFailedAt: [BotID: Date] = [:]
+    /// Bumped when a "done" face should go back to rest, so views that read `mood(for:)`
+    /// redraw without a timer of their own.
+    var moodTick = 0
     private var running: [BotID: Task<Void, Never>] = [:]
     /// Which run owns a bot's slot right now. A stopped run's task still finishes later, and its
     /// cleanup must not wipe the state of a run started after it (stop, then a quick send).
@@ -707,22 +718,58 @@ final class AppModel {
         return objectives.filter { dueIDs.contains($0.id) }
     }
 
-    /// Everything waiting on a person, in one place.
+    /// Everything waiting on a person, in one place. The inbox lists exactly these, and the
+    /// sidebar and menu bar counts are this array's count, so the three never disagree.
     var attentionItems: [AttentionItem] {
         var items: [AttentionItem] = []
 
         for bot in bots {
-            for entry in threads[bot.id]?.entries ?? [] {
-                if case .approval(let approval) = entry.kind, approval.decided == nil {
-                    // "Systems wants to run a command", not "Bash needs approval": the person is
-                    // deciding about a bot doing something, and should not have to translate an
-                    // engine's tool name to know what.
-                    items.append(AttentionItem(
-                        id: approval.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
-                        kind: .approval,
-                        title: "\(bot.name) wants to \(ToolNames.action(approval.tool))",
-                        detail: approval.summary,
-                        detailIsCommand: ToolNames.isCommand(approval.tool)))
+            // Its own thread and, while it runs somewhere else, that thread too. Group side
+            // threads are listed per group below, so they can name the group.
+            var own: [Thread] = []
+            if let thread = threads[bot.id] { own.append(thread) }
+            if let active = activeThread[bot.id], !own.contains(where: { $0 === active }),
+               !groupSideThreads.values.contains(where: { $0 === active }) {
+                own.append(active)
+            }
+            for thread in own {
+                for entry in thread.entries {
+                    if case .approval(let approval) = entry.kind, approval.decided == nil {
+                        // "Systems wants to run a command", not "Bash needs approval": the person is
+                        // deciding about a bot doing something, and should not have to translate an
+                        // engine's tool name to know what.
+                        items.append(AttentionItem(
+                            id: approval.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
+                            kind: .approval,
+                            title: "\(bot.name) wants to \(ToolNames.action(approval.tool))",
+                            detail: approval.summary,
+                            detailIsCommand: ToolNames.isCommand(approval.tool)))
+                    }
+                    if case .question(let question) = entry.kind, question.answer == nil {
+                        items.append(AttentionItem(
+                            id: question.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
+                            kind: .question,
+                            title: "\(bot.name) asked you something",
+                            detail: question.question))
+                    }
+                }
+            }
+        }
+
+        for group in groups {
+            for bot in members(of: group) {
+                guard let side = groupSideThreads["\(bot.id.rawValue)|\(group.id)"] else { continue }
+                for entry in side.entries {
+                    if case .approval(let approval) = entry.kind, approval.decided == nil {
+                        var item = AttentionItem(
+                            id: approval.id, botID: bot.id, botName: bot.name, hue: bot.avatarHue,
+                            kind: .groupApproval(group.id),
+                            title: "\(bot.name) wants to \(ToolNames.action(approval.tool))",
+                            detail: approval.summary,
+                            detailIsCommand: ToolNames.isCommand(approval.tool))
+                        item.groupName = group.name
+                        items.append(item)
+                    }
                 }
             }
         }
@@ -735,7 +782,29 @@ final class AppModel {
                 detail: detail(for: objective.lastOutcome)))
         }
 
+        // A group that hit its turn limit stops and waits for you to say something.
+        for group in groups where groupThread(for: group).isWaitingOnYou {
+            let face = group.leadBotID.flatMap { id in bots.first { $0.id == id } }
+                ?? members(of: group).first
+            guard let face else { continue }
+            var item = AttentionItem(
+                id: "paused-\(group.id)", botID: face.id, botName: face.name, hue: face.avatarHue,
+                kind: .pausedGroup(group.id),
+                title: "\(group.name) paused after \(group.turnLimit) turns",
+                detail: "Say something in the group to keep it going.")
+            item.groupName = group.name
+            items.append(item)
+        }
+
         return items
+    }
+
+    /// Clears a stuck goal from Waiting on you without running it again. The next check sets
+    /// its outcome afresh.
+    func markObjectiveHandled(_ objective: Objective) {
+        guard let index = objectives.firstIndex(where: { $0.id == objective.id }) else { return }
+        objectives[index].lastOutcome = nil
+        try? store?.save(objectives[index])
     }
 
     private func detail(for outcome: ObjectiveOutcome?) -> String {
@@ -825,12 +894,21 @@ final class AppModel {
 
     func isRunning(_ botID: BotID) -> Bool { running[botID] != nil }
 
+    /// What a running bot is doing right now ("Reading 3 files"), read from the thread it is
+    /// actually running in, which inside a group is not its own chat.
+    func liveStatus(for bot: Bot) -> String {
+        ChatLiveStatus.text(for: (activeThread[bot.id] ?? thread(for: bot.id)).entries)
+    }
+
     func recentRuns(for bot: Bot) -> [RunSummary] {
         (try? store?.recentRuns(forBot: bot.id.rawValue, limit: 20)) ?? []
     }
 
     /// True when a bot is blocked on a decision from you, which the roster shows differently
     /// from merely working — it is the state that needs a human.
+    ///
+    /// Older and narrower than `needsYou(_:)` (AppModel+Mood.swift), which also counts group
+    /// approvals, questions and stuck goals. Kept until every caller has moved over.
     func isWaitingForApproval(_ botID: BotID) -> Bool {
         (activeThread[botID] ?? threads[botID])?.entries.contains {
             if case .approval(let approval) = $0.kind { return approval.decided == nil }
@@ -944,6 +1022,7 @@ final class AppModel {
         }
         thread.isRunning = true
         activeThread[bot.id] = thread
+        lastFailedAt[bot.id] = nil
 
         let conversationID = ensureConversation(for: bot, thread: thread, group: groupID)
         var run = RunRecord(
@@ -1032,7 +1111,9 @@ final class AppModel {
                 // This run's own gate always closes. The bot's shared state is only cleared if
                 // this run still owns it: after Stop, a new run may already be in the slot.
                 Task { await runGate?.stop() }
-                if runTokens[bot.id] == token {
+                // A run that was stopped no longer owns the slot, and is neither done nor failed.
+                let ownsSlot = runTokens[bot.id] == token
+                if ownsSlot {
                     // Finished, failed or crashed: nothing can answer these any more, so the
                     // cards settle instead of offering an Allow that does nothing.
                     expirePendingApprovals(for: bot.id)
@@ -1061,6 +1142,7 @@ final class AppModel {
                         groupID: groupID))
                 }
                 lastRunEnded[bot.id] = Date()
+                if ownsSlot { recordRunEnded(bot.id, failed: failed) }
                 onFinish?(reply)
                 // Next tick, so whatever onFinish started (a group hand-off) claims the bot first.
                 Task { @MainActor [weak self] in self?.botBecameFree(bot) }
@@ -1267,7 +1349,7 @@ final class AppModel {
 
     /// Every thread a bot's approvals can be in: its own, the one it is running in, and its side
     /// threads inside groups.
-    private func approvalThreads(for botID: BotID) -> [Thread] {
+    func approvalThreads(for botID: BotID) -> [Thread] {
         var found: [Thread] = []
         func add(_ thread: Thread?) {
             guard let thread, !found.contains(where: { $0 === thread }) else { return }
@@ -1437,6 +1519,10 @@ final class AppModel {
         try? store?.deleteGroup(id: group.id)
         groups.removeAll { $0.id == group.id }
         groupThreads[group.id] = nil
+        // Its side threads go too, so an approval nobody can reach no longer makes a bot wave.
+        for key in Array(groupSideThreads.keys) where key.hasSuffix("|\(group.id)") {
+            groupSideThreads[key] = nil
+        }
     }
 
     func markGroupRead(_ group: ChatGroup) {

@@ -79,21 +79,45 @@ struct MenuBarStatus {
         return parts.isEmpty ? "All quiet" : parts.joined(separator: ", ")
     }
 
+    /// The one mood every view shows, from `AppModel.mood(for:)`.
     static func mood(for bot: Bot, in model: AppModel) -> BotMood {
-        if model.attentionItems.contains(where: { $0.botID == bot.id }) { return .waitingForYou }
-        if model.isRunning(bot.id) { return .working }
-        return .idle
+        model.mood(for: bot)
     }
 
+    /// The fallback word for a mood, where there is nothing more specific to say.
     static func text(for mood: BotMood) -> String {
         switch mood {
         case .waitingForYou: "Needs you"
         case .working: "Working"
         case .done: "Done"
         case .sleeping: "Asleep"
-        case .failed: "Stopped"
+        case .failed: "Last run failed"
         case .idle: "Idle"
         }
+    }
+
+    /// What a bot's row says: what it is doing while it works ("Reading 3 files"), and when it
+    /// wakes while it sleeps ("Asleep until 2:00 AM").
+    static func text(for bot: Bot, mood: BotMood, in model: AppModel) -> String {
+        switch mood {
+        case .working:
+            return model.liveStatus(for: bot)
+        case .sleeping:
+            guard let next = model.nextRoutineDate(for: bot) else { return "Asleep" }
+            if Calendar.current.isDateInToday(next) {
+                return "Asleep until \(next.formatted(date: .omitted, time: .shortened))"
+            }
+            return "Asleep until \(RoutineRunStats.nextLabel(next))"
+        default:
+            return text(for: mood)
+        }
+    }
+
+    /// What VoiceOver says for the menu bar icon.
+    var accessibilityLabel: String {
+        if waiting > 0 { return "Bupsy, \(waiting) \(waiting == 1 ? "needs" : "need") you" }
+        if working > 0 { return "Bupsy, \(working) working" }
+        return "Bupsy, all quiet"
     }
 }
 
@@ -121,14 +145,15 @@ struct MenuBarBotItem: View {
 
     var body: some View {
         let mood = MenuBarStatus.mood(for: bot, in: model)
-        let items = model.attentionItems.filter { $0.botID == bot.id }
+        // A paused group borrows its lead's face in the inbox, but is not that bot waiting.
+        let items = model.attentionItems.filter { $0.botID == bot.id && !$0.kind.isPausedGroup }
 
         if items.isEmpty {
             Button {
                 open()
             } label: {
                 Label {
-                    Text("\(bot.name), \(MenuBarStatus.text(for: mood).lowercased())")
+                    Text("\(bot.name), \(MenuBarStatus.text(for: bot, mood: mood, in: model).lowercased())")
                 } icon: {
                     MenuBarFaces.image(for: bot, mood: mood)
                 }
@@ -165,23 +190,22 @@ struct MenuBarApproval: View {
     private var bot: Bot? { model.bots.first { $0.id == item.botID } }
 
     var body: some View {
-        if item.kind == .approval, let bot, let approval = pending(for: bot) {
+        if item.kind.isApproval, let bot, let approval = model.pendingApproval(id: item.id, for: bot.id) {
             Section(short(item.detail.isEmpty ? item.title : item.detail)) {
                 Button("Allow") { model.decide(approval, allow: true, for: bot) }
                 Button("Deny") { model.decide(approval, allow: false, for: bot) }
             }
         } else {
             Button(short(item.title)) {
-                MenuBarNavigation.show(bot?.id, model: model, openWindow: openWindow)
+                switch item.kind {
+                case .pausedGroup(let groupID), .groupApproval(let groupID):
+                    MenuBarNavigation.show(nil, model: model, openWindow: openWindow)
+                    model.open(.group(groupID))
+                default:
+                    MenuBarNavigation.show(bot?.id, model: model, openWindow: openWindow)
+                }
             }
         }
-    }
-
-    private func pending(for bot: Bot) -> PendingApproval? {
-        model.thread(for: bot.id).entries.compactMap {
-            if case .approval(let approval) = $0.kind, approval.id == item.id { return approval }
-            return nil
-        }.first
     }
 
     /// Menu items have no room to wrap, and a truncated command is still recognisable.
@@ -193,13 +217,15 @@ struct MenuBarApproval: View {
 
 /// A bot's face drawn to an image, because a native menu item can only hold an image, not a view.
 /// Drawn each time the menu opens rather than cached: a handful of 18pt faces is cheap, and it
-/// keeps the mood current without any stored state.
+/// keeps the mood current without any stored state. The colour scheme is passed in, because an
+/// image render has no window to read it from.
 @MainActor
 enum MenuBarFaces {
     static func image(for bot: Bot, mood: BotMood, size: CGFloat = 18) -> Image {
         let shape = bot.avatarShape ?? BotFace.derivedShape(forHue: bot.avatarHue)
         let colour = bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue)
-        let renderer = ImageRenderer(content: StillBotFace(shape: shape, colour: colour, size: size, mood: mood))
+        let renderer = ImageRenderer(content: StillBotFace(shape: shape, colour: colour, size: size, mood: mood,
+                                                           scheme: StillBotFace.appScheme))
         renderer.scale = 2
         guard let cg = renderer.cgImage else { return Image(systemName: "circle.fill") }
         return Image(nsImage: NSImage(cgImage: cg, size: NSSize(width: size, height: size)))
@@ -327,7 +353,8 @@ private struct MenuBarPanelBotRow: View {
                 MenuBarNavigation.show(bot.id, model: model, openWindow: openWindow)
             } label: {
                 HStack(spacing: Theme.Space.snug) {
-                    BotFace(bot: bot, mood: mood, size: 22)
+                    // Only a bot with something going on moves; a quiet roster costs no frames.
+                    BotFace(bot: bot, mood: mood, size: 22, still: mood == .idle)
                     Text(bot.name)
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)
@@ -341,9 +368,10 @@ private struct MenuBarPanelBotRow: View {
                             .frame(height: 18)
                             .background(palette.primary, in: .rect(cornerRadius: 5))
                     } else {
-                        Text(MenuBarStatus.text(for: mood))
+                        Text(MenuBarStatus.text(for: bot, mood: mood, in: model))
                             .font(Theme.Typography.label)
-                            .foregroundStyle(palette.mutedForeground)
+                            .foregroundStyle(mood == .failed ? palette.destructive : palette.mutedForeground)
+                            .lineLimit(1)
                     }
                 }
                 .padding(.horizontal, Theme.Space.tight)
@@ -379,11 +407,14 @@ private struct MenuBarPanelBotRow: View {
         Self.pendingApproval(for: bot, in: model)
     }
 
+    /// The first undecided approval wherever the bot raised it, its own chat or a group.
     static func pendingApproval(for bot: Bot, in model: AppModel) -> PendingApproval? {
-        model.thread(for: bot.id).entries.compactMap { entry -> PendingApproval? in
-            if case .approval(let approval) = entry.kind, approval.decided == nil { return approval }
-            return nil
-        }.first
+        for thread in model.approvalThreads(for: bot.id) {
+            for entry in thread.entries {
+                if case .approval(let approval) = entry.kind, approval.decided == nil { return approval }
+            }
+        }
+        return nil
     }
 }
 
@@ -437,21 +468,91 @@ private struct MenuBarPanelAction: View {
 }
 
 /// The icon, which is the whole point: state without opening anything.
+///
+/// The Bupsy glyph (rounded body, two eye holes, antenna with its bulb) as a template image, so
+/// it follows the menu bar's colour like every other icon there. When something needs you it
+/// gains a small pink dot, the one place colour is allowed up here.
 struct MenuBarLabel: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let waiting = model.attentionItems.count
-        let busy = model.bots.contains { model.isRunning($0.id) }
+        let status = MenuBarStatus(model: model)
+        Image(nsImage: MenuBarGlyph.image(badged: status.waiting > 0))
+            .accessibilityLabel(status.accessibilityLabel)
+            .help(status.accessibilityLabel)
+    }
+}
 
-        if waiting > 0 {
-            // A count, because "something needs you" is useless without "how much".
-            Label("\(waiting)", systemImage: "hand.raised.fill")
-        } else if busy {
-            Image(systemName: "circle.dotted")
-        } else {
-            Image(systemName: "circle")
+/// Draws the menu bar glyph from `bupsy-menubar-template.svg` (a 36 unit box) at 18pt.
+@MainActor
+enum MenuBarGlyph {
+    static let size: CGFloat = 18
+    private static var cache: [Bool: NSImage] = [:]
+
+    /// Plain: a template image, tinted by the system. Badged: the glyph drawn in the menu bar's
+    /// own label colour (resolved when drawn, so it follows light and dark menu bars) with a pink
+    /// dot, which a template image cannot carry because the system flattens it to one colour.
+    static func image(badged: Bool) -> NSImage {
+        if let cached = cache[badged] { return cached }
+        // Sendable and nonisolated: AppKit may call a drawing handler whenever it redraws.
+        let handler: @Sendable (NSRect) -> Bool = { rect in
+            MenuBarGlyph.draw(in: rect, badged: badged)
         }
+        let image = NSImage(size: NSSize(width: size, height: size), flipped: true, drawingHandler: handler)
+        image.isTemplate = !badged
+        image.accessibilityDescription = badged ? "Bupsy, something needs you" : "Bupsy"
+        cache[badged] = image
+        return image
+    }
+
+    /// The drawing itself, in the SVG's 36 unit box scaled to `rect`, y pointing down.
+    nonisolated private static func draw(in rect: NSRect, badged: Bool) -> Bool {
+        let k = rect.width / 36
+        let ink: NSColor = badged ? .labelColor : .black
+        ink.setFill()
+        ink.setStroke()
+
+        // Antenna: M18 9.5 Q17.2 5.6 20 3.5, as a cubic with the same shape.
+        let start = NSPoint(x: 18 * k, y: 9.5 * k)
+        let control = NSPoint(x: 17.2 * k, y: 5.6 * k)
+        let end = NSPoint(x: 20 * k, y: 3.5 * k)
+        let antenna = NSBezierPath()
+        antenna.move(to: start)
+        antenna.curve(to: end,
+                      controlPoint1: NSPoint(x: start.x + 2 / 3 * (control.x - start.x),
+                                             y: start.y + 2 / 3 * (control.y - start.y)),
+                      controlPoint2: NSPoint(x: end.x + 2 / 3 * (control.x - end.x),
+                                             y: end.y + 2 / 3 * (control.y - end.y)))
+        antenna.lineWidth = 2 * k
+        antenna.lineCapStyle = .round
+        antenna.stroke()
+
+        // Bulb.
+        NSBezierPath(ovalIn: NSRect(x: (20.6 - 2.4) * k, y: (3.4 - 2.4) * k,
+                                    width: 4.8 * k, height: 4.8 * k)).fill()
+
+        // Body with two eye holes.
+        let body = NSBezierPath(roundedRect: NSRect(x: 4.5 * k, y: 9.5 * k, width: 27 * k, height: 24 * k),
+                                xRadius: 9 * k, yRadius: 9 * k)
+        body.append(NSBezierPath(ovalIn: NSRect(x: 10 * k, y: 17.7 * k, width: 6 * k, height: 7.2 * k)))
+        body.append(NSBezierPath(ovalIn: NSRect(x: 20 * k, y: 17.7 * k, width: 6 * k, height: 7.2 * k)))
+        body.windingRule = .evenOdd
+        body.fill()
+
+        if badged {
+            // A clear ring first, so the dot stands off the body's corner.
+            let centre = NSPoint(x: 30 * k, y: 9 * k)
+            let ring = NSBezierPath(ovalIn: NSRect(x: centre.x - 6 * k, y: centre.y - 6 * k,
+                                                   width: 12 * k, height: 12 * k))
+            NSGraphicsContext.current?.compositingOperation = .clear
+            ring.fill()
+            NSGraphicsContext.current?.compositingOperation = .sourceOver
+            // The app's pink (`palette.primary`, light).
+            NSColor(srgbRed: 224 / 255, green: 117 / 255, blue: 200 / 255, alpha: 1).setFill()
+            NSBezierPath(ovalIn: NSRect(x: centre.x - 4.4 * k, y: centre.y - 4.4 * k,
+                                        width: 8.8 * k, height: 8.8 * k)).fill()
+        }
+        return true
     }
 }
 

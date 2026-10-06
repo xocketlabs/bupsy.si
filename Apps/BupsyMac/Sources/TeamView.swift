@@ -49,11 +49,11 @@ struct TeamView: View {
     }
 
     private var workingCount: Int {
-        visibleBots.filter { model.isRunning($0.id) && !model.isWaitingForApproval($0.id) }.count
+        visibleBots.filter { model.mood(for: $0) == .working }.count
     }
 
     private var needsYouCount: Int {
-        visibleBots.filter { model.isWaitingForApproval($0.id) }.count
+        visibleBots.filter { model.needsYou($0) }.count
     }
 
     private var summary: String {
@@ -363,16 +363,13 @@ struct TeamBotCard: View {
         self.onDelete = onDelete
     }
 
-    private var mood: BotMood {
-        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
-        if model.isRunning(bot.id) { return .working }
-        return .idle
-    }
+    private var mood: BotMood { model.mood(for: bot) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.step) {
             HStack(spacing: Theme.Space.step) {
-                BotFace(bot: bot, mood: mood, size: 44)
+                // A board of idle faces holds still; only a bot with something going on moves.
+                BotFace(bot: bot, mood: mood, size: 44, still: mood == .idle)
                     .overlay(alignment: .bottomTrailing) { statusDot }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -481,8 +478,12 @@ struct TeamBotCard: View {
         case .working:
             return preview.map { "Working: \($0)" } ?? "Working"
         case .failed:
-            return preview ?? "Last run failed"
-        case .idle, .done, .sleeping:
+            return "Last run failed"
+        case .done:
+            return preview.map { "Done: \($0)" } ?? "Done"
+        case .sleeping:
+            return "Asleep"
+        case .idle:
             if let preview { return preview }
             if let job = bot.personaPrompt?.split(separator: "\n").first, !job.isEmpty {
                 return String(job)
@@ -502,9 +503,9 @@ struct TeamBotCard: View {
 
     @ViewBuilder
     private var statusDot: some View {
-        if mood == .working || mood == .waitingForYou {
+        if mood == .working || mood == .waitingForYou || mood == .failed {
             Circle()
-                .fill(mood == .working ? palette.success : palette.primary)
+                .fill(statusColour)
                 .frame(width: 10, height: 10)
                 .overlay(Circle().stroke(palette.background, lineWidth: 2))
                 .offset(x: 2, y: 2)
@@ -675,7 +676,7 @@ struct TeamNewSectionSheet: View {
             return isIn ? "Moves from \(current)" : "In \(current)"
         }()
         return HStack(spacing: Theme.Space.snug) {
-            BotFace(bot: bot, mood: .idle, size: 26)
+            BotFace(bot: bot, mood: .idle, size: 26, still: true)
             Text(bot.name)
                 .font(Theme.Typography.body)
                 .foregroundStyle(palette.foreground)
