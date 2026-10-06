@@ -341,75 +341,97 @@ struct SettingRow<Menu: View>: View {
     }
 }
 
-/// The frame every dialog in the app wears.
+/// The frame every dialog in the app wears, matching the design system's Sheet.
 ///
-/// Sheets had been hand-assembled one at a time, so each had its own padding, its own idea of
-/// where the buttons go, and the system's blue accent on a pink-accented app. A dialog is the one
-/// place where inconsistency is most obvious, because you see two of them in a row.
-///
-/// Title at the top, content in the middle, actions in a footer behind a rule. The footer is a
-/// separate band so the primary action sits in the same place in every dialog — you learn where
-/// "the button" is once.
+/// A white panel sitting in a grey lip, the footer living on the lip: keyboard hints on the left
+/// (Esc to cancel, Return to confirm), Cancel and exactly one primary action on the right. The
+/// header leads with a 44pt tile washed in one tone. When a bot is the one asking, there is no
+/// tile: the bot itself peeks over the panel's top edge with its paws on the rim, so you can tell
+/// at a glance who wants something.
 struct SheetFrame<Content: View, Actions: View>: View {
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     let title: String
-    /// An SF Symbol for the header tile — what kind of thing this dialog makes, at a glance.
+    /// An SF Symbol for the header tile: what kind of thing this dialog makes, at a glance.
     var icon: String?
     var subtitle: String?
     var width: CGFloat = 420
     /// False only where there is no neutral way out: a permission question must be answered, and
     /// closing it without an answer would silently drop what it was asking about.
     var closable = true
+    /// The tile's wash. Primary for making things, info for schedules, destructive for removals.
+    var tone: SheetTone = .primary
+    /// The bot this dialog is about. It peeks over the panel instead of an icon tile.
+    var bot: Bot?
+    /// The word after "Return to" in the footer hint, e.g. "save" or "create".
+    var primaryVerb = "confirm"
+    /// Narrow sheets hide the keycaps so they don't wrap beside the buttons.
+    var hints = true
     @ViewBuilder var content: Content
     @ViewBuilder var actions: Actions
 
+    private let peekHeight: CGFloat = 48
+    private let peekSize: CGFloat = 76
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-
-            VStack(alignment: .leading, spacing: Theme.Space.gutter) { content }
-                .padding(.horizontal, Theme.Space.section)
-                .padding(.bottom, Theme.Space.section)
-
-            Rectangle().fill(palette.border).frame(height: 1)
-
-            HStack(spacing: Theme.Space.snug) {
-                Spacer(minLength: 0)
-                actions
+        ZStack(alignment: .topLeading) {
+            if let bot {
+                BotFace(bot: bot, mood: .waitingForYou, size: peekSize)
+                    .offset(x: Theme.Space.section - 4, y: 0)
+                    .accessibilityHidden(true)
             }
-            .padding(.horizontal, Theme.Space.section)
-            .padding(.vertical, Theme.Space.gutter)
-            .background(palette.sidebar)
+
+            VStack(alignment: .leading, spacing: 0) {
+                if bot != nil { Color.clear.frame(height: peekHeight) }
+
+                VStack(alignment: .leading, spacing: Theme.Space.section) {
+                    header
+                    VStack(alignment: .leading, spacing: Theme.Space.gutter) { content }
+                }
+                .padding(Theme.Space.section)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(panelColour, in: .rect(cornerRadius: 16, style: .continuous))
+                .padding(.horizontal, 2)
+                .padding(.top, bot == nil ? 2 : 0)
+
+                footer
+            }
+
+            if let bot { paws(for: bot) }
         }
         .frame(width: width)
-        .background(palette.popover)
+        .background(lipColour)
         // The app's own accent, so focus rings and default buttons stop arriving in system blue.
         .tint(palette.primary)
     }
 
-    /// Icon, title and a sentence of context, with a close button in the corner.
-    ///
-    /// The close button is the one every macOS user reaches for, and Esc triggers it: before this
-    /// the only way out of a dialog was finding its Cancel button. The text block takes the full
-    /// width, where it used to wrap its subtitle at about sixty percent of the sheet.
+    private var panelColour: Color { colorScheme == .dark ? palette.card : palette.background }
+    private var lipColour: Color { colorScheme == .dark ? palette.sidebar : palette.card }
+
+    /// Title and a sentence of why, with the tile in front and a close button in the corner.
     private var header: some View {
-        HStack(alignment: .top, spacing: Theme.Space.step) {
-            if let icon {
+        HStack(alignment: .top, spacing: Theme.Space.gutter) {
+            if let icon, bot == nil {
                 Image(systemName: icon)
-                    .font(.system(size: Theme.scaled(14), weight: .medium))
-                    .foregroundStyle(palette.primary)
-                    .frame(width: 36, height: 36)
-                    .background(palette.primary.opacity(0.14),
-                                in: .rect(cornerRadius: Theme.Radius.control))
+                    .font(.system(size: Theme.scaled(17), weight: .medium))
+                    .foregroundStyle(tone.colour(palette).opacity(0.95))
+                    .frame(width: Theme.Size.tile, height: Theme.Size.tile)
+                    .background(tone.colour(palette).opacity(colorScheme == .dark ? 0.2 : 0.13),
+                                in: .rect(cornerRadius: 13, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .strokeBorder(tone.colour(palette).opacity(0.22))
+                    }
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(Theme.Typography.heading)
+                    .font(.system(size: Theme.scaled(18), weight: .semibold))
+                    .tracking(-0.3)
                     .foregroundStyle(palette.foreground)
                 if let subtitle {
                     Text(subtitle)
-                        .font(Theme.Typography.caption)
+                        .font(Theme.Typography.label)
                         .foregroundStyle(palette.mutedForeground)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -417,22 +439,126 @@ struct SheetFrame<Content: View, Actions: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if closable {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: Theme.scaled(10), weight: .semibold))
-                        .foregroundStyle(palette.mutedForeground)
-                        .frame(width: 26, height: 26)
-                        .background(palette.card, in: .circle)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)
-                .help("Close (Esc)")
+                SheetCloseButton { dismiss() }
             }
         }
-        .padding(.horizontal, Theme.Space.section)
-        .padding(.top, Theme.Space.section)
-        .padding(.bottom, Theme.Space.gutter + 2)
+    }
+
+    private var footer: some View {
+        HStack(spacing: Theme.Space.snug) {
+            if hints {
+                HStack(spacing: 4) {
+                    Keycap("Esc")
+                    Text("to cancel")
+                    Keycap("Return").padding(.leading, Theme.Space.snug)
+                    Text("to \(primaryVerb)")
+                }
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .lineLimit(1)
+                .fixedSize()
+            }
+            Spacer(minLength: 0)
+            actions
+        }
+        .padding(.leading, Theme.Space.gutter)
+        .padding(.trailing, Theme.Space.step)
+        .padding(.vertical, Theme.Space.step)
+    }
+
+    /// Two paws hooked over the panel's top edge, drawn in front of it.
+    private func paws(for bot: Bot) -> some View {
+        let tint = BotShape.rgbPalette[(bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue))
+                                       % BotShape.rgbPalette.count]
+        let fill = LinearGradient(colors: [tint.mixed(with: .hex(0xFFFFFF), 0.62).color, tint.color],
+                                  startPoint: .top, endPoint: .bottom)
+        let rim = tint.mixed(with: .hex(0x000000), 0.72).color.opacity(0.5)
+        let left = Theme.Space.section - 4 + peekSize * 0.11
+        let right = Theme.Space.section - 4 + peekSize * 0.66
+        func paw(x: CGFloat, angle: Double) -> some View {
+            UnevenRoundedRectangle(cornerRadii: .init(topLeading: 8, bottomLeading: 5,
+                                                      bottomTrailing: 5, topTrailing: 8))
+                .fill(fill)
+                .shadow(color: rim, radius: 0.5, y: 1)
+                .frame(width: 15, height: 10)
+                .rotationEffect(.degrees(angle))
+                .offset(x: x, y: peekHeight - 5)
+        }
+        return ZStack(alignment: .topLeading) {
+            paw(x: left, angle: -6)
+            paw(x: right, angle: 6)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// The wash behind a sheet's icon tile.
+enum SheetTone {
+    case primary, info, success, warning, destructive, neutral
+
+    func colour(_ palette: Palette.Scheme) -> Color {
+        switch self {
+        case .primary: palette.primary
+        case .info: palette.info
+        case .success: palette.success
+        case .warning: palette.warning
+        case .destructive: palette.destructive
+        case .neutral: palette.mutedForeground
+        }
+    }
+}
+
+/// The close cross for a sheet: turns a quarter on hover, and Esc presses it.
+struct SheetCloseButton: View {
+    @Environment(\.palette) private var palette
+    let action: () -> Void
+    @State private var hovering = false
+
+    init(action: @escaping () -> Void) { self.action = action }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: Theme.scaled(11), weight: .semibold))
+                .foregroundStyle(hovering ? palette.foreground : palette.mutedForeground)
+                .rotationEffect(.degrees(hovering ? 90 : 0))
+                .frame(width: 28, height: 28)
+                .background(hovering ? palette.cardHover : .clear, in: .rect(cornerRadius: Theme.Radius.control))
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(.cancelAction)
+        .help("Close (Esc)")
+        .onHover { hovering in
+            withAnimation(.spring(duration: 0.25)) { self.hovering = hovering }
+        }
+    }
+}
+
+/// A key, drawn like one: a lit top, a darker lip underneath.
+struct Keycap: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
+    let key: String
+
+    init(_ key: String) { self.key = key }
+
+    var body: some View {
+        Text(key)
+            .font(.system(size: Theme.scaled(10.5), weight: .medium))
+            .foregroundStyle(palette.foreground)
+            .padding(.horizontal, 6)
+            .frame(height: 20)
+            .background(
+                LinearGradient(colors: colorScheme == .dark
+                               ? [Color(white: 0.23), Color(white: 0.18)]
+                               : [palette.background, Color(white: 0.95)],
+                               startPoint: .top, endPoint: .bottom),
+                in: .rect(cornerRadius: 5))
+            .overlay {
+                RoundedRectangle(cornerRadius: 5).strokeBorder(palette.border)
+            }
+            .shadow(color: colorScheme == .dark ? .black : Color.black.opacity(0.12), radius: 0, y: 1.5)
     }
 }
 
@@ -498,9 +624,21 @@ struct PrimaryButton: ButtonStyle {
             .frame(height: Theme.Size.control)
             .background(
                 isEnabled
-                    ? palette.primary.opacity(configuration.isPressed ? 0.78 : 1)
+                    ? palette.primary.opacity(configuration.isPressed ? 0.85 : 1)
                     : palette.secondary,
                 in: .rect(cornerRadius: Theme.Radius.control))
+            // A lit top edge and a soft drop in its own colour: the button reads as pressable.
+            .overlay {
+                if isEnabled {
+                    RoundedRectangle(cornerRadius: Theme.Radius.control)
+                        .strokeBorder(LinearGradient(colors: [.white.opacity(0.3), .clear, .black.opacity(0.08)],
+                                                     startPoint: .top, endPoint: .bottom))
+                }
+            }
+            .shadow(color: isEnabled ? palette.primary.opacity(0.35) : .clear, radius: 2, y: 1)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .offset(y: configuration.isPressed ? 0.5 : 0)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }
 
@@ -606,5 +744,61 @@ struct TopFade: View {
                        startPoint: .top, endPoint: .bottom)
             .frame(height: 76)
             .allowsHitTesting(false)
+    }
+}
+
+/// Nothing here yet: a bot napping on the spot, one line of why, at most one way forward.
+///
+/// Grey and asleep by default. When empty is good news (nothing waiting on you), pass `.done` and
+/// a colour so the bot cheers instead.
+struct EmptyState<Action: View>: View {
+    @Environment(\.palette) private var palette
+    let title: String
+    var message: String?
+    var mood: BotMood = .sleeping
+    /// Index into the bot colours; nil is the neutral grey bot.
+    var colour: Int?
+    var faceSize: CGFloat = 72
+    @ViewBuilder var action: Action
+
+    var body: some View {
+        VStack(spacing: Theme.Space.snug) {
+            Group {
+                if let colour {
+                    BotFace(hue: 0, mood: mood, size: faceSize, shape: .bup, colour: colour)
+                } else {
+                    BotFace(hue: 0, mood: mood, size: faceSize, shape: .bup, colour: 0)
+                        .saturation(0)
+                        .opacity(0.7)
+                }
+            }
+            .padding(.bottom, Theme.Space.tight)
+            .accessibilityHidden(true)
+
+            Text(title)
+                .font(Theme.Typography.heading)
+                .foregroundStyle(palette.foreground)
+                .multilineTextAlignment(.center)
+            if let message {
+                Text(message)
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(palette.mutedForeground)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 300)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            action.padding(.top, Theme.Space.tight)
+        }
+        .padding(Theme.Space.section)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+extension EmptyState where Action == EmptyView {
+    init(title: String, message: String? = nil, mood: BotMood = .sleeping, colour: Int? = nil,
+         faceSize: CGFloat = 72) {
+        self.init(title: title, message: message, mood: mood, colour: colour, faceSize: faceSize) {
+            EmptyView()
+        }
     }
 }

@@ -713,15 +713,12 @@ final class AppModel {
             Bot(name: "Inbox", engine: .codex,
                 personaPrompt: "You triage and summarise. Lead with what needs a decision."),
         ]
-        // The first thing anyone sees. Two of these came out as identical ghosts.
-        var used: Set<Int> = []
-        for index in bots.indices {
-            var seed = BotFace.seed(forHue: bots[index].avatarHue)
-            while used.contains(BotFace.shapeIndex(forHue: Double(seed) / 360)) {
-                seed = (seed + 1) % 360
-            }
-            bots[index].avatarHue = Double(seed) / 360
-            used.insert(BotFace.shapeIndex(forHue: bots[index].avatarHue))
+        // The first thing anyone sees: three different characters in three different colours,
+        // matching the designs (Scout the pink Bup, Builder the blue cat, Inbox the amber bear).
+        let faces: [(BotShape, Int)] = [(.bup, 0), (.cat, 2), (.bear, 6)]
+        for (index, face) in zip(bots.indices, faces) {
+            bots[index].avatarShape = face.0
+            bots[index].avatarColour = face.1
         }
         return bots
     }

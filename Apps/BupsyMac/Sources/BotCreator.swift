@@ -20,7 +20,7 @@ struct BotCreatorSheet: View {
     @State private var engine = EngineID.claude
     @State private var modelID: String?
     @State private var trust = Autonomy.ask
-    @State private var shape = BotShape.circle
+    @State private var shape = BotShape.bup
     @State private var colour = 8
     @State private var faceChanged = false
     @State private var loaded = false
@@ -207,7 +207,7 @@ struct BotCreatorSheet: View {
             colour = bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue)
         } else {
             // A fresh bot starts on a shape nobody else wears.
-            shape = BotShape.allCases.first { !taken.contains($0) } ?? .circle
+            shape = BotShape.allCases.first { !taken.contains($0) } ?? .bup
             colour = Int.random(in: 0..<BotShape.palette.count - 1)
         }
     }
@@ -280,7 +280,7 @@ struct FaceRing: View {
                         .scaleEffect(option == shape ? 1.12 : 1)
                 }
                 .buttonStyle(.plain)
-                .help(taken.contains(option) ? "\(option.label) — another bot wears this" : option.label)
+                .help(taken.contains(option) ? "\(option.label), another bot wears this" : option.label)
                 .offset(x: cos(angle) * ring, y: sin(angle) * ring)
             }
         }

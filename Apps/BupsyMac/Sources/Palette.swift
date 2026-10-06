@@ -39,6 +39,12 @@ enum Palette {
         let info: Color
         let destructive: Color
         let border: Color
+        /// Done, connected, allowed. Darker in light mode so it passes on white.
+        let success: Color
+        let warning: Color
+        /// `info` and `destructive` tuned for text: the raw tokens fail contrast on dark cards.
+        let infoText: Color
+        let destructiveText: Color
 
         /// Readable text on top of `primary`.
         var onPrimary: Color { .white }
@@ -60,7 +66,11 @@ enum Palette {
         primary: rgb(224, 117, 200),
         info: rgb(140, 75, 255),
         destructive: rgb(225, 11, 5),
-        border: Color.white.opacity(0.10)
+        border: Color.white.opacity(0.10),
+        success: rgb(51, 183, 95),
+        warning: rgb(222, 144, 22),
+        infoText: rgb(173, 144, 255),
+        destructiveText: rgb(255, 117, 110)
     )
 
     static let light = Scheme(
@@ -79,7 +89,11 @@ enum Palette {
         primary: rgb(215, 106, 191),
         info: rgb(140, 75, 255),
         destructive: rgb(225, 11, 5),
-        border: Color.black.opacity(0.08)
+        border: Color.black.opacity(0.08),
+        success: rgb(0, 124, 50),
+        warning: rgb(162, 87, 0),
+        infoText: rgb(129, 65, 238),
+        destructiveText: rgb(206, 28, 18)
     )
 
     static func scheme(for colorScheme: ColorScheme) -> Scheme {

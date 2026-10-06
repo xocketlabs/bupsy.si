@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Choose a bot's face: one of the fourteen characters, in one of the fourteen colours.
+/// Choose a bot's face: one of the eight shapes, in one of the eight bot colours.
 ///
 /// Every shape is shown as a live face in the colour being considered, rather than as a grey
 /// outline in a list — you are picking a character, and it should look like one while you choose.
@@ -14,8 +14,8 @@ struct AvatarPicker: View {
     var taken: Set<BotShape> = []
     var onChange: () -> Void = {}
 
-    private let faceSize: CGFloat = 34
-    private let columns = Array(repeating: GridItem(.fixed(38), spacing: 6), count: 7)
+    private let faceSize: CGFloat = 40
+    private let columns = Array(repeating: GridItem(.flexible(minimum: 52), spacing: 6), count: 4)
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.step) {
@@ -42,7 +42,8 @@ struct AvatarPicker: View {
                         onChange()
                     } label: {
                         BotFace(hue: 0, mood: .idle, size: faceSize, shape: option, colour: colour)
-                            .frame(width: 38, height: 38)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
                             .background(
                                 RoundedRectangle(cornerRadius: Theme.Radius.control)
                                     .fill(option == shape ? palette.cardHover : .clear))
@@ -61,7 +62,7 @@ struct AvatarPicker: View {
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .help(taken.contains(option) ? "\(option.label) — another bot wears this"
+                    .help(taken.contains(option) ? "\(option.label), another bot wears this"
                                                  : option.label)
                 }
             }

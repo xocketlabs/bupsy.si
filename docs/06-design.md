@@ -9,8 +9,8 @@ the map to it.
 |---|---|
 | Colours, light and dark | `Apps/BupsyMac/Sources/Palette.swift` |
 | Spacing, radius, sizes, type, shared components (SheetFrame, buttons, fields, SettingsGroup/Row, CardRow) | `Apps/BupsyMac/Sources/Theme.swift` |
-| Bot faces: 14 shapes, 15 colours, moods and motion | `Apps/BupsyMac/Sources/BotFace.swift` |
-| Logo mark and app icon | `Apps/BupsyMac/Sources/BupsyMark.swift` |
+| Bupsy, the mascot every bot wears: 8 shapes, 8 colours, 6 moods and their motion | `Apps/BupsyMac/Sources/BotFace.swift` |
+| Logo mark and app icon (the icon PNGs are rendered from the design system's `bupsy-app-icon.svg`) | `Apps/BupsyMac/Sources/BupsyMark.swift` |
 | Bot creator (face ring, colours, identity and preference cards) | `Apps/BupsyMac/Sources/BotCreator.swift` |
 | Agent thinking indicator (dot wave, shimmer label, timer) | `Apps/BupsyMac/Sources/AgentThinking.swift` |
 | Limits card (context window, plan limits) | `Apps/BupsyMac/Sources/AgentLimits.swift` |
@@ -26,7 +26,10 @@ Dark mode layers *inverted*: the sidebar is the darkest surface, content sits ab
 above that. Depth comes from those steps, so borders and shadows are rare. Light mode follows
 the same steps in reverse. Appearance is Auto / Light / Dark in the "You" menu.
 
-Every bot has its own colour from `BotShape.palette`; it is used for the bot's name in groups,
+Status colours come from `success`, `warning`, `infoText` and `destructiveText`; the last two are
+the text-safe versions of `info` and `destructive`.
+
+Every bot has its own colour from `BotShape.palette` (the design system's `--bot-1` to `--bot-8`); it is used for the bot's name in groups,
 its @mention chips and its thinking dots, so a bot reads as the same character everywhere.
 
 ## Type and spacing
@@ -37,7 +40,13 @@ Spacing comes from `Theme.Space` (tight, snug, step, gutter, section); radii fro
 
 ## Components
 
-- **Popups** use `SheetFrame`: icon tile, title, one line of explanation, fields, then Cancel and
+- **The mascot** is ported from the design system's `Mascot` and drawn from the same 120-unit
+  geometry. The antenna light is the status (violet idle, green working or done, a white flash
+  when it needs you, grey asleep, red on error); the face carries the rest. Reduce Motion freezes
+  every face. Empty places use `EmptyState`, a napping bot with one line of why.
+- **Popups** use `SheetFrame`, the design system's Sheet: a panel in a grey lip, keyboard hints and
+  the actions on the lip. The header tile is washed in a `SheetTone`; pass `bot:` and that bot
+  peeks over the panel's edge instead. Then Cancel and
   a pink primary button. The bot creator is the one exception — it is its own full sheet.
 - **Settings** are `SettingsGroup` cards of `SettingRow`s: label on the left, value and menu on
   the right.

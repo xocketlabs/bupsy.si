@@ -195,12 +195,12 @@ struct NavRail: View {
                             VStack(alignment: .leading, spacing: 1) {
                                 sectionHeader(folder)
                                     .contextMenu {
-                                        Button("Rename folder…") {
+                                        Button("Rename section…") {
                                             renamingFolder = FolderName(folder)
                                         }
                                         // Named for what it does. "Delete folder" would read as
                                         // deleting the bots inside it, which it never does.
-                                        Button("Ungroup these bots") {
+                                        Button("Move these bots to Unassigned") {
                                             model.dissolveFolder(folder)
                                         }
                                     }
@@ -322,16 +322,7 @@ struct NavRail: View {
     }
 
     private var empty: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.tight) {
-            Text("No bots yet")
-                .font(Theme.Typography.label)
-                .foregroundStyle(palette.sidebarMutedForeground)
-            Text("⌘N to make your first one.")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(palette.sidebarMuted)
-        }
-        .padding(.horizontal, Theme.Space.snug)
-        .padding(.top, Theme.Space.snug)
+        EmptyState(title: "No bots yet", message: "Press ⌘N to make your first one.", faceSize: 52)
     }
 
     private var noMatches: some View {
@@ -609,6 +600,8 @@ struct BotRow: View {
         switch mood {
         case .waitingForYou: "Needs you"
         case .working: preview ?? "Working…"
+        case .done: preview ?? "Done"
+        case .sleeping: preview ?? "Asleep"
         case .failed: preview ?? "Last run failed"
         case .idle: preview ?? "No messages yet"
         }
@@ -617,7 +610,7 @@ struct BotRow: View {
     /// Only drawn when there is something to say. A permanent grey dot on every row is furniture.
     @ViewBuilder
     private var statusDot: some View {
-        if mood != .idle {
+        if mood == .working || mood == .waitingForYou || mood == .failed {
             Circle()
                 .fill(dotColour)
                 .frame(width: 9, height: 9)
@@ -660,7 +653,7 @@ struct RenameFolderSheet: View {
     @State private var name = ""
 
     var body: some View {
-        SheetFrame(title: "Rename folder", icon: "folder", width: 380) {
+        SheetFrame(title: "Rename section", icon: "rectangle.stack", width: 380, primaryVerb: "rename", hints: false) {
             Field(label: "Name",
                   hint: "\(model.bots(in: folder).count) bots move with it.") {
                 TextField("", text: $name, prompt: Text(folder))
@@ -716,7 +709,9 @@ struct NewFolderSheet: View {
     @State private var name = ""
 
     var body: some View {
-        SheetFrame(title: "New folder", icon: "folder.badge.plus", width: 380) {
+        SheetFrame(title: "New section", icon: "rectangle.stack.badge.plus",
+                   subtitle: "Sections keep a growing team tidy in the sidebar.", width: 380,
+                   primaryVerb: "create", hints: false) {
             Field(label: "Name", hint: "\(bot.name) moves into it.") {
                 TextField("", text: $name, prompt: Text("Outreach"))
                     .textFieldStyle(BupsyFieldStyle())
@@ -750,7 +745,7 @@ struct RenameBotSheet: View {
     @State private var name = ""
     @State private var job = ""
     @State private var role = ""
-    @State private var shape = BotShape.circle
+    @State private var shape = BotShape.bup
     @State private var colour = 0
     /// Only a face someone actually changed is saved as a choice. Saving every bot's derived face
     /// as "chosen" on an unrelated rename would quietly pin faces nobody picked.

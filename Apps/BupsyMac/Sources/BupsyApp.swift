@@ -324,16 +324,8 @@ struct Page<Content: View>: View {
 }
 
 struct NothingSelected: View {
-    @Environment(\.palette) private var palette
     var body: some View {
-        VStack(spacing: Theme.Space.step) {
-            Text("No bot selected")
-                .font(Theme.Typography.heading)
-                .foregroundStyle(palette.foreground)
-            Text("Pick one on the left, or make a new one.")
-                .font(Theme.Typography.label)
-                .foregroundStyle(palette.mutedForeground)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyState(title: "No bot selected", message: "Pick one on the left, or make a new one.")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

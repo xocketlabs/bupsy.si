@@ -413,7 +413,7 @@ struct NewGroupSheet: View {
         SheetFrame(title: "New group chat", icon: "person.2",
                    subtitle: "Several bots in one conversation. Mention one with @ to ask it; "
                        + "otherwise the lead answers.",
-                   width: 460) {
+                   width: 460, tone: .info, primaryVerb: "create") {
             Field(label: "Name") {
                 TextField("", text: $name, prompt: Text("Launch team"))
                     .textFieldStyle(BupsyFieldStyle())

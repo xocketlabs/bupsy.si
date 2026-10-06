@@ -109,7 +109,8 @@ struct NewRoutineSheet: View {
 
     var body: some View {
         SheetFrame(title: editing == nil ? "New routine" : "Edit routine", icon: "clock.arrow.circlepath",
-                   subtitle: "A job \(bot.name) does on a schedule, whether or not you are here.") {
+                   subtitle: "A job \(bot.name) does on a schedule, whether or not you are here.",
+                   tone: .info, bot: bot, primaryVerb: "save") {
             Field(label: "Name") {
                 TextField("", text: $name, prompt: Text("Morning briefing"))
                     .textFieldStyle(BupsyFieldStyle())

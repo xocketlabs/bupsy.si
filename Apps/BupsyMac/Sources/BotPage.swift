@@ -383,7 +383,7 @@ struct BotPage: View {
                         }
                     }
                 }
-                SettingRow(label: "Folder in sidebar", value: bot.folder ?? "None",
+                SettingRow(label: "Section", value: bot.folder ?? "Unassigned",
                            icon: "tray.2") {
                     ForEach(model.folders, id: \.self) { folder in
                         Button {
@@ -394,7 +394,7 @@ struct BotPage: View {
                     }
                     if bot.folder != nil {
                         Divider()
-                        Button("Remove from folder") { model.setFolder(bot, nil) }
+                        Button("Move to Unassigned") { model.setFolder(bot, nil) }
                     }
                 }
             }

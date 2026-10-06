@@ -25,7 +25,7 @@ struct BotMenu: View {
                 Button {
                     model.setFolder(bot, folder)
                 } label: {
-                    Label(folder, systemImage: bot.folder == folder ? "checkmark" : "folder")
+                    Label(folder, systemImage: bot.folder == folder ? "checkmark" : "rectangle.stack")
                 }
             }
             Button {
@@ -82,7 +82,7 @@ struct NewBotSheet: View {
     @State private var name = ""
     @State private var engine = EngineID.claude
     @State private var job = ""
-    @State private var shape = BotShape.circle
+    @State private var shape = BotShape.bup
     @State private var colour = 0
     /// Until the face is touched, it follows the name — the automatic face, kept distinct from the
     /// rest of the roster. Once someone picks, their pick stays put while they keep typing.
@@ -90,7 +90,8 @@ struct NewBotSheet: View {
 
     var body: some View {
         SheetFrame(title: "New bot", icon: "sparkles",
-                   subtitle: "It starts fully gated — it asks before doing anything beyond reading.") {
+                   subtitle: "It starts fully gated. It asks before doing anything beyond reading.",
+                   primaryVerb: "create") {
             HStack(spacing: Theme.Space.step) {
                 BotFace(hue: previewHue, mood: .idle, size: 56,
                         shape: faceChosen ? shape : nil, colour: faceChosen ? colour : nil)
