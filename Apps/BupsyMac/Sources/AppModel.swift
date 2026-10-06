@@ -26,6 +26,8 @@ final class AppModel {
         }
     }
     var engineStatus: [EngineID: AuthStatus] = [:]
+    /// Where each engine's CLI was found on this Mac, once checked. Nil when not found yet.
+    var engineBinaryPaths: [EngineID: String] = [:]
     var routines: [Routine] = []
     var machines: [MachineRecord] = []
     var connectors: [MCPServer] = []
@@ -836,13 +838,13 @@ final class AppModel {
 
     private func loadBots() {
         guard let store else {
-            bots = Self.starterBots()
+            bots = seedBots()
             return
         }
         do {
             let records = try store.bots()
             if records.isEmpty {
-                bots = Self.starterBots()
+                bots = seedBots()
                 for (index, bot) in bots.enumerated() {
                     try store.save(bot.record(sortIndex: index))
                 }
@@ -852,8 +854,15 @@ final class AppModel {
             links = BotLinks((try? store.botLinks()) ?? [])
         } catch {
             storageProblem = error.localizedDescription
-            bots = Self.starterBots()
+            bots = seedBots()
         }
+    }
+
+    /// The bots an empty roster starts with. None on a fresh install: onboarding makes the
+    /// person's first bot, and starters made before it contradicted "your first bot" and hid
+    /// the empty roster. Someone who already finished onboarding still gets the starters.
+    private func seedBots() -> [Bot] {
+        needsOnboarding ? [] : Self.starterBots()
     }
 
     private static func starterBots() -> [Bot] {
@@ -927,6 +936,14 @@ final class AppModel {
         for (id, adapter) in adapters {
             let status = await adapter.authStatus(on: host)
             engineStatus[id] = status
+            // Where the CLI was found, for the sign-in rows. Resolved the way runs resolve it,
+            // off the main thread because the fallback asks a login shell.
+            if case .notInstalled = status {
+                engineBinaryPaths[id] = nil
+            } else {
+                let binary = adapter.binaryName
+                engineBinaryPaths[id] = await Task.detached { try? BinaryResolver.resolve(binary).path }.value
+            }
             try? store?.save(EngineLinkRecord(
                 machineID: nil,
                 engine: id.rawValue,
@@ -944,6 +961,7 @@ final class AppModel {
         case .signedIn: "signedIn"
         case .signedInWithoutModelAccess: "noModelAccess"
         case .signedOut: "signedOut"
+        case .notInstalled: "notInstalled"
         case .unknown: "unknown"
         }
     }
@@ -1735,25 +1753,61 @@ final class AppModel {
     /// told its job sets its own name and role with update_me — the job itself still waits for
     /// the person's yes. Returns the new bot's id so the caller can open it.
     @discardableResult
-    func quickCreateBot(engine: EngineID = .claude) -> BotID? {
+    func quickCreateBot(engine: EngineID? = nil) -> BotID? {
         var name = "New bot"
         var counter = 2
         while isNameTaken(name) { name = "New bot \(counter)"; counter += 1 }
-        addBot(name: name, engine: engine)
+        addBot(name: name, engine: engine ?? defaultNewBotEngine)
         guard let bot = bots.first(where: { $0.name == name }) else { return nil }
+        greet(bot)
+        return bot.id
+    }
 
-        let others = bots.filter { $0.id != bot.id && !$0.hidden }.map { bot -> String in
-            bot.personaPrompt.map { "\(bot.name) (\($0))" } ?? bot.name
+    /// The engine a new bot starts on, wherever it is made: the first engine that is signed in
+    /// and able to run, or Claude Code when both are (or neither is). A bot made before any
+    /// sign-in still exists; it asks for one when it first runs.
+    var defaultNewBotEngine: EngineID {
+        let ready = EngineID.supported.filter { engineStatus[$0]?.isUsable == true }
+        if ready.isEmpty || ready.contains(.claude) { return .claude }
+        return ready[0]
+    }
+
+    /// A new bot's first words, run in its own chat with the prompt hidden.
+    ///
+    /// With no job it says hi and asks what it is for, then sets its own job with update_me
+    /// (which still waits for the person's yes). With a job, one the person just picked, the job
+    /// is saved and the bot says hi and confirms it in its own words. A bot still called
+    /// "New bot" also names itself; one the person named keeps its name.
+    func greet(_ bot: Bot, job: String? = nil) {
+        let trimmedJob = job?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedJob.isEmpty, bot.personaPrompt != trimmedJob { setJob(bot, trimmedJob) }
+        guard let current = bots.first(where: { $0.id == bot.id }) else { return }
+
+        let others = bots.filter { $0.id != current.id && !$0.hidden }.map { other -> String in
+            other.personaPrompt.map { "\(other.name) (\($0))" } ?? other.name
         }
         let roster = others.isEmpty ? "You are the first bot." : "The other bots are: \(others.joined(separator: "; "))."
-        _ = startRun(
-            "You have just been created in bupsy, the person's roster of AI bots. \(roster) "
-                + "Greet the person — not the other bots; they cannot see this — in two short "
-                + "sentences, and ask what job they want you for. If the "
-                + "roster already covers something, say so. Once they tell you, use the update_me "
-                + "tool to set a short name, a one- or two-word role tag, and your job.",
-            bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: nil, hidesPrompt: true)
-        return bot.id
+        let unnamed = current.name.hasPrefix("New bot")
+        let intro = "You have just been created in bupsy, the person's roster of AI bots. \(roster) "
+            + "Greet the person, not the other bots (they cannot see this), in two short sentences. "
+        let prompt: String
+        if trimmedJob.isEmpty {
+            prompt = intro
+                + "Ask what job they want you for. If the roster already covers something, say so. "
+                + (unnamed
+                    ? "Once they tell you, use the update_me tool to set a short name, a one- or two-word role tag, and your job."
+                    : "Your name is \(current.name); keep it. Once they tell you, use the update_me tool to set a one- or two-word role tag and your job.")
+        } else {
+            prompt = intro
+                + "The person made you for this job: \(trimmedJob). Say hi and confirm the job in "
+                + "your own words. If the roster already covers part of it, say so. "
+                + (unnamed
+                    ? "Use the update_me tool to set a short name and a one- or two-word role tag that fit the job. "
+                    : "Your name is \(current.name); keep it. Use the update_me tool to set a one- or two-word role tag that fits the job. ")
+                + "Your job is already saved, so don't change it."
+        }
+        _ = startRun(prompt, bot: current, thread: thread(for: current.id), groupID: nil,
+                     onFinish: nil, hidesPrompt: true)
     }
 
     /// A job a bot proposed for itself, waiting on the person.

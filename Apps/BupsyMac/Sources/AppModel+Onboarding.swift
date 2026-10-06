@@ -25,13 +25,39 @@ extension AppModel {
         EngineID.supported.filter { engineStatus[$0]?.isUsable == true }
     }
 
-    /// The engine a first bot runs on: the one picked if it can run, otherwise the first that
-    /// can, otherwise Claude Code, the same default the bot creator starts from. A bot made
+    /// The engine a first bot runs on: the one picked if it can run, otherwise
+    /// `defaultNewBotEngine`, the same default every other way of making a bot uses. A bot made
     /// before anything is signed in still exists; it simply asks for a sign-in when it first runs.
     func onboardingEngine(preferring picked: EngineID?) -> EngineID {
-        let ready = onboardingReadyEngines
-        if let picked, ready.contains(picked) { return picked }
-        return ready.first ?? .claude
+        if let picked, onboardingReadyEngines.contains(picked) { return picked }
+        return defaultNewBotEngine
+    }
+
+    /// The command that installs an engine's CLI, shown with a copy button when it is missing.
+    static func installCommand(for engine: EngineID) -> String {
+        switch engine {
+        case .codex: return "npm install -g @openai/codex"
+        default: return "npm install -g @anthropic-ai/claude-code"
+        }
+    }
+
+    /// The command to run once in Terminal to sign an installed engine in.
+    static func signInCommand(for engine: EngineID) -> String {
+        switch engine {
+        case .codex: return "codex login"
+        default: return "claude"
+        }
+    }
+
+    /// The tooltip for an engine's status line: the full line, plus the CLI's own words when the
+    /// check failed, which are too raw to show in the row itself.
+    static func engineStatusHelp(_ status: AuthStatus?, path: String? = nil) -> String {
+        let line = accountStatusLine(status, path: path)
+        if case .unknown(let message)? = status {
+            let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !detail.isEmpty { return "\(line)\n\n\(detail)" }
+        }
+        return line
     }
 
     /// Makes the first bot for real and finishes onboarding.

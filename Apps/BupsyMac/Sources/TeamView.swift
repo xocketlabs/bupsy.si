@@ -12,10 +12,8 @@ struct TeamView: View {
 
     let onOpen: (BotID) -> Void
 
-    @State private var isAddingBot = false
-    @State private var isAddingToSection = false
-    @State private var addingToSection: String?
-    @State private var botsBeforeAdding: Set<BotID> = []
+    /// The full creator, with the section it was opened from. See `TeamCreatorRequest`.
+    @State private var settingUp: TeamCreatorRequest?
     @State private var isAddingSection = false
     @State private var renamingBot: Bot?
     /// Set to ask before deleting. Owned here, not by the card's menu, which is gone on click.
@@ -76,7 +74,11 @@ struct TeamView: View {
                         }
                         .buttonStyle(QuietButton(compact: true))
                     }
-                    Button { isAddingBot = true } label: {
+                    Button { settingUp = TeamCreatorRequest(section: nil) } label: {
+                        Label("Set up a bot yourself", systemImage: "slider.horizontal.3")
+                    }
+                    .buttonStyle(QuietButton(compact: true))
+                    Button(action: quickCreate) {
                         Label("New bot", systemImage: "plus")
                     }
                     .buttonStyle(PrimaryButton())
@@ -101,10 +103,16 @@ struct TeamView: View {
                     } else if visibleBots.isEmpty {
                         EmptyState(title: "No bots yet",
                                    message: "Make one and it shows up here, ready to file into a section.") {
-                            Button { isAddingBot = true } label: {
-                                Label("New bot", systemImage: "plus")
+                            HStack(spacing: Theme.Space.snug) {
+                                Button(action: quickCreate) {
+                                    Label("New bot", systemImage: "plus")
+                                }
+                                .buttonStyle(PrimaryButton())
+                                Button { settingUp = TeamCreatorRequest(section: nil) } label: {
+                                    Label("Set up a bot yourself", systemImage: "slider.horizontal.3")
+                                }
+                                .buttonStyle(QuietButton())
                             }
-                            .buttonStyle(PrimaryButton())
                         }
                         .padding(.top, Theme.Space.page)
                     } else {
@@ -117,11 +125,8 @@ struct TeamView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .sheet(isPresented: $isAddingBot) { BotCreatorSheet() }
-        .background {
-            Color.clear.sheet(isPresented: $isAddingToSection, onDismiss: { fileNewBots() }) {
-                BotCreatorSheet()
-            }
+        .sheet(item: $settingUp) { request in
+            BotCreatorSheet(section: request.section)
         }
         .background {
             Color.clear.sheet(isPresented: $isAddingSection) { TeamNewSectionSheet() }
@@ -218,7 +223,8 @@ struct TeamView: View {
                         .contentShape(.rect)
                 }
                 .buttonStyle(SidebarIconButtonStyle())
-                .help(section.map { "New bot in \($0)" } ?? "New bot")
+                .help(section.map { "Set up a bot yourself in \($0)" } ?? "Set up a bot yourself")
+                .accessibilityLabel(section.map { "Set up a bot yourself in \($0)" } ?? "Set up a bot yourself")
             }
             .padding(.horizontal, 4)
             .padding(.top, 2)
@@ -268,7 +274,7 @@ struct TeamView: View {
             faceSize: 52
         ) {
             Button { startAdding(to: section) } label: {
-                Label("Add a bot", systemImage: "plus")
+                Label("Set up a bot yourself", systemImage: "plus")
                     .font(Theme.Typography.body)
                     .foregroundStyle(palette.foreground)
                     .padding(.horizontal, Theme.Space.step)
@@ -318,26 +324,15 @@ struct TeamView: View {
         return moved
     }
 
-    /// Opens the new-bot sheet, and files whatever it made into `section` once it closes.
+    /// Opens the full creator with its Section field already set to `section`, so the form shows
+    /// where the bot lands.
     private func startAdding(to section: String?) {
-        guard let section else {
-            isAddingBot = true
-            return
-        }
-        botsBeforeAdding = Set(model.bots.map(\.id))
-        addingToSection = section
-        isAddingToSection = true
+        settingUp = TeamCreatorRequest(section: section)
     }
 
-    private func fileNewBots() {
-        defer {
-            addingToSection = nil
-            botsBeforeAdding = []
-        }
-        guard let section = addingToSection else { return }
-        for bot in model.bots where !botsBeforeAdding.contains(bot.id) {
-            model.setFolder(bot, section)
-        }
+    /// "New bot": made at once, and it asks what it is for.
+    private func quickCreate() {
+        if let id = model.quickCreateBot(engine: model.defaultNewBotEngine) { onOpen(id) }
     }
 }
 
@@ -439,7 +434,7 @@ struct TeamBotCard: View {
             Button { model.togglePin(bot) } label: {
                 Label(bot.pinned ? "Unpin" : "Pin to top", systemImage: bot.pinned ? "pin.slash" : "pin")
             }
-            Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+            Button(action: onRename) { Label("Edit bot…", systemImage: "pencil") }
             Button { model.shuffleFace(bot) } label: { Label("Shuffle face", systemImage: "sparkles") }
             Button(action: onOpen) { Label("Open chat", systemImage: "bubble.left") }
             Divider()
@@ -558,6 +553,13 @@ struct TeamPill: View {
         .background((tone ?? palette.foreground).opacity(tone == nil ? 0.05 : 0.12),
                     in: .rect(cornerRadius: 6))
     }
+}
+
+/// Which section the full creator was opened from, nil for none. Its own type so one
+/// `.sheet(item:)` covers both the toolbar button and each column's "+".
+struct TeamCreatorRequest: Identifiable {
+    let id = UUID()
+    let section: String?
 }
 
 // MARK: - New section

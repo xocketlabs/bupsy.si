@@ -368,8 +368,12 @@ struct SheetFrame<Content: View, Actions: View>: View {
     var primaryVerb = "confirm"
     /// Narrow sheets hide the keycaps so they don't wrap beside the buttons.
     var hints = true
+    /// A colour for the header tile in place of the tone's, such as the colour a new bot is wearing.
+    var tint: Color? = nil
     @ViewBuilder var content: Content
     @ViewBuilder var actions: Actions
+
+    private var tileColour: Color { tint ?? tone.colour(palette) }
 
     private let peekHeight: CGFloat = 48
     private let peekSize: CGFloat = 76
@@ -415,13 +419,13 @@ struct SheetFrame<Content: View, Actions: View>: View {
             if let icon, bot == nil {
                 Image(systemName: icon)
                     .font(.system(size: Theme.scaled(17), weight: .medium))
-                    .foregroundStyle(tone.colour(palette).opacity(0.95))
+                    .foregroundStyle(tileColour.opacity(0.95))
                     .frame(width: Theme.Size.tile, height: Theme.Size.tile)
-                    .background(tone.colour(palette).opacity(colorScheme == .dark ? 0.2 : 0.13),
+                    .background(tileColour.opacity(colorScheme == .dark ? 0.2 : 0.13),
                                 in: .rect(cornerRadius: 13, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            .strokeBorder(tone.colour(palette).opacity(0.22))
+                            .strokeBorder(tileColour.opacity(0.22))
                     }
             }
             VStack(alignment: .leading, spacing: 3) {
@@ -571,8 +575,9 @@ struct Field<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
+            // The same size as the picker's own labels beside it, so one form reads in one voice.
             Text(label)
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.body)
                 .foregroundStyle(palette.mutedForeground)
             content
             if let hint {

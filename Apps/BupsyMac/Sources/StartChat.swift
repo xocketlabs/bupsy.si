@@ -240,7 +240,7 @@ struct StartChatPalette: View {
             let name = query.trimmingCharacters(in: .whitespaces)
             items.append(PaletteItem(kind: .createNamed(name), section: "Create",
                                      title: "Make a bot called \"\(name)\"",
-                                     subtitle: "Opens the bot creator with this name filled in"))
+                                     subtitle: "Set up a bot yourself, with this name filled in"))
             return (items, true)
         }
         return (items, false)

@@ -77,26 +77,37 @@ extension AppModel {
         guard let status = engineStatus[engine] else { return false }
         switch status {
         case .signedIn, .signedInWithoutModelAccess: return true
-        case .signedOut, .unknown: return false
+        case .signedOut, .notInstalled, .unknown: return false
         }
     }
 
-    /// One plain line about an engine's sign-in, for Settings and anywhere else that lists them.
-    static func accountStatusLine(_ status: AuthStatus?) -> String {
+    /// One plain line about an engine's sign-in, for Settings, onboarding and anywhere else that
+    /// lists them, with where the CLI was found when that is known.
+    ///
+    /// Never the CLI's raw output: a failed check reads "Couldn't check", and the error itself
+    /// belongs in a tooltip (`engineStatusHelp`).
+    static func accountStatusLine(_ status: AuthStatus?, path: String? = nil) -> String {
         guard let status else { return "Checking…" }
+        let line: String
         switch status {
         case .signedIn(let method):
             switch method {
-            case .subscription: return "Signed in with your subscription"
-            case .apiKey: return "Signed in with an API key"
+            case .subscription: line = "Signed in with your subscription"
+            case .apiKey: line = "Signed in with an API key"
             }
         case .signedInWithoutModelAccess(let detail):
-            return detail.isEmpty ? "Signed in, but this plan can't run it" : detail
+            line = detail.isEmpty ? "Signed in, but this plan can't run it" : detail
         case .signedOut:
-            return "Not signed in"
-        case .unknown(let message):
-            return message.isEmpty ? "Couldn't check" : message
+            line = "Not signed in"
+        case .notInstalled:
+            return "Not installed on this Mac"
+        case .unknown:
+            line = "Couldn't check"
         }
+        guard let path, !path.isEmpty else { return line }
+        let home = NSHomeDirectory()
+        let shown = path.hasPrefix(home + "/") ? "~" + String(path.dropFirst(home.count)) : path
+        return "\(line). Found at \(shown)"
     }
 
     // MARK: - Scripts

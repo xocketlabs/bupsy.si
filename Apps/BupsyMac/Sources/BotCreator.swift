@@ -16,6 +16,8 @@ struct BotCreatorSheet: View {
     var editing: Bot? = nil
     /// A name to start a new bot with, such as what was typed into the palette.
     var initialName: String? = nil
+    /// The section a new bot starts in, such as the one whose "+" opened this.
+    var initialSection: String? = nil
 
     @State private var name = ""
     @State private var role = ""
@@ -25,15 +27,17 @@ struct BotCreatorSheet: View {
     @State private var typingNewSection = false
     @State private var engine = EngineID.claude
     @State private var modelID: String?
-    @State private var trust = Autonomy.ask
+    /// "Asks unless allowed", the same default as first run and the board.
+    @State private var trust = Autonomy.allowlist
     @State private var shape = BotShape.bup
-    @State private var colour = 8
+    @State private var colour = 0
     @State private var faceChanged = false
     @State private var loaded = false
 
-    init(editing: Bot? = nil, name: String? = nil) {
+    init(editing: Bot? = nil, name: String? = nil, section: String? = nil) {
         self.editing = editing
         self.initialName = name
+        self.initialSection = section
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
@@ -55,12 +59,14 @@ struct BotCreatorSheet: View {
     private var tint: Color { BotShape.palette[safeColour] }
 
     var body: some View {
+        // The header tile is the bot, in the colour it is wearing, not a generic plus.
         SheetFrame(title: displayName,
-                   icon: editing == nil ? "plus.circle" : "pencil",
+                   icon: "face.smiling",
                    subtitle: "Pick its face, give it a job, choose how careful it is.",
                    width: 760,
                    tone: .primary,
-                   primaryVerb: editing == nil ? "create" : "save") {
+                   primaryVerb: editing == nil ? "create" : "save",
+                   tint: tint) {
             HStack(alignment: .top, spacing: Theme.Space.section) {
                 VStack(alignment: .leading, spacing: Theme.Space.gutter) {
                     preview
@@ -84,7 +90,7 @@ struct BotCreatorSheet: View {
     }
 
     private var displayName: String {
-        trimmedName.isEmpty ? (editing == nil ? "New bot" : "Edit bot") : trimmedName
+        trimmedName.isEmpty ? (editing == nil ? "Set up a bot" : "Edit bot") : trimmedName
     }
 
     // MARK: - Preview
@@ -92,7 +98,7 @@ struct BotCreatorSheet: View {
     /// The bot, live, on a stage in its own colour.
     private var preview: some View {
         VStack(spacing: 10) {
-            BotFace(hue: 0.5, mood: previewMood, size: 120, shape: shape, colour: safeColour)
+            BotFace(hue: 0.5, mood: previewMood, size: 132, shape: shape, colour: safeColour)
             VStack(spacing: 1) {
                 Text(displayName)
                     .font(.system(size: Theme.scaled(14), weight: .medium))
@@ -168,11 +174,10 @@ struct BotCreatorSheet: View {
                 Field(label: "Engine") {
                     selectField(engine.displayName) {
                         ForEach(EngineID.supported, id: \.self) { option in
-                            Button {
-                                engine = option
-                                modelID = nil
-                            } label: {
-                                Label(option.displayName, systemImage: engine == option ? "checkmark" : "")
+                            Toggle(isOn: Binding(
+                                get: { engine == option },
+                                set: { if $0 { engine = option; modelID = nil } })) {
+                                Text(option.displayName)
                             }
                         }
                     }
@@ -181,8 +186,10 @@ struct BotCreatorSheet: View {
                 Field(label: "Model") {
                     selectField(modelLabel) {
                         ForEach(modelOptions) { option in
-                            Button { modelID = option.id } label: {
-                                Label(option.label, systemImage: modelID == option.id ? "checkmark" : "")
+                            Toggle(isOn: Binding(
+                                get: { modelID == option.id },
+                                set: { if $0 { modelID = option.id } })) {
+                                Text(option.label)
                             }
                         }
                     }
@@ -191,10 +198,12 @@ struct BotCreatorSheet: View {
             }
 
             Field(label: "Trust", hint: "If nobody answers when it asks, the answer is no.") {
-                selectField(trust.menuLabel, tone: trust == .auto ? palette.destructiveText : nil) {
+                selectField(trust.trustLabel, tone: trust == .auto ? palette.destructiveText : nil) {
                     ForEach(Autonomy.allCases, id: \.self) { level in
-                        Button { trust = level } label: {
-                            Label(level.menuLabel, systemImage: trust == level ? "checkmark" : "")
+                        Toggle(isOn: Binding(
+                            get: { trust == level },
+                            set: { if $0 { trust = level } })) {
+                            Text(level.trustLabel)
                         }
                     }
                 }
@@ -225,12 +234,16 @@ struct BotCreatorSheet: View {
         } else {
             selectField(trimmedFolder.isEmpty ? "Unassigned" : trimmedFolder) {
                 ForEach(sections, id: \.self) { section in
-                    Button { folder = section } label: {
-                        Label(section, systemImage: trimmedFolder == section ? "checkmark" : "")
+                    Toggle(isOn: Binding(
+                        get: { trimmedFolder == section },
+                        set: { if $0 { folder = section } })) {
+                        Text(section)
                     }
                 }
-                Button { folder = "" } label: {
-                    Label("Unassigned", systemImage: trimmedFolder.isEmpty ? "checkmark" : "")
+                Toggle(isOn: Binding(
+                    get: { trimmedFolder.isEmpty },
+                    set: { if $0 { folder = "" } })) {
+                    Text("Unassigned")
                 }
                 Divider()
                 Button("New section...") {
@@ -246,6 +259,10 @@ struct BotCreatorSheet: View {
         var list = model.folders
         let current = editing.flatMap { edited in model.bots.first { $0.id == edited.id } }?.folder ?? ""
         if !current.isEmpty && !list.contains(current) { list.append(current) }
+        // A section whose "+" opened this may hold only pinned bots, which `folders` leaves out.
+        if let initialSection, !initialSection.isEmpty, !list.contains(initialSection) {
+            list.append(initialSection)
+        }
         return list
     }
 
@@ -308,9 +325,12 @@ struct BotCreatorSheet: View {
             colour = bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue)
         } else {
             if let initialName { name = initialName }
-            // A fresh bot starts on a shape nobody else wears.
+            if let initialSection { folder = initialSection }
+            // The first engine that is ready, so a new bot can actually run.
+            engine = model.defaultNewBotEngine
+            // A fresh bot starts on a shape nobody else wears, in any of the eight colours.
             shape = BotShape.allCases.first { !taken.contains($0) } ?? .bup
-            colour = Int.random(in: 0..<BotShape.palette.count - 1)
+            colour = Int.random(in: BotShape.palette.indices)
         }
     }
 
@@ -331,7 +351,7 @@ struct BotCreatorSheet: View {
             if let bot = model.bots.first(where: { $0.name == trimmedName }) {
                 model.setRole(bot, role)
                 model.setModel(bot, modelID)
-                if trust != .ask { model.setAutonomy(bot, trust) }
+                if bot.autonomy != trust { model.setAutonomy(bot, trust) }
             }
         }
         dismiss()

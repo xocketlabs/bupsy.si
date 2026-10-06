@@ -38,10 +38,6 @@ struct NavRail: View {
     /// Sections folded shut, kept across launches. A JSON array of section keys, shared with the
     /// New section sheet's "Fold it in the sidebar by default". See `SidebarFolds`.
     @AppStorage(SidebarFolds.key, store: AppHome.defaults) private var foldedJSON = "[]"
-    /// The section a bot made from its "+" should land in, and which bots existed before, so the
-    /// new one can be told apart when the sheet closes.
-    @State private var addingToSection: String?
-    @State private var botsBeforeAdding: Set<BotID> = []
     @FocusState private var searchFocused: Bool
 
     enum Destination: Hashable {
@@ -59,8 +55,8 @@ struct NavRail: View {
     /// Every sheet the rail presents.
     enum RailSheet: Identifiable {
         case addBot
-        /// A new bot that is filed into `addingToSection` once the sheet closes.
-        case addBotToSection
+        /// A new bot with its Section field already set to this section.
+        case addBotToSection(String)
         case renameFolder(String)
         case fileBot(Bot)
         case editBot(Bot)
@@ -72,7 +68,7 @@ struct NavRail: View {
         var id: String {
             switch self {
             case .addBot: "add-bot"
-            case .addBotToSection: "add-bot-to-section"
+            case .addBotToSection(let section): "add-bot-to-section-" + section
             case .renameFolder(let name): "rename-folder-" + name
             case .fileBot(let bot): "file-bot-" + bot.id.rawValue
             case .editBot(let bot): "edit-bot-" + bot.id.rawValue
@@ -115,10 +111,10 @@ struct NavRail: View {
         // Cmd 1 to 9, registered once here rather than on the rows, so they follow the order the
         // list shows and keep working while a section is folded.
         .background { numberShortcuts }
-        // `fileNewBots` only does anything after the section "+", which sets `addingToSection`.
-        .sheet(item: sheetBinding, onDismiss: { fileNewBots() }) { item in
+        .sheet(item: sheetBinding) { item in
             switch item {
-            case .addBot, .addBotToSection: BotCreatorSheet()
+            case .addBot: BotCreatorSheet()
+            case .addBotToSection(let section): BotCreatorSheet(section: section)
             case .renameFolder(let name): RenameFolderSheet(folder: name)
             case .fileBot(let bot): NewFolderSheet(bot: bot)
             case .editBot(let bot): BotCreatorSheet(editing: bot)
@@ -323,7 +319,7 @@ struct NavRail: View {
                         if !members.isEmpty {
                             VStack(alignment: .leading, spacing: 2) {
                                 sectionHeader(folder, key: folder, members: members,
-                                              addHelp: "New bot in \(folder)",
+                                              addHelp: "Set up a bot yourself in \(folder)",
                                               onAdd: { startAdding(to: folder) })
                                     .contextMenu {
                                         Button("Rename section…") {
@@ -354,7 +350,7 @@ struct NavRail: View {
                                 || !model.pinnedBots.isEmpty || !hiddenBots.isEmpty {
                                 sectionHeader(model.folders.isEmpty ? "Bots" : "Unassigned",
                                               key: Self.unassignedKey, members: loose,
-                                              addHelp: "New bot",
+                                              addHelp: "Set up a bot yourself",
                                               onAdd: { startAdding(to: nil) })
                             }
                             if !collapsed.contains(Self.unassignedKey) {
@@ -577,30 +573,28 @@ struct NavRail: View {
         }
     }
 
-    /// Opens the new-bot sheet, and files whatever it made into `section` once it closes.
+    /// Opens the creator with its Section field already set to `section`, so what you see in the
+    /// form is where the bot lands.
     private func startAdding(to section: String?) {
-        guard let section else {
+        if let section {
+            sheet = .addBotToSection(section)
+        } else {
             sheet = .addBot
-            return
-        }
-        botsBeforeAdding = Set(model.bots.map(\.id))
-        addingToSection = section
-        sheet = .addBotToSection
-    }
-
-    private func fileNewBots() {
-        defer {
-            addingToSection = nil
-            botsBeforeAdding = []
-        }
-        guard let section = addingToSection else { return }
-        for bot in model.bots where !botsBeforeAdding.contains(bot.id) {
-            model.setFolder(bot, section)
         }
     }
 
+    /// No second mascot here: the page beside it already has one. A heading and a line of how,
+    /// as the board shows. There is no "+ New section" row, because a section only exists while
+    /// a bot is in it, so one cannot be made before the first bot.
     private var empty: some View {
-        EmptyState(title: "No bots yet", message: "Press Cmd N to make your first one.", faceSize: 52)
+        VStack(alignment: .leading, spacing: 2) {
+            sectionHeader("Bots")
+            Text("No bots yet. Cmd N makes one.")
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.foreground)
+                .padding(.horizontal, Theme.Space.snug)
+                .padding(.vertical, 4)
+        }
     }
 
     private var noMatches: some View {
@@ -903,10 +897,12 @@ struct SidebarSectionHeader: View {
                         .font(.system(size: 6))
                         .rotationEffect(.degrees(collapsed ? 90 : 180))
                         .foregroundStyle(palette.sidebarMutedForeground)
-                        .frame(width: 12, height: 18)
+                        .frame(width: 24, height: 24)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                // A 24pt target that keeps the caret where the 12pt one sat.
+                .padding(.horizontal, -6)
                 .help(collapsed ? "Show \(title)" : "Fold \(title)")
             }
 
@@ -933,11 +929,12 @@ struct SidebarSectionHeader: View {
                     Image(systemName: "plus")
                         .font(.system(size: Theme.scaled(11), weight: .medium))
                         .foregroundStyle(palette.sidebarMuted)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                         .contentShape(.rect)
                 }
                 .buttonStyle(SidebarIconButtonStyle())
                 .help(addHelp)
+                .accessibilityLabel(addHelp.isEmpty ? "Add" : addHelp)
             }
         }
         .padding(.leading, collapsible ? 4 : Theme.Space.snug)
@@ -1142,88 +1139,6 @@ struct NewFolderSheet: View {
     /// The same sheet the Team page uses, with this bot already picked.
     var body: some View {
         TeamNewSectionSheet(preselected: bot.id)
-    }
-}
-
-/// Renames a bot, and edits what it is for.
-///
-/// Both in one place because they are the same thought — "this bot is actually for something
-/// else" — and splitting them across two menu items means doing half the edit and forgetting the
-/// rest.
-struct RenameBotSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let bot: Bot
-    @State private var name = ""
-    @State private var job = ""
-    @State private var role = ""
-    @State private var shape = BotShape.bup
-    @State private var colour = 0
-    /// Only a face someone actually changed is saved as a choice. Saving every bot's derived face
-    /// as "chosen" on an unrelated rename would quietly pin faces nobody picked.
-    @State private var faceChanged = false
-
-    var body: some View {
-        SheetFrame(title: "Edit bot", icon: "pencil", subtitle: "Its name, its job, and the face you'll know it by.",
-                   width: 460) {
-            HStack(spacing: Theme.Space.step) {
-                // The face shown live as you pick, so the sheet is a preview rather than a form.
-                BotFace(hue: bot.avatarHue, mood: .idle, size: 56, shape: shape, colour: colour)
-                VStack(alignment: .leading, spacing: 4) {
-                    TextField("", text: $name, prompt: Text(bot.name))
-                        .textFieldStyle(BupsyFieldStyle())
-                        .onSubmit(commit)
-                    if model.isNameTaken(name, except: bot.id) {
-                        Text("Another bot is already called that.")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
-            }
-
-            AvatarPicker(
-                shape: $shape, colour: $colour,
-                taken: Set(model.bots.filter { $0.id != bot.id }.map(\.effectiveShape)),
-                onChange: { faceChanged = true })
-
-            Field(label: "Role tag", hint: "A word or two shown beside its name, like PA or Finance.") {
-                TextField("", text: $role, prompt: Text("Optional"))
-                    .textFieldStyle(BupsyFieldStyle())
-            }
-
-            Field(label: "What's its job?",
-                  hint: "Takes effect on the next thing you say. It does not rewrite the thread.") {
-                TextField("", text: $job,
-                          prompt: Text("Research things and report back plainly."),
-                          axis: .vertical)
-                    .textFieldStyle(BupsyFieldStyle())
-                    .lineLimit(3...5)
-            }
-        } actions: {
-            Button("Cancel") { dismiss() }
-                .buttonStyle(QuietButton())
-            Button("Save", action: commit)
-                .buttonStyle(PrimaryButton())
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
-                          || model.isNameTaken(name, except: bot.id))
-        }
-        .onAppear {
-            let current = model.bots.first { $0.id == bot.id } ?? bot
-            name = current.name
-            job = current.personaPrompt ?? ""
-            role = current.role ?? ""
-            shape = current.effectiveShape
-            colour = current.avatarColour ?? BotFace.derivedColour(forHue: current.avatarHue)
-        }
-    }
-
-    private func commit() {
-        model.rename(bot, to: name)
-        model.setJob(bot, job)
-        model.setRole(bot, role)
-        if faceChanged { model.setAvatar(bot, shape: shape, colour: colour) }
-        dismiss()
     }
 }
 

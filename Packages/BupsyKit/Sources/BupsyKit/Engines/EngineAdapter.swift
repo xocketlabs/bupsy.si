@@ -116,6 +116,9 @@ public enum AuthStatus: Sendable, Equatable {
     case signedInWithoutModelAccess(detail: String)
 
     case signedOut
+    /// The CLI itself is not on this Mac: not in the usual install folders and not on the login
+    /// shell's PATH. Told apart from `.signedOut` because the fix is installing it, not signing in.
+    case notInstalled
     case unknown(String)
 
     public enum Method: String, Sendable, Codable {

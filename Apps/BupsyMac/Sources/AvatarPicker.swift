@@ -17,7 +17,8 @@ struct AvatarPicker: View {
     var wearers: [BotShape: Color] = [:]
     var onChange: () -> Void = {}
 
-    private let faceSize: CGFloat = 40
+    private let faceSize: CGFloat = 44
+    private let swatchSize: CGFloat = 28
     private let columns = Array(repeating: GridItem(.flexible(minimum: 52), spacing: 6), count: 4)
 
     var body: some View {
@@ -39,23 +40,45 @@ struct AvatarPicker: View {
 
             VStack(alignment: .leading, spacing: Theme.Space.snug) {
                 label("Colour")
-                HStack(spacing: 4) {
-                    ForEach(BotShape.palette.indices, id: \.self) { index in
-                        swatch(index)
+                // "Surprise me" sits after the swatches, and drops to its own line only when the
+                // column is too narrow for both, as the board's wrapping row does.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        swatches
+                        surpriseButton
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Space.snug) {
+                        swatches
+                        surpriseButton
                     }
                 }
-                Button(action: shuffle) {
-                    Label("Surprise me", systemImage: "sparkle")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(palette.foreground)
-                        .padding(.horizontal, Theme.Space.snug)
-                        .frame(height: 30)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .help("Pick a random face nobody else is wearing")
             }
         }
+    }
+
+    private var swatches: some View {
+        HStack(spacing: 8) {
+            ForEach(BotShape.palette.indices, id: \.self) { index in
+                swatch(index)
+            }
+        }
+        // Room for the selection ring, which is drawn outside the swatch.
+        .padding(.vertical, 3)
+        .fixedSize()
+    }
+
+    private var surpriseButton: some View {
+        Button(action: shuffle) {
+            Label("Surprise me", systemImage: "sparkle")
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.foreground)
+                .padding(.horizontal, Theme.Space.snug)
+                .frame(height: 30)
+                .contentShape(.rect)
+        }
+        .buttonStyle(AvatarPickerGhostButtonStyle())
+        .fixedSize()
+        .help("Pick a random face nobody else is wearing")
     }
 
     private func label(_ text: String) -> some View {
@@ -110,11 +133,12 @@ struct AvatarPicker: View {
         } label: {
             RoundedRectangle(cornerRadius: Theme.Radius.control)
                 .fill(BotShape.palette[index])
-                .frame(width: 26, height: 26)
-                .padding(3)
+                .frame(width: swatchSize, height: swatchSize)
                 .overlay {
+                    // Outside the swatch, so it keeps its full 28pt of colour when picked.
                     RoundedRectangle(cornerRadius: Theme.Radius.control + 3)
                         .strokeBorder(selected ? palette.foreground : Color.clear, lineWidth: 2)
+                        .padding(-3)
                 }
                 .contentShape(.rect)
         }
@@ -131,5 +155,18 @@ struct AvatarPicker: View {
             colour = BotShape.palette.indices.filter { $0 != colour }.randomElement() ?? colour
         }
         onChange()
+    }
+}
+
+/// The design system's ghost button: no fill until the pointer is over it.
+struct AvatarPickerGhostButtonStyle: ButtonStyle {
+    @Environment(\.palette) private var palette
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background((hovering || configuration.isPressed) ? palette.foreground.opacity(0.07) : .clear,
+                        in: .rect(cornerRadius: Theme.Radius.control))
+            .onHover { hovering = $0 }
     }
 }

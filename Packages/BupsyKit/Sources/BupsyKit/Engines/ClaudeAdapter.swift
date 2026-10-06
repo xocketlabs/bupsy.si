@@ -90,11 +90,15 @@ public struct ClaudeAdapter: EngineAdapter {
                 case .exit(let code):
                     if code == 0 && sawOutput { return .signedIn(method: .subscription) }
                     if Self.looksLikeSignedOut(stderr) { return .signedOut }
+                    // 127 is the shell's "command not found", from a host that runs through one.
+                    if code == 127 { return .notInstalled }
                     return .unknown(stderr.isEmpty ? "exit \(code)" : stderr)
                 default: break
                 }
             }
             return .unknown("probe ended without an exit status")
+        } catch HostError.binaryNotFound(_) {
+            return .notInstalled
         } catch {
             return .unknown(error.localizedDescription)
         }

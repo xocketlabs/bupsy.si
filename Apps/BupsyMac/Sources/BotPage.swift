@@ -1432,7 +1432,7 @@ extension Autonomy {
         switch self {
         case .ask: "Asks before everything"
         case .allowlist: "Asks unless allowed"
-        case .trusted: "Asks before leaving the Mac"
+        case .trusted: "Asks before edits and commands"
         case .auto: "Never asks"
         }
     }
@@ -1445,7 +1445,7 @@ extension Autonomy {
         switch self {
         case .ask: "Asks before everything. Even reading files waits for you."
         case .allowlist: "Asks unless allowed. It reads freely and remembers what you always allow."
-        case .trusted: "Asks before leaving the Mac. Edits, commands and anything online wait for you."
+        case .trusted: "Asks before edits and commands. It reads freely; edits, commands, apps and anything online wait for you."
         case .auto: "Never asks. Everything runs without you, so keep it to throwaway folders."
         }
     }

@@ -67,20 +67,26 @@ struct MascotStageGlow: View {
 }
 
 /// What the mascot is saying: a rounded bubble with a little tail pointing down at it.
+///
+/// The Welcome board's sizes: 18pt medium in a 16pt-radius bubble, or 15pt in the small one
+/// a second character speaks in beside the star of the scene.
 struct MascotStageBubble: View {
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var colorScheme
     let text: String
+    var small = false
 
     var body: some View {
         Text(text)
-            .font(.system(size: Theme.scaled(14)))
+            .font(.system(size: Theme.scaled(small ? 15 : 18), weight: .medium))
+            .tracking(small ? 0 : -0.18)
+            .lineSpacing(small ? 2 : 4)
             .foregroundStyle(palette.foreground)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(fill, in: .rect(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, small ? 14 : 18)
+            .padding(.vertical, small ? 10 : 12)
+            .background(fill, in: .rect(cornerRadius: 16, style: .continuous))
             .overlay(alignment: .bottom) {
                 MascotStageBubbleTail()
                     .fill(fill)
@@ -185,6 +191,7 @@ struct MascotStagePeek: View {
 /// Confetti scattered around the stage, in the eight bot colours. Pieces drift in once when it
 /// appears and then hold still, so it celebrates without becoming noise.
 struct MascotStageConfetti: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var count: Int
     @State private var landed = false
 
@@ -233,7 +240,12 @@ struct MascotStageConfetti: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.7)) { landed = true }
+            // With Reduce Motion on, the pieces are simply there: no drift, no spin.
+            if reduceMotion {
+                landed = true
+            } else {
+                withAnimation(.spring(response: 0.7, dampingFraction: 0.7)) { landed = true }
+            }
         }
     }
 }
