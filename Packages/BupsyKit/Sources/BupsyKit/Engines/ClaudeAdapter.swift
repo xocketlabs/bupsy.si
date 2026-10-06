@@ -105,8 +105,17 @@ public struct ClaudeAdapter: EngineAdapter {
     }
 
     public func invocation(for request: RunRequest) -> EngineInvocation {
-        var arguments = [
-            "-p", request.prompt,
+        // `-p` is a boolean (`--print`); the prompt is the positional argument
+        // (`claude [options] [command] [prompt]`). So a prompt or persona starting with "-" was
+        // read as an option — and "--dangerously-skip-permissions" is one. Such a prompt goes
+        // last instead, behind "--", which the CLI's parser treats as the end of options.
+        //
+        // Only such prompts, matching bupsy-run: every other prompt keeps the argv the
+        // conformance cases pin, so moving all of them is a change both cores make together.
+        let dashed = Self.startsLikeOption(request.prompt)
+        var arguments = ["-p"]
+        if !dashed { arguments.append(request.prompt) }
+        arguments += [
             "--output-format", "stream-json",
             "--verbose",
         ]
@@ -132,12 +141,16 @@ public struct ClaudeAdapter: EngineAdapter {
         }
         // No `--permission-mode` here on purpose: widening permissions is not the same as
         // gating them, and the gate is the hook.
+        if dashed { arguments += ["--", request.prompt] }
         return EngineInvocation(
             executable: binaryName,
             arguments: arguments,
             workingDirectory: request.workingDirectory
         )
     }
+
+    /// Whether an argument would be parsed as a flag if passed bare.
+    static func startsLikeOption(_ argument: String) -> Bool { argument.hasPrefix("-") }
 
     public func normalise(_ output: HostOutput) -> [AgentEvent] {
         switch output {

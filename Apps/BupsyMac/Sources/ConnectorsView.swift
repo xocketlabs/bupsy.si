@@ -378,7 +378,25 @@ struct AddServerSheet: View {
         !trimmedName.isEmpty && model.connectorNameTaken(trimmedName, except: editing?.id)
     }
 
-    private var canSave: Bool { !trimmedName.isEmpty && !trimmedCommand.isEmpty && !duplicate }
+    /// Why this name cannot be used, or nil when it can.
+    ///
+    /// The engine names a server's tools `mcp__<name>__<tool>`, and the approval policy recognises
+    /// bupsy's own tools by those names. "bupsy" is the built-in server's, and a name containing
+    /// "__" would make the boundary between server and tool ambiguous — a server called
+    /// `bupsy__x` produces tools that read as bupsy's own. Refused here, before it is saved.
+    private var reservedNameProblem: String? {
+        if trimmedName.lowercased() == "bupsy" {
+            return "\"bupsy\" is the name of Bupsy's own server. Choose another name."
+        }
+        if trimmedName.contains("__") {
+            return "A name can't contain two underscores in a row (\"__\")."
+        }
+        return nil
+    }
+
+    private var canSave: Bool {
+        !trimmedName.isEmpty && !trimmedCommand.isEmpty && !duplicate && reservedNameProblem == nil
+    }
 
     var body: some View {
         SheetFrame(
@@ -393,7 +411,12 @@ struct AddServerSheet: View {
                     TextField("Name", text: $name, prompt: Text("linear"))
                         .labelsHidden()
                         .textFieldStyle(BupsyFieldStyle())
-                    if duplicate {
+                    if let reservedNameProblem {
+                        Text(reservedNameProblem)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.destructiveText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if duplicate {
                         Text("You already have a server called \(trimmedName)")
                             .font(Theme.Typography.caption)
                             .foregroundStyle(palette.destructiveText)

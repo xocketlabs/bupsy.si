@@ -115,12 +115,43 @@ func sorted(set map[int]bool) []int {
 }
 
 // Matches reports whether this moment fires. Minute resolution, which is all cron promises.
+//
+// Day of month and day of week follow cron's own rule, which is not the obvious one: when BOTH are
+// restricted, a day matching EITHER fires. "0 9 1 * 1" is the 1st of the month and every Monday,
+// not only Mondays that fall on the 1st — which is what an AND gives, and which fires a few times
+// a year instead of every week. When only one is restricted, the other is every day, so AND and OR
+// agree and the restricted one decides.
+//
+// "Restricted" is read from the sets: a field that covers every day it can is unrestricted. Classic
+// cron decides by whether the field was written starting with "*", so the two differ only for a
+// full range spelled out ("1-31", "0-6"), which nobody writes to mean anything but "every day".
 func (e Expression) Matches(at time.Time) bool {
-	return contains(e.Minutes, at.Minute()) &&
-		contains(e.Hours, at.Hour()) &&
-		contains(e.DaysOfMonth, at.Day()) &&
-		contains(e.Months, int(at.Month())) &&
-		contains(e.Weekdays, int(at.Weekday()))
+	if !contains(e.Minutes, at.Minute()) ||
+		!contains(e.Hours, at.Hour()) ||
+		!contains(e.Months, int(at.Month())) {
+		return false
+	}
+	dayOfMonth := contains(e.DaysOfMonth, at.Day())
+	dayOfWeek := contains(e.Weekdays, int(at.Weekday()))
+	if e.restrictsDayOfMonth() && e.restrictsWeekday() {
+		return dayOfMonth || dayOfWeek
+	}
+	return dayOfMonth && dayOfWeek
+}
+
+// restrictsDayOfMonth reports whether the day-of-month field leaves out any day.
+func (e Expression) restrictsDayOfMonth() bool { return !coversAll(e.DaysOfMonth, 1, 31) }
+
+// restrictsWeekday reports whether the day-of-week field leaves out any day.
+func (e Expression) restrictsWeekday() bool { return !coversAll(e.Weekdays, 0, 6) }
+
+func coversAll(values []int, low, high int) bool {
+	for value := low; value <= high; value++ {
+		if !contains(values, value) {
+			return false
+		}
+	}
+	return true
 }
 
 // NextFire returns the next firing strictly after at, searching minute by minute for up to a year.

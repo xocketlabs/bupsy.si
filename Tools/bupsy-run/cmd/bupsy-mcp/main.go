@@ -388,6 +388,10 @@ func drop(outbox string, fields map[string]any) error {
 	}
 
 	fields["at"] = time.Now().UTC().Format(time.RFC3339)
+	// The run's secret, from the environment the host started the engine with. The host works
+	// out who sent a request from this, never from "from": any bot that can write a file could
+	// write someone else's id there.
+	fields["token"] = os.Getenv("BUPSY_RUN_TOKEN")
 	payload, err := json.Marshal(fields)
 	if err != nil {
 		return err

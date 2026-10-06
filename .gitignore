@@ -5,6 +5,11 @@
 *.xcworkspace
 DerivedData/
 Package.resolved
+# Except BupsyKit's: it is the lockfile. Without it every build resolved GRDB afresh, so CI, a
+# release and a laptop could each compile a different version, and a compromised upstream release
+# would reach us with no commit to review. CI builds with --force-resolved-versions, and
+# Dependabot proposes changes to this file like any other.
+!Packages/BupsyKit/Package.resolved
 
 # macOS
 .DS_Store

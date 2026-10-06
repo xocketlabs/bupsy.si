@@ -68,6 +68,12 @@ public struct CronExpression: Sendable, Equatable {
     public let daysOfMonth: Set<Int>
     public let months: Set<Int>
     public let weekdays: Set<Int>
+    /// Whether the day-of-month and day-of-week fields were written as `*`. cron treats the two
+    /// day fields specially: when both are restricted a day matches if EITHER does
+    /// ("0 9 1 * 1" is the 1st of the month and every Monday), not only days that are both. The
+    /// sets alone cannot say which fields were restricted, so the spelling is remembered.
+    let anyDayOfMonth: Bool
+    let anyWeekday: Bool
 
     public init(_ expression: String) throws {
         let fields = expression.split(separator: " ").map(String.init)
@@ -83,6 +89,9 @@ public struct CronExpression: Sendable, Equatable {
         months = try Self.parse(fields[3], range: 1...12)
         // cron allows both 0 and 7 for Sunday; normalise to 0.
         weekdays = Set(try Self.parse(fields[4], range: 0...7).map { $0 == 7 ? 0 : $0 })
+        // Same test cron itself uses: a field counts as unrestricted when it starts with `*`.
+        anyDayOfMonth = fields[2].hasPrefix("*")
+        anyWeekday = fields[4].hasPrefix("*")
     }
 
     static func parse(_ field: String, range: ClosedRange<Int>) throws -> Set<Int> {
@@ -112,16 +121,29 @@ public struct CronExpression: Sendable, Equatable {
         guard let minute = parts.minute, let hour = parts.hour, let day = parts.day,
               let month = parts.month, let weekday = parts.weekday
         else { return false }
-        // Calendar weekday is 1...7 with Sunday = 1; cron is 0...6 with Sunday = 0.
         return minutes.contains(minute) && hours.contains(hour)
-            && daysOfMonth.contains(day) && months.contains(month)
-            && weekdays.contains(weekday - 1)
+            && matchesDay(dayOfMonth: day, month: month, weekday: weekday)
     }
 
-    /// The next firing at or after `date`, searching minute by minute for up to a year.
+    /// Whether the schedule runs at all on this day. `weekday` is Calendar's (1...7, Sunday = 1).
+    public func matchesDay(dayOfMonth: Int, month: Int, weekday: Int) -> Bool {
+        guard months.contains(month) else { return false }
+        // Calendar weekday is 1...7 with Sunday = 1; cron is 0...6 with Sunday = 0.
+        let byDate = daysOfMonth.contains(dayOfMonth)
+        let byWeekday = weekdays.contains(weekday - 1)
+        // Both restricted: either may match. Otherwise the `*` one matches everything anyway.
+        if !anyDayOfMonth && !anyWeekday { return byDate || byWeekday }
+        return byDate && byWeekday
+    }
+
+    /// The next firing after the minute `date` falls in, searching minute by minute for up to a
+    /// year.
     public func nextFire(after date: Date, calendar: Calendar = .current) -> Date? {
-        guard var candidate = calendar.date(bySetting: .second, value: 0, of: date)
-            .map({ $0.addingTimeInterval(60) }) else { return nil }
+        // Step from the start of the current minute. `date(bySetting: .second, value: 0)` looked
+        // like it did this but searches FORWARD for the next :00, so 09:00:23 became 09:01:00 and
+        // the extra minute below then skipped the 09:01 slot entirely.
+        guard var candidate = calendar.dateInterval(of: .minute, for: date)
+            .map({ $0.start.addingTimeInterval(60) }) else { return nil }
         for _ in 0..<(366 * 24 * 60) {
             if matches(candidate, calendar: calendar) { return candidate }
             candidate.addTimeInterval(60)

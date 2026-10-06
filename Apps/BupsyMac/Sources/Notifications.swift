@@ -38,13 +38,18 @@ final class Notifier {
                     ApprovalNotificationActions.summaryKey: summary]
             if let approvalID { info[ApprovalNotificationActions.approvalKey] = approvalID }
         }
+        // Allow from a banner only when the banner shows the whole request. A long command is cut
+        // off in the banner, and what comes after the cut (`… && rm -rf ~`) is exactly the part
+        // that matters; those banners offer Review, which opens the full card, and Deny.
+        let category = ApprovalNotificationActions.showsWhole(summary)
+            ? ApprovalNotificationActions.category : ApprovalNotificationActions.reviewCategory
         // One banner per request, so answering it in the app can take exactly that banner away.
         post(
             id: approvalID.map { Self.approvalIdentifier($0) } ?? "approval-\(bot)-\(summary.hashValue)",
             title: "\(bot) needs you",
             body: summary.isEmpty ? "Wants to use \(tool)" : summary,
             sound: true,
-            category: isToolRequest ? ApprovalNotificationActions.category : nil,
+            category: isToolRequest ? category : nil,
             info: info,
             botID: botID
         )
@@ -82,6 +87,9 @@ final class Notifier {
         post(id: "failed-\(bot)", title: "\(bot) stopped", body: reason, sound: false, botID: botID)
     }
 
+    /// The most of a body a banner is given. Past this it is cut.
+    static let bodyLimit = 240
+
     private func post(id: String, title: String, body: String, sound: Bool,
                       category: String? = nil, info: [String: String] = [:],
                       botID: BotID? = nil) {
@@ -97,7 +105,7 @@ final class Notifier {
 
             let content = UNMutableNotificationContent()
             content.title = title
-            content.body = String(body.prefix(240))
+            content.body = String(body.prefix(Self.bodyLimit))
             if sound { content.sound = .default }
             if let category { content.categoryIdentifier = category }
             if !info.isEmpty { content.userInfo = info }
@@ -119,8 +127,18 @@ final class Notifier {
 @MainActor
 final class ApprovalNotificationActions: NSObject, UNUserNotificationCenterDelegate {
     static let category = "bupsy.approval"
+    /// For a request too long to read in a banner: Review and Deny, no Allow.
+    static let reviewCategory = "bupsy.approval.review"
     static let allowAction = "bupsy.approval.allow"
     static let denyAction = "bupsy.approval.deny"
+    static let reviewAction = "bupsy.approval.review"
+
+    /// Whether a banner shows this request whole, so Allow can be offered beside it. Well under
+    /// `Notifier.bodyLimit`, where the body is cut outright, because a banner that is not expanded shows only a couple of lines of
+    /// its body, and a line break can push the rest out of sight even in a short command.
+    static func showsWhole(_ summary: String) -> Bool {
+        summary.count <= 80 && !summary.contains(where: \.isNewline)
+    }
     static let botKey = "bot"
     static let toolKey = "tool"
     static let summaryKey = "summary"
@@ -142,11 +160,17 @@ final class ApprovalNotificationActions: NSObject, UNUserNotificationCenterDeleg
     /// safe at launch; the permission prompt still waits for the first notification.
     func attach(to model: AppModel) {
         self.model = model
-        let allow = UNNotificationAction(identifier: Self.allowAction, title: "Allow", options: [])
+        // Allow lets a bot run something on this Mac, so it asks for the Mac to be unlocked first:
+        // a banner on a locked or unattended screen should not be one click from running it.
+        let allow = UNNotificationAction(identifier: Self.allowAction, title: "Allow",
+                                         options: [.authenticationRequired])
         let deny = UNNotificationAction(identifier: Self.denyAction, title: "Deny", options: [.destructive])
+        let review = UNNotificationAction(identifier: Self.reviewAction, title: "Review…", options: [.foreground])
         let category = UNNotificationCategory(identifier: Self.category, actions: [allow, deny],
                                               intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([category])
+        let reviewCategory = UNNotificationCategory(identifier: Self.reviewCategory, actions: [review, deny],
+                                                    intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category, reviewCategory])
         let pending = waiting
         waiting = []
         for item in pending { handle(action: item.action, info: item.info) }
@@ -171,7 +195,7 @@ final class ApprovalNotificationActions: NSObject, UNUserNotificationCenterDeleg
     }
 
     private func handle(action: String, info: [String: String]) {
-        if action == UNNotificationDefaultActionIdentifier {
+        if action == UNNotificationDefaultActionIdentifier || action == Self.reviewAction {
             openBot(info: info)
             return
         }

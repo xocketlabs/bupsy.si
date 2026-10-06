@@ -123,7 +123,21 @@ public enum LoginShellEnvironment {
         return [:]
         #else
         let command = script(for: names)
-        guard !command.isEmpty else { return [:] }
+        guard !command.isEmpty, let output = runLoginShell(command) else { return [:] }
+        return parse(output, names: names)
+        #endif
+    }
+
+    /// Runs `command` in the person's interactive login shell and returns what it printed, or
+    /// nil if the shell failed, exited non-zero, or did not finish within `timeout`.
+    ///
+    /// Every login-shell lookup goes through here, `BinaryResolver`'s included, because a
+    /// profile is arbitrary code: one that attaches to tmux, waits on a prompt or leaves a
+    /// background job holding stdout would otherwise hang the caller for good.
+    static func runLoginShell(_ command: String, timeout: TimeInterval = shellTimeout) -> Data? {
+        #if os(Windows)
+        return nil
+        #else
         let process = Process()
         process.executableURL = URL(
             fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
@@ -137,7 +151,7 @@ public enum LoginShellEnvironment {
 
         let exited = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in exited.signal() }
-        guard (try? process.run()) != nil else { return [:] }
+        guard (try? process.run()) != nil else { return nil }
         // Read while it runs, so a chatty profile cannot fill the pipe and stall the shell.
         let output = Output()
         let read = DispatchSemaphore(value: 0)
@@ -145,16 +159,31 @@ public enum LoginShellEnvironment {
             output.set(pipe.fileHandleForReading.readDataToEndOfFile())
             read.signal()
         }
-        guard exited.wait(timeout: .now() + shellTimeout) == .success else {
-            process.terminate()
-            return [:]
+        guard exited.wait(timeout: .now() + timeout) == .success else {
+            // SIGKILL, not terminate(): an interactive shell ignores SIGTERM, so terminate()
+            // left the hung shell running. Its whole group where it leads one, so whatever the
+            // profile started goes too and the pipe can close.
+            let pid = process.processIdentifier
+            kill(getpgid(pid) == pid ? -pid : pid, SIGKILL)
+            return nil
         }
         // Something the profile started in the background can hold the pipe open after the
         // shell itself is gone; what was printed is already there.
         guard read.wait(timeout: .now() + 1) == .success,
-              process.terminationStatus == 0 else { return [:] }
-        return parse(output.get(), names: names)
+              process.terminationStatus == 0 else { return nil }
+        return output.get()
         #endif
+    }
+
+    /// The text between the first two NULs of a login shell's output.
+    ///
+    /// A profile can print before the command runs (a banner) and after it (`.zlogout`), so a
+    /// command whose answer matters prints `\0answer\0` and only that span is believed.
+    static func delimited(_ data: Data) -> String? {
+        guard let open = data.firstIndex(of: 0) else { return nil }
+        let rest = data[data.index(after: open)...]
+        guard let close = rest.firstIndex(of: 0) else { return nil }
+        return String(data: Data(rest[rest.startIndex..<close]), encoding: .utf8)
     }
 
     private final class Output: @unchecked Sendable {

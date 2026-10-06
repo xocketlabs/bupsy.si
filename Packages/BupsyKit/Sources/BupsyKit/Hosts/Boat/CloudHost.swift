@@ -124,9 +124,22 @@ public struct CloudHost: ExecutionHost {
     /// a disk image and does not wake for its own timers, so a routine installed here needs the
     /// machine created with `ttlSeconds: nil`. PLAN.md §4 tier 3.
     public func installTrigger(_ trigger: HostTrigger) async throws {
+        // The id becomes a unit name, file names and part of a shell line, so it is held to
+        // characters that mean nothing to systemd or a shell, rather than escaped for each.
+        guard Self.isSafeUnitID(trigger.id) else {
+            throw HostError.unsupported(
+                "routine id '\(trigger.id)' must be letters, digits, '-' or '_'")
+        }
         let name = "bupsy-\(trigger.id)"
         let calendar = try Self.onCalendar(fromCron: trigger.cron)
+            .map { "OnCalendar=\($0)" }
+            .joined(separator: "\n")
+        let script = "\(Self.scriptDirectory)/\(name).sh"
 
+        // The command lives in a script file rather than on the ExecStart line. systemd reads
+        // ExecStart with its own rules, not a shell's: it expands `$VAR` and `%` specifiers even
+        // inside quotes, so a routine whose prompt said "50% done" or "$HOME" ran something
+        // other than what it was given. A file is passed to bash byte for byte.
         let service = """
         [Unit]
         Description=bupsy routine \(trigger.id)
@@ -134,7 +147,7 @@ public struct CloudHost: ExecutionHost {
         [Service]
         Type=oneshot
         WorkingDirectory=/home/user
-        ExecStart=/bin/bash -lc \(Self.shellQuote(trigger.command))
+        ExecStart=/bin/bash -l \(script)
         """
 
         let timer = """
@@ -142,20 +155,26 @@ public struct CloudHost: ExecutionHost {
         Description=schedule for bupsy routine \(trigger.id)
 
         [Timer]
-        OnCalendar=\(calendar)
+        \(calendar)
         Persistent=true
 
         [Install]
         WantedBy=timers.target
         """
 
+        try await write("/tmp/\(name).sh", Data((trigger.command + "\n").utf8))
         try await write("/tmp/\(name).service", Data(service.utf8))
         try await write("/tmp/\(name).timer", Data(timer.utf8))
 
+        // Quoted although the id was checked above: the check is what makes it safe, and the
+        // quoting is what keeps it safe if the check is ever loosened.
+        let q = Self.shellQuote
         let install = """
-        sudo mv /tmp/\(name).service /tmp/\(name).timer /etc/systemd/system/ \
+        sudo mkdir -p \(q(Self.scriptDirectory)) \
+          && sudo mv \(q("/tmp/\(name).sh")) \(q(script)) \
+          && sudo mv \(q("/tmp/\(name).service")) \(q("/tmp/\(name).timer")) /etc/systemd/system/ \
           && sudo systemctl daemon-reload \
-          && sudo systemctl enable --now \(name).timer
+          && sudo systemctl enable --now \(q("\(name).timer"))
         """
         let result = try await api.command(sandboxID, CommandRequest(command: install))
         guard result.success else {
@@ -163,42 +182,96 @@ public struct CloudHost: ExecutionHost {
         }
     }
 
+    /// Where trigger scripts are installed on the machine.
+    static let scriptDirectory = "/usr/local/lib/bupsy"
+
+    /// Letters, digits, `-` and `_`, and not empty.
+    static func isSafeUnitID(_ id: String) -> Bool {
+        !id.isEmpty && id.unicodeScalars.allSatisfy { scalar in
+            switch scalar {
+            case "a"..."z", "A"..."Z", "0"..."9", "-", "_": true
+            default: false
+            }
+        }
+    }
+
     /// Translates the five-field cron we accept into a systemd `OnCalendar` expression.
     ///
-    /// Only the subset routines actually use: numbers, `*`, comma lists and `a-b` ranges.
-    /// Step syntax (`*/5`) is rejected loudly rather than silently mistranslated — a schedule
-    /// that quietly fires at the wrong time is worse than one that refuses to install.
-    static func onCalendar(fromCron cron: String) throws -> String {
-        let fields = cron.split(separator: " ").map(String.init)
-        guard fields.count == 5 else {
-            throw HostError.unsupported("expected a five-field cron expression, got '\(cron)'")
+    /// Parsed by `CronExpression`, the same parser the Mac schedules with, so the cloud accepts
+    /// exactly the schedules the app does and refuses the rest (step syntax, names, out-of-range
+    /// values) loudly — a schedule that quietly fires at the wrong time is worse than one that
+    /// refuses to install. The translation is then rebuilt from the parsed sets rather than from
+    /// the text. Splitting the text on "," and "-" read weekday `1-3,5` as `Mon..Tue..Wed..Fri`,
+    /// which systemd rejects, and an hour range `9-17` landed in a field where `-` is the date
+    /// separator.
+    ///
+    /// Returns one `OnCalendar` expression, or two when cron needs a union: with day-of-month
+    /// AND weekday both restricted, cron fires on a day matching EITHER ("0 9 1 * 1" is the 1st
+    /// and every Monday), while one systemd expression requires both. A timer with two
+    /// `OnCalendar=` lines fires on either, which is cron's rule exactly.
+    static func onCalendar(fromCron cron: String) throws -> [String] {
+        let parsed: CronExpression
+        do { parsed = try CronExpression(cron) } catch {
+            throw HostError.unsupported("unsupported cron expression '\(cron)': \(error)")
         }
-        guard !cron.contains("/") else {
-            throw HostError.unsupported("step syntax is not supported; use an explicit list")
+        // cron's own test for "unrestricted": the field starts with `*`.
+        let fields = cron.split(separator: " ")
+        let dayRestricted = !fields[2].hasPrefix("*")
+        let weekdayRestricted = !fields[4].hasPrefix("*")
+
+        let allDays = Set(1...31), allWeekdays = Set(0...6)
+        if dayRestricted && weekdayRestricted {
+            return [
+                calendarExpression(parsed, days: parsed.daysOfMonth, weekdays: allWeekdays),
+                calendarExpression(parsed, days: allDays, weekdays: parsed.weekdays),
+            ]
         }
+        return [calendarExpression(parsed, days: parsed.daysOfMonth, weekdays: parsed.weekdays)]
+    }
 
-        let (minute, hour, day, month, weekday) =
-            (fields[0], fields[1], fields[2], fields[3], fields[4])
-
-        let days = ["0": "Sun", "1": "Mon", "2": "Tue", "3": "Wed",
-                    "4": "Thu", "5": "Fri", "6": "Sat", "7": "Sun"]
+    private static func calendarExpression(
+        _ parsed: CronExpression, days: Set<Int>, weekdays: Set<Int>
+    ) -> String {
         let weekdayPart: String
-        if weekday == "*" {
+        if weekdays.count == 7 {
             weekdayPart = ""
         } else {
-            let names = weekday
-                .split(whereSeparator: { $0 == "," || $0 == "-" })
-                .compactMap { days[String($0)] }
-            guard names.count > 0 else {
-                throw HostError.unsupported("could not read weekday '\(weekday)'")
-            }
-            weekdayPart = weekday.contains("-")
-                ? names.joined(separator: "..") + " "
-                : names.joined(separator: ",") + " "
+            // systemd's week starts on Monday; cron's Sunday is 0 (7 is folded into it already).
+            let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            let mondayFirst = Set(weekdays.map { $0 == 0 ? 6 : $0 - 1 })
+            weekdayPart = calendarList(mondayFirst, within: 0...6) { names[$0] } + " "
         }
 
-        let pad = { (value: String) in value == "*" ? "*" : value }
-        return "\(weekdayPart)*-\(pad(month))-\(pad(day)) \(pad(hour)):\(pad(minute)):00"
+        let month = calendarList(parsed.months, within: 1...12)
+        let day = calendarList(days, within: 1...31)
+        let hour = calendarList(parsed.hours, within: 0...23)
+        let minute = calendarList(parsed.minutes, within: 0...59)
+        return "\(weekdayPart)*-\(month)-\(day) \(hour):\(minute):00"
+    }
+
+    /// `*` for every value, otherwise a comma list in which runs of three or more become
+    /// `a..b` — systemd's range syntax, which cron's `a-b` is not.
+    static func calendarList(
+        _ values: Set<Int>, within range: ClosedRange<Int>,
+        name: (Int) -> String = { String($0) }
+    ) -> String {
+        if values == Set(range) { return "*" }
+        var parts: [String] = []
+        var sorted = values.sorted()[...]
+        while let first = sorted.first {
+            var last = first
+            while sorted.dropFirst().first == last + 1 {
+                sorted = sorted.dropFirst()
+                last += 1
+            }
+            sorted = sorted.dropFirst()
+            switch last - first {
+            case 0: parts.append(name(first))
+            case 1: parts += [name(first), name(last)]
+            default: parts.append("\(name(first))..\(name(last))")
+            }
+        }
+        return parts.joined(separator: ",")
     }
 
     // MARK: - Lifecycle

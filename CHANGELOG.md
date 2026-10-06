@@ -5,6 +5,22 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Security and reliability fixes from a full audit**
+- Bots can no longer act as one another: each run has its own connector config and a private
+  token for messages between bots, so a bot that can write files cannot speak in another's name.
+- Lowering a bot's trust takes effect at once, including for its run in progress and anything
+  queued. If the approval check can't be set up, the run doesn't start.
+- Approvals are never offered on a command you can't see in full. Allow from a notification asks
+  you to unlock, and links in replies that aren't web pages ask before opening.
+- "Trusted" asks about any tool it doesn't recognise, rather than allowing it.
+- Stop and Quit end the whole job, including commands it started. Deleting a bot or group stops
+  its work.
+- Folder watches ignore hidden files and Bupsy's own data, refuse your whole home folder, and are
+  capped per hour, so a watch can't keep setting itself off.
+- Group chats keep one conversation at a time, so the turn limit always holds.
+- Fixed: resuming a Codex conversation failed every time; Codex usage wasn't recorded; usage
+  could be counted twice after Stop; a routine could skip its first slot.
+
 **A new look, matching the Bupsy design system**
 - Every bot is now Bupsy: a gummy little character with a status light on its antenna. Pick from
   eight shapes (Bup, Blob, Pill, Cat, Bunny, Bear, Ghost, Imp) and eight colours. Its face shows

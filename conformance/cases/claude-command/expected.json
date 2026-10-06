@@ -15,6 +15,11 @@
     "why": "--settings carries the approval hook, and command-line settings outrank project ones — project .claude/settings.json hooks do not run in -p sessions at all"
   },
   {
+    "request": { "prompt": "--dangerously-skip-permissions", "autonomy": "ask", "model": "sonnet" },
+    "argv": ["-p", "--output-format", "stream-json", "--verbose", "--model", "sonnet", "--", "--dangerously-skip-permissions"],
+    "why": "-p is a switch and the prompt is positional, so a prompt starting with '-' would be read as an option — this one as the option that turns every permission check off. Such a prompt goes last, after '--', which ends option parsing. Only such prompts, so every other row keeps its argv"
+  },
+  {
     "request": { "prompt": "ship it", "autonomy": "auto" },
     "argv": ["-p", "ship it", "--output-format", "stream-json", "--verbose"],
     "why": "no --permission-mode at ANY autonomy level. Widening permissions is not the same as gating them, and the gate is the hook. An implementation that maps trust onto --permission-mode has swapped an enforced gate for an unenforced one"

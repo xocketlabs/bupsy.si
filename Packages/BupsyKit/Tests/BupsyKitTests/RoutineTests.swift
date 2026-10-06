@@ -63,6 +63,46 @@ struct CronExpressionTests {
         #expect(calendar.component(.day, from: next) == 15)
     }
 
+    /// Seconds into a minute must not push the search past the next minute: from 09:00:23 an
+    /// every-minute schedule next fires at 09:01, not 09:02.
+    @Test("does not skip the next minute when called mid-minute")
+    func nextFireMidMinute() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        func moment(_ hour: Int, _ minute: Int, _ second: Int = 0) -> Date {
+            calendar.date(from: DateComponents(
+                timeZone: calendar.timeZone, year: 2026, month: 6, day: 15,
+                hour: hour, minute: minute, second: second))!
+        }
+        let everyMinute = try CronExpression("* * * * *")
+        #expect(everyMinute.nextFire(after: moment(9, 0, 23), calendar: calendar) == moment(9, 1))
+        #expect(everyMinute.nextFire(after: moment(9, 0), calendar: calendar) == moment(9, 1))
+
+        let nineOhOne = try CronExpression("1 9 * * *")
+        #expect(nineOhOne.nextFire(after: moment(9, 0, 59), calendar: calendar) == moment(9, 1))
+    }
+
+    /// Standard cron: when both day fields are restricted, a day matches if either does.
+    @Test("ORs day-of-month and day-of-week when both are restricted")
+    func daysAreOred() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        func day(_ d: Int) -> Date {
+            calendar.date(from: DateComponents(
+                timeZone: calendar.timeZone, year: 2026, month: 6, day: d, hour: 9, minute: 0))!
+        }
+        // June 2026: the 1st is a Monday, the 15th a Monday, the 13th a Saturday.
+        let firstOrMonday = try CronExpression("0 9 13 * 1")
+        #expect(firstOrMonday.matches(day(13), calendar: calendar), "the 13th, a Saturday")
+        #expect(firstOrMonday.matches(day(15), calendar: calendar), "a Monday that is not the 13th")
+        #expect(!firstOrMonday.matches(day(16), calendar: calendar))
+
+        // Only one restricted: the other `*` does not widen it to every day.
+        #expect(!(try CronExpression("0 9 13 * *")).matches(day(15), calendar: calendar))
+        #expect(!(try CronExpression("0 9 * * 1")).matches(day(13), calendar: calendar))
+        #expect(try CronExpression("0 9 * * 1").matches(day(15), calendar: calendar))
+    }
+
     /// launchd expresses "every" by omitting the key rather than with a wildcard.
     @Test("translates to launchd calendar intervals")
     func translatesToLaunchd() throws {

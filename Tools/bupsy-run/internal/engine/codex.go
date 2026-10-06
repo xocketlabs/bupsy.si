@@ -26,11 +26,6 @@ func (c Codex) binary() string {
 func (c Codex) Command(req Request) (string, []string) {
 	args := []string{"exec", "--json"}
 
-	if req.Resume != "" {
-		// `exec resume <thread_id>` continues a thread; the prompt follows.
-		args = append(args, "resume", req.Resume)
-	}
-
 	sandbox := sandboxFor(req.Autonomy)
 	args = append(args, "--sandbox", sandbox)
 
@@ -56,6 +51,19 @@ func (c Codex) Command(req Request) (string, []string) {
 	}
 	if req.WorkingDir != "" {
 		args = append(args, "-C", req.WorkingDir)
+	}
+	if req.Resume != "" {
+		// `exec resume <thread_id>` continues a thread; the prompt follows. Last of all, after
+		// every option: `codex exec resume` rejects --sandbox and -C, so options placed after
+		// the subcommand failed every resumed run before it began.
+		args = append(args, "resume", req.Resume)
+	}
+	if startsLikeOption(req.Prompt) {
+		// The prompt is positional, so one starting with "-" would be read as a flag — and
+		// "--dangerously-bypass-approvals-and-sandbox" is a flag. "--" ends option parsing, which
+		// codex's parser honours. Only for such prompts, so ordinary ones keep the argv the
+		// conformance cases pin and the Swift core generates.
+		args = append(args, "--")
 	}
 	args = append(args, req.Prompt)
 

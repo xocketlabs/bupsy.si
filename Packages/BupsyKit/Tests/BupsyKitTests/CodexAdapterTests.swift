@@ -153,6 +153,40 @@ struct EnforcementTests {
         #expect(args.last == "carry on")
     }
 
+    /// `codex exec resume` rejects `--sandbox` and `-C` ("unexpected argument"), so they must sit
+    /// on `exec`, ahead of the subcommand. The old order failed every resumed run before it began.
+    @Test("a resumed run puts every option before the resume subcommand")
+    func resumeOptionsPrecedeSubcommand() throws {
+        let args = CodexAdapter().invocation(for: RunRequest(
+            prompt: "carry on", workingDirectory: URL(fileURLWithPath: "/tmp/work"),
+            resume: ConversationID("t-9"), model: "gpt-x", autonomy: .auto)).arguments
+        #expect(args == [
+            "exec", "--json", "--sandbox", "danger-full-access",
+            "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-x", "-C", "/tmp/work",
+            "resume", "t-9", "carry on",
+        ])
+        let resume = try #require(args.firstIndex(of: "resume"))
+        for flag in ["--sandbox", "-C", "-m", "--json"] {
+            let at = try #require(args.firstIndex(of: flag))
+            #expect(at < resume, "\(flag) must precede `resume`")
+        }
+    }
+
+    /// A persona or prompt that opens with "-" must not be parsed as a flag.
+    @Test("a prompt starting with a dash is passed after --")
+    func dashPromptIsPositional() {
+        let codex = CodexAdapter().invocation(for: RunRequest(
+            prompt: "-rf everything", resume: ConversationID("t-9"))).arguments
+        #expect(Array(codex.suffix(4)) == ["resume", "t-9", "--", "-rf everything"])
+        let claude = ClaudeAdapter().invocation(for: RunRequest(
+            prompt: "--help me", mcpConfigPaths: ["/x.json"])).arguments
+        #expect(Array(claude.suffix(2)) == ["--", "--help me"])
+        #expect(claude.filter { $0 == "--help me" }.count == 1)
+        // An ordinary prompt keeps the argv every core agrees on.
+        #expect(!CodexAdapter().invocation(for: RunRequest(prompt: "hi")).arguments.contains("--"))
+        #expect(!ClaudeAdapter().invocation(for: RunRequest(prompt: "hi")).arguments.contains("--"))
+    }
+
     /// "Logged in" and "can actually run" are different questions, and only the second matters.
     @Test("an account without model access is not usable")
     func usability() {
