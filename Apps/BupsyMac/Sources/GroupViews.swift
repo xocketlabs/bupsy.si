@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - Faces
 
-/// Two faces overlapping, and "+N" for the rest — how a group reads at a glance in a list.
+/// Two faces overlapping, and "+N" for the rest: how a group reads at a glance in a small spot.
 struct StackedFaces: View {
     @Environment(\.palette) private var palette
     let bots: [Bot]
@@ -29,8 +29,35 @@ struct StackedFaces: View {
     }
 }
 
+/// Faces in a row, each tucked a little behind the next, as the group cards and the group
+/// topbar draw them.
+struct GroupFaceRow: View {
+    @Environment(\.palette) private var palette
+    let bots: [Bot]
+    var size: CGFloat = 36
+    var limit = 3
+
+    var body: some View {
+        HStack(spacing: -size * 0.3) {
+            ForEach(Array(bots.prefix(limit).enumerated()), id: \.offset) { index, bot in
+                BotFace(bot: bot, mood: .idle, size: size)
+                    .zIndex(Double(limit - index))
+            }
+            if bots.count > limit {
+                Text("+\(bots.count - limit)")
+                    .font(.system(size: Theme.scaled(10), weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(width: size * 0.8, height: size * 0.8)
+                    .background(palette.card, in: .circle)
+                    .padding(.leading, size * 0.4)
+            }
+        }
+    }
+}
+
 // MARK: - Sidebar row
 
+/// One group chat in the sidebar: an icon and its name, on one line like a bot row.
 struct GroupRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
@@ -39,40 +66,220 @@ struct GroupRow: View {
     let action: () -> Void
     @State private var hovering = false
 
+    init(group: ChatGroup, selected: Bool, action: @escaping () -> Void) {
+        self.group = group
+        self.selected = selected
+        self.action = action
+    }
+
     var body: some View {
         let unread = model.isGroupUnread(group)
+        let active = model.groupThread(for: group).speaking != nil
         Button(action: action) {
-            HStack(spacing: Theme.Space.snug) {
-                StackedFaces(bots: model.members(of: group))
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack {
-                        Text(group.name)
-                            .font(Theme.Typography.body)
-                            .fontWeight(unread ? .semibold : .medium)
-                            .foregroundStyle(palette.foreground)
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        if unread {
-                            Circle().fill(palette.info).frame(width: 6, height: 6)
-                        }
-                    }
-                    Text(model.groupThread(for: group).preview
-                         ?? "\(group.memberIDs.count) bots · say hi")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(unread ? palette.sidebarMutedForeground : palette.sidebarMuted)
-                        .lineLimit(1)
+            HStack(spacing: Theme.Space.step) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: Theme.scaled(11)))
+                    .foregroundStyle(selected ? palette.foreground : palette.sidebarMutedForeground)
+                    .frame(width: 20)
+                Text(group.name)
+                    .font(Theme.Typography.body)
+                    .fontWeight(unread || selected ? .semibold : .regular)
+                    .foregroundStyle(palette.foreground)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if active {
+                    Circle().fill(palette.success).frame(width: 6, height: 6)
+                } else if unread {
+                    Circle().fill(palette.info).frame(width: 6, height: 6)
                 }
             }
-            .padding(.horizontal, Theme.Space.snug)
-            .padding(.vertical, 7)
+            .padding(.horizontal, Theme.Space.step)
+            .frame(height: 36)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(selected ? palette.sidebarAccent
                                  : (hovering ? palette.sidebarAccent.opacity(0.55) : .clear),
-                        in: .rect(cornerRadius: Theme.Radius.base))
+                        in: .rect(cornerRadius: Theme.Radius.control))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .help(model.groupThread(for: group).preview ?? group.name)
+    }
+}
+
+// MARK: - All group chats
+
+/// Every group chat as a card: who is in it, the latest line, and who leads.
+struct GroupsListView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    let onOpen: (String) -> Void
+    @State private var isCreating = false
+    @State private var renaming: ChatGroup?
+
+    init(onOpen: @escaping (String) -> Void) {
+        self.onOpen = onOpen
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Space.section) {
+                HStack(alignment: .bottom, spacing: Theme.Space.gutter) {
+                    VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                        Text("Group chats")
+                            .font(Theme.Typography.title)
+                            .foregroundStyle(palette.foreground)
+                        Text("A few bots in one thread. Mention one with @ to ask it, or the lead answers.")
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(palette.mutedForeground)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: Theme.Space.gutter)
+                    Button { isCreating = true } label: {
+                        Label("New group", systemImage: "plus")
+                    }
+                    .buttonStyle(PrimaryButton())
+                    .disabled(model.bots.count < 2)
+                }
+
+                VStack(spacing: Theme.Space.step) {
+                    ForEach(model.groups) { group in
+                        GroupCard(group: group,
+                                  onOpen: { onOpen(group.id) },
+                                  onRename: { renaming = group })
+                    }
+                    invite
+                }
+            }
+            .padding(.horizontal, Theme.Space.section + Theme.Space.tight)
+            .padding(.top, Theme.Space.section)
+            .padding(.bottom, Theme.Space.page)
+            .frame(maxWidth: 896)
+            .frame(maxWidth: .infinity)
+        }
+        .sheet(isPresented: $isCreating) {
+            NewGroupSheet(onCreated: { onOpen($0.id) })
+        }
+        .background {
+            Color.clear.sheet(item: $renaming) { RenameGroupSheet(group: $0) }
+        }
+    }
+
+    /// The napping bot and one way forward. Under the list rather than instead of it, so the
+    /// reason to make another group is always in reach.
+    private var invite: some View {
+        EmptyState(
+            title: model.groups.isEmpty ? "No group chats yet" : "Got a job that needs more than one bot?",
+            message: model.bots.count < 2
+                ? "Make a second bot first. A group needs at least two."
+                : "Put them in a group. They answer in one thread, and anything risky still waits for you."
+        ) {
+            if model.bots.count >= 2 {
+                Button { isCreating = true } label: {
+                    Label("Start a group chat", systemImage: "person.2.fill")
+                }
+                .buttonStyle(QuietButton(compact: true))
+            }
+        }
+        .padding(.vertical, Theme.Space.snug)
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .strokeBorder(palette.border, style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+        }
+    }
+}
+
+/// One group in the list.
+struct GroupCard: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    let group: ChatGroup
+    let onOpen: () -> Void
+    let onRename: () -> Void
+    @State private var hovering = false
+
+    init(group: ChatGroup, onOpen: @escaping () -> Void, onRename: @escaping () -> Void) {
+        self.group = group
+        self.onOpen = onOpen
+        self.onRename = onRename
+    }
+
+    var body: some View {
+        let members = model.members(of: group)
+        let thread = model.groupThread(for: group)
+        let lead = members.first { $0.id == group.leadBotID } ?? members.first
+        HStack(alignment: .top, spacing: Theme.Space.gutter) {
+            GroupFaceRow(bots: members, size: 36)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                HStack(spacing: Theme.Space.snug) {
+                    Text(group.name)
+                        .font(Theme.Typography.heading)
+                        .foregroundStyle(palette.foreground)
+                        .lineLimit(1)
+                    if thread.speaking != nil {
+                        TeamPill(text: "Active now", tone: palette.success)
+                    }
+                }
+                Text(thread.preview ?? "No messages yet. Say hi to get them going.")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(thread.preview == nil ? palette.mutedForeground : palette.foreground)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                HStack(spacing: Theme.Space.tight) {
+                    fact("person.2.fill", members.count == 1 ? "1 bot" : "\(members.count) bots")
+                    if let lead { fact("star.fill", "\(lead.name) leads") }
+                }
+                .padding(.top, 2)
+            }
+
+            Spacer(minLength: 0)
+
+            if let last = thread.messages.last {
+                Text(Theme.stamp(last.at))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .padding(.top, 4)
+            }
+
+            Menu {
+                Button(action: onOpen) { Label("Open chat", systemImage: "bubble.left") }
+                Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+                Divider()
+                // The conversation only. Its bots are untouched.
+                Button(role: .destructive) { model.deleteGroup(group) } label: {
+                    Label("Delete group", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: Theme.scaled(13), weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(width: 28, height: 28)
+                    .contentShape(.rect)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .padding(Theme.Space.gutter)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(hovering ? palette.cardHover : palette.card,
+                    in: .rect(cornerRadius: Theme.Radius.card, style: .continuous))
+        .contentShape(.rect)
+        .onHover { hovering = $0 }
+        .onTapGesture(perform: onOpen)
+    }
+
+    private func fact(_ icon: String, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: Theme.scaled(9)))
+            Text(text).font(Theme.Typography.caption)
+        }
+        .foregroundStyle(palette.mutedForeground)
+        .padding(.horizontal, Theme.Space.snug)
+        .padding(.vertical, 3)
+        .background(palette.background, in: .rect(cornerRadius: 6))
     }
 }
 
@@ -85,17 +292,30 @@ struct GroupPage: View {
     @State private var draft = ""
     @FocusState private var composerFocused: Bool
 
+    init(group: ChatGroup) {
+        self.group = group
+    }
+
     private var thread: GroupThread { model.groupThread(for: group) }
     private var members: [Bot] { model.members(of: group) }
 
     var body: some View {
         PanelSurface {
             VStack(spacing: 0) {
+                Topbar(trail: [group.name]) {
+                    HStack(spacing: Theme.Space.snug) {
+                        GroupFaceRow(bots: members, size: 26)
+                        Text(memberLine)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                            .lineLimit(1)
+                            .padding(.horizontal, Theme.Space.snug)
+                            .padding(.vertical, 5)
+                            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                    }
+                }
                 transcript
                 composer
-            }
-            .overlay(alignment: .top) {
-                ZStack(alignment: .top) { TopFade(); titlePill }
             }
         }
         .padding(.vertical, 8)
@@ -104,8 +324,8 @@ struct GroupPage: View {
             model.selectedGroupID = group.id
             model.markGroupRead(group)
         }
-        // Opening a conversation puts the cursor in it, as every chat app does — you came here
-        // to say something. Deferred a moment so the field is in the window when asked.
+        // Opening a conversation puts the cursor in it, as every chat app does. Deferred a moment
+        // so the field is in the window when asked.
         .task(id: group.id) {
             try? await Task.sleep(for: .milliseconds(120))
             composerFocused = true
@@ -115,33 +335,17 @@ struct GroupPage: View {
         }
     }
 
-    private var titlePill: some View {
-        HStack(spacing: Theme.Space.snug) {
-            StackedFaces(bots: members, size: Theme.scaled(24))
-            Text(group.name)
-                .font(Theme.Typography.body)
-                .fontWeight(.medium)
-                .foregroundStyle(palette.foreground)
-            Text("\(members.count) bots")
-                .font(Theme.Typography.badge)
-                .foregroundStyle(palette.mutedForeground)
-        }
-        .padding(.leading, Theme.Space.snug)
-        .padding(.trailing, Theme.Space.step)
-        .padding(.vertical, 6)
-        // A solid, raised pill: on palette.card alone it was the same colour as the message
-        // bubbles, and text scrolling behind it looked like it ran straight through.
-        .background(palette.popover, in: .capsule)
-        .overlay(Capsule().stroke(palette.border, lineWidth: 1))
-        .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
-        .padding(.top, Theme.Space.step)
+    private var memberLine: String {
+        let count = members.count == 1 ? "1 bot" : "\(members.count) bots"
+        guard let lead else { return count }
+        return "\(count), \(lead.name) leads"
     }
 
     private var transcript: some View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: Theme.Space.step) {
+                    VStack(alignment: .leading, spacing: Theme.Space.gutter) {
                         if thread.messages.isEmpty {
                             // Centred in the pane, like an empty one-to-one thread, rather than
                             // sitting on the composer at the bottom.
@@ -164,23 +368,25 @@ struct GroupPage: View {
                         ForEach(model.pendingApprovals(in: group), id: \.1.id) { bot, approval in
                             ApprovalCard(approval: approval, owner: bot)
                                 .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .leading)
+                                .padding(.leading, Theme.Size.bubbleAvatar + 4 + Theme.Space.step)
                         }
                         if let speaking = thread.speaking,
                            let bot = members.first(where: { $0.id == speaking }),
                            !model.isWaitingForApproval(bot.id) {
-                            HStack(spacing: Theme.Space.tight) {
-                                BotFace(bot: bot, mood: .working, size: Theme.Size.bubbleAvatar)
-                                Text("\(bot.name) is replying…")
-                                    .font(Theme.Typography.caption)
+                            HStack(spacing: Theme.Space.snug) {
+                                BotFace(bot: bot, mood: .working, size: Theme.scaled(24))
+                                Text("\(bot.name) is replying")
+                                    .font(Theme.Typography.label)
                                     .foregroundStyle(palette.mutedForeground)
                             }
+                            .padding(.leading, Theme.Size.bubbleAvatar + 4 + Theme.Space.step)
                             .id("speaking")
                         }
                     }
-                    .padding(.top, 56)
+                    .padding(.top, Theme.Space.section)
                     .padding(.bottom, Theme.Space.gutter)
-                    .padding(.horizontal, Theme.Space.section)
-                    .frame(maxWidth: Theme.Size.contentMaxWidth)
+                    .padding(.horizontal, Theme.Space.section + Theme.Space.tight)
+                    .frame(maxWidth: 896)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .frame(minHeight: geometry.size.height, alignment: .bottom)
                 }
@@ -194,7 +400,7 @@ struct GroupPage: View {
         }
     }
 
-    /// A bot's name is shown above its first message in a run of its own messages — with several
+    /// A bot's name is shown above its first message in a run of its own messages. With several
     /// bots in one thread, a face alone is not enough to know who is speaking.
     private func showsName(at index: Int) -> Bool {
         let message = thread.messages[index]
@@ -205,13 +411,14 @@ struct GroupPage: View {
 
     private var empty: some View {
         VStack(spacing: Theme.Space.snug) {
-            StackedFaces(bots: members, size: 56)
+            GroupFaceRow(bots: members, size: 48)
+                .padding(.bottom, Theme.Space.tight)
             Text("Say something to \(group.name)")
                 .font(Theme.Typography.heading)
                 .foregroundStyle(palette.foreground)
             Text("Mention a bot with @ to ask it directly. Otherwise "
                  + "\(lead?.name ?? "the first bot") answers.")
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.label)
                 .foregroundStyle(palette.mutedForeground)
                 .multilineTextAlignment(.center)
         }
@@ -225,7 +432,7 @@ struct GroupPage: View {
 
     // MARK: Composer
 
-    /// Who will answer, worked out live from what you have typed — so a message never goes to
+    /// Who will answer, worked out live from what you have typed, so a message never goes to
     /// someone you did not mean, and you can see it before you press return.
     private var addressees: [Bot] {
         let routing = members.map { GroupRouting.Member(id: $0.id.rawValue, name: $0.name) }
@@ -234,31 +441,38 @@ struct GroupPage: View {
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.tight) {
+        let typed = !draft.trimmingCharacters(in: .whitespaces).isEmpty
+        let addressed: Set<BotID> = typed ? Set(addressees.map(\.id)) : []
+        return VStack(alignment: .leading, spacing: Theme.Space.snug) {
             HStack(spacing: Theme.Space.tight) {
                 ForEach(members) { bot in
                     // Tap to mention. Typing @ works too; these are for not having to remember
                     // the exact name of "LinkedIn YC connection maker for founders".
+                    let isAddressed = addressed.contains(bot.id)
                     Button { mention(bot) } label: {
-                        HStack(spacing: 4) {
-                            BotFace(bot: bot, mood: .idle, size: 16)
+                        HStack(spacing: 5) {
+                            BotFace(bot: bot, mood: .idle, size: 18)
                             Text("@\(bot.name)")
-                                .font(Theme.Typography.caption)
+                                .font(Theme.Typography.label)
                                 .lineLimit(1)
                         }
-                        .foregroundStyle(palette.mutedForeground)
+                        .foregroundStyle(isAddressed ? palette.foreground : palette.mutedForeground)
                         .padding(.horizontal, Theme.Space.snug)
-                        .padding(.vertical, 4)
-                        .background(palette.card, in: .capsule)
-                        .overlay(Capsule().stroke(palette.border))
+                        .frame(height: 30)
+                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: Theme.Radius.control)
+                                .strokeBorder(isAddressed ? palette.foreground.opacity(0.5) : .clear)
+                        }
+                        .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                 }
                 Spacer(minLength: 0)
-                if !draft.trimmingCharacters(in: .whitespaces).isEmpty {
+                if typed {
                     Text("To \(addressees.map(\.name).joined(separator: ", "))")
                         .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.primary)
+                        .foregroundStyle(palette.mutedForeground)
                         .lineLimit(1)
                 }
             }
@@ -268,46 +482,47 @@ struct GroupPage: View {
                 // answers to open itself.
                 Button(action: pickFiles) {
                     Image(systemName: "plus")
-                        .font(.system(size: Theme.scaled(13), weight: .semibold))
-                        .foregroundStyle(palette.mutedForeground)
-                        .frame(width: 34, height: 34)
-                        .background(palette.card, in: .circle)
-                        .overlay(Circle().strokeBorder(palette.border))
-                        .contentShape(.circle)
+                        .font(.system(size: Theme.scaled(14), weight: .regular))
+                        .foregroundStyle(palette.foreground)
+                        .frame(width: 32, height: 32)
+                        .contentShape(.rect)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(SidebarIconButtonStyle())
                 .help("Attach files")
-                .padding(.bottom, 5)
 
                 TextField("Message \(group.name)", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(Theme.Typography.body)
                     .lineLimit(1...8)
-                    .padding(.horizontal, Theme.Space.gutter)
-                    .padding(.vertical, Theme.Space.step)
-                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.base))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.base)
-                        .strokeBorder(palette.border))
+                    .padding(.vertical, 7)
                     .focused($composerFocused)
                     .onSubmit(send)
+
                 Button(action: send) {
                     Image(systemName: "arrow.up")
                         .font(.system(size: Theme.scaled(13), weight: .bold))
-                        .foregroundStyle(draft.isEmpty ? palette.mutedForeground : palette.onPrimary)
+                        .foregroundStyle(palette.onPrimary)
                         .frame(width: 34, height: 34)
-                        .background(draft.isEmpty ? palette.card : palette.primary, in: .circle)
-                        .overlay(Circle().strokeBorder(draft.isEmpty ? palette.border : .clear))
-                        .contentShape(.circle)
+                        .background(palette.primary.opacity(typed ? 1 : 0.45),
+                                    in: .rect(cornerRadius: Theme.Radius.control))
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .padding(.bottom, 5)
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!typed)
+            }
+            .padding(.leading, Theme.Space.snug)
+            .padding(.trailing, Theme.Space.snug)
+            .padding(.vertical, Theme.Space.snug)
+            .background(palette.background, in: .rect(cornerRadius: Theme.Radius.bubble))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.bubble).strokeBorder(palette.border)
             }
         }
-        .padding(.horizontal, Theme.Space.section)
-        .padding(.vertical, Theme.Space.step)
-        .frame(maxWidth: Theme.Size.contentMaxWidth)
+        .padding(.horizontal, Theme.Space.section + Theme.Space.tight)
+        .padding(.bottom, Theme.Space.section)
+        .padding(.top, Theme.Space.snug)
+        .frame(maxWidth: 896)
         .frame(maxWidth: .infinity)
     }
 
@@ -340,59 +555,78 @@ struct GroupPage: View {
 }
 
 /// One message in a group thread.
+///
+/// Yours sit on the right in a grey bubble. A bot's has no bubble: its face, its name and the
+/// time, then the words, as one-to-one threads draw them.
 struct GroupBubble: View {
     @Environment(\.palette) private var palette
     let message: GroupMessageRecord
     let bot: Bot?
     let showsName: Bool
 
+    init(message: GroupMessageRecord, bot: Bot?, showsName: Bool) {
+        self.message = message
+        self.bot = bot
+        self.showsName = showsName
+    }
+
+    private var avatarSize: CGFloat { Theme.Size.bubbleAvatar + 4 }
+
     var body: some View {
         if message.isSystem {
-            Text(message.text)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(palette.mutedForeground)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Theme.Space.tight)
+            // Notes from bupsy itself: a bot handing work to another, a stop after too many
+            // replies. Quiet and indented, so they read as stage directions.
+            HStack(spacing: Theme.Space.tight) {
+                Image(systemName: "bubble.left.fill")
+                    .font(.system(size: Theme.scaled(10)))
+                Text(message.text)
+                    .font(Theme.Typography.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(palette.mutedForeground)
+            .padding(.leading, avatarSize + Theme.Space.step)
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else if message.isFromUser {
             HStack {
-                Spacer(minLength: 72)
+                Spacer(minLength: 96)
                 Text(message.text)
                     .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
                     .textSelection(.enabled)
-                    .padding(.horizontal, Theme.Space.step)
-                    .padding(.vertical, Theme.Space.snug)
-                    .background(palette.primary, in: .rect(cornerRadius: Theme.Radius.bubble))
-                    .foregroundStyle(palette.onPrimary)
+                    .padding(.horizontal, Theme.Space.gutter)
+                    .padding(.vertical, 10)
+                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
                     .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .trailing)
             }
         } else {
-            HStack(alignment: .top, spacing: Theme.Space.tight) {
+            HStack(alignment: .top, spacing: Theme.Space.step) {
                 Group {
                     if let bot {
-                        BotFace(bot: bot, mood: .idle, size: Theme.Size.bubbleAvatar)
+                        BotFace(bot: bot, mood: .idle, size: avatarSize)
                     } else {
                         // The bot has since been deleted; its words stay, as a transcript's do.
                         Circle().fill(palette.secondary)
-                            .frame(width: Theme.Size.bubbleAvatar, height: Theme.Size.bubbleAvatar)
+                            .frame(width: avatarSize, height: avatarSize)
                     }
                 }
                 .opacity(showsName ? 1 : 0)
+                .frame(height: showsName ? avatarSize : 1, alignment: .top)
+
                 VStack(alignment: .leading, spacing: 3) {
                     if showsName {
-                        // In the bot's own colour, as its mentions are — a name you can match to
-                        // a face at a glance in a busy room.
-                        Text(message.authorName)
-                            .font(Theme.Typography.badge)
-                            .foregroundStyle(bot.map(BotFace.colour(of:)) ?? palette.mutedForeground)
+                        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
+                            Text(message.authorName)
+                                .font(Theme.Typography.body)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(palette.foreground)
+                            Text(message.at.formatted(date: .omitted, time: .shortened))
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(palette.mutedForeground)
+                        }
                     }
                     FormattedReply(markdown: message.text)
-                        .padding(.horizontal, Theme.Space.step)
-                        .padding(.vertical, Theme.Space.snug)
-                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
                 }
-                .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .leading)
-                Spacer(minLength: 48)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -404,43 +638,89 @@ struct NewGroupSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @Environment(\.dismiss) private var dismiss
-    var onCreated: (ChatGroup) -> Void = { _ in }
+    var onCreated: (ChatGroup) -> Void
     @State private var name = ""
     @State private var chosen: [BotID] = []
     @State private var lead: BotID?
 
+    init(onCreated: @escaping (ChatGroup) -> Void = { _ in }) {
+        self.onCreated = onCreated
+    }
+
+    private var chosenBots: [Bot] {
+        chosen.compactMap { id in model.bots.first { $0.id == id } }
+    }
+
+    private var effectiveLead: BotID? {
+        if let lead, chosen.contains(lead) { return lead }
+        return chosen.first
+    }
+
     var body: some View {
-        SheetFrame(title: "New group chat", icon: "person.2",
-                   subtitle: "Several bots in one conversation. Mention one with @ to ask it; "
-                       + "otherwise the lead answers.",
-                   width: 460) {
+        SheetFrame(title: "New group chat", icon: "person.2.fill",
+                   subtitle: "Put a few bots in one thread to work on one goal together.",
+                   width: 520, tone: .info, primaryVerb: "create") {
             Field(label: "Name") {
-                TextField("", text: $name, prompt: Text("Launch team"))
+                TextField("", text: $name, prompt: Text("Docs refresh"))
                     .textFieldStyle(BupsyFieldStyle())
             }
 
-            Field(label: "Who's in it",
-                  hint: chosen.count < 2 ? "Pick at least two." : nil) {
+            VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                HStack {
+                    Text("Members")
+                    Spacer(minLength: 0)
+                    Text(chosen.isEmpty ? "None picked" : "\(chosen.count) picked")
+                }
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+
                 ScrollView {
-                    VStack(spacing: 2) {
-                        ForEach(model.bots) { bot in
+                    VStack(spacing: 0) {
+                        ForEach(Array(model.bots.enumerated()), id: \.element.id) { index, bot in
+                            if index > 0 {
+                                Rectangle().fill(palette.border).frame(height: 1)
+                            }
                             memberRow(bot)
                         }
                     }
                 }
-                .frame(maxHeight: 220)
-                .padding(Theme.Space.tight)
-                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
-                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control)
-                    .strokeBorder(palette.border))
+                .frame(maxHeight: 270)
+                .background(palette.background, in: .rect(cornerRadius: Theme.Radius.base))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.Radius.base).strokeBorder(palette.border)
+                }
+            }
+
+            Field(label: "Lead", hint: "Answers anything that doesn't mention a bot by name.") {
+                Picker("", selection: Binding(
+                    get: { effectiveLead },
+                    set: { lead = $0 }
+                )) {
+                    if chosenBots.isEmpty {
+                        Text("Pick members first").tag(BotID?.none)
+                    }
+                    ForEach(chosenBots) { bot in
+                        Text(bot.name).tag(BotID?.some(bot.id))
+                    }
+                }
+                .labelsHidden()
+                .disabled(chosenBots.isEmpty)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if chosen.count == 1, let only = chosenBots.first {
+                Label("Pick one more bot. With only \(only.name) it would just be a normal chat.",
+                      systemImage: "info.circle")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } actions: {
             Button("Cancel") { dismiss() }
                 .buttonStyle(QuietButton())
-            Button("Create") {
-                let members = chosen.compactMap { id in model.bots.first { $0.id == id } }
-                let leader = lead.flatMap { id in members.first { $0.id == id } }
-                if let group = model.createGroup(name: name, members: members, lead: leader) {
+            Button("Create group") {
+                let leader = effectiveLead.flatMap { id in chosenBots.first { $0.id == id } }
+                if let group = model.createGroup(name: name, members: chosenBots, lead: leader) {
                     onCreated(group)
                 }
                 dismiss()
@@ -452,38 +732,32 @@ struct NewGroupSheet: View {
     }
 
     private func memberRow(_ bot: Bot) -> some View {
-        let isIn = chosen.contains(bot.id)
-        let isLead = (lead ?? chosen.first) == bot.id && isIn
-        return HStack(spacing: Theme.Space.snug) {
-            Image(systemName: isIn ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isIn ? palette.primary : palette.mutedForeground)
-            BotFace(bot: bot, mood: .idle, size: 24)
+        HStack(spacing: Theme.Space.snug) {
+            BotFace(bot: bot, mood: .idle, size: 26)
             Text(bot.name)
                 .font(Theme.Typography.body)
                 .foregroundStyle(palette.foreground)
                 .lineLimit(1)
+            if let role = bot.role, !role.isEmpty { RoleTag(text: role) }
             Spacer(minLength: 0)
-            if isIn {
-                // The lead answers anything not addressed to someone. Shown on every member so it
-                // is obvious which one it is and how to change it.
-                Button(isLead ? "Lead" : "Make lead") { lead = bot.id }
-                    .buttonStyle(.plain)
-                    .font(Theme.Typography.badge)
-                    .foregroundStyle(isLead ? palette.primary : palette.mutedForeground)
-                    .disabled(isLead)
-            }
+            Toggle("", isOn: Binding(
+                get: { chosen.contains(bot.id) },
+                set: { on in
+                    if on {
+                        if !chosen.contains(bot.id) { chosen.append(bot.id) }
+                    } else {
+                        chosen.removeAll { $0 == bot.id }
+                        if lead == bot.id { lead = nil }
+                    }
+                }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
         }
-        .padding(.horizontal, Theme.Space.snug)
-        .frame(height: 34)
+        .padding(.horizontal, Theme.Space.step)
+        .frame(height: 44)
         .contentShape(.rect)
-        .onTapGesture {
-            if isIn {
-                chosen.removeAll { $0 == bot.id }
-                if lead == bot.id { lead = nil }
-            } else {
-                chosen.append(bot.id)
-            }
-        }
     }
 }
 
@@ -493,8 +767,13 @@ struct RenameGroupSheet: View {
     let group: ChatGroup
     @State private var name = ""
 
+    init(group: ChatGroup) {
+        self.group = group
+    }
+
     var body: some View {
-        SheetFrame(title: "Rename group", icon: "person.2", width: 380) {
+        SheetFrame(title: "Rename group", icon: "person.2.fill", width: 400, tone: .info,
+                   primaryVerb: "rename") {
             Field(label: "Name") {
                 TextField("", text: $name, prompt: Text(group.name))
                     .textFieldStyle(BupsyFieldStyle())

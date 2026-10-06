@@ -38,10 +38,13 @@ struct BupsyApp: App {
         // Present whether or not the window is. A bot that works for ten minutes and then asks a
         // question should be able to reach you without the window coming forward.
         MenuBarExtra {
-            MenuBarView().environment(model)
+            // A drawn panel rather than a native menu, so bots show their live faces and a bot
+            // that needs you can be answered right here. MenuBarView is the plain-menu fallback.
+            MenuBarPanel().environment(model)
         } label: {
             MenuBarLabel().environment(model)
         }
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -192,7 +195,7 @@ struct RootView: View {
                     // could actually lose something.
                     Text(model.hasStore
                          ? problem
-                         : "Your existing bots are still on disk — don't recreate them. \(problem)")
+                         : "Your existing bots are still on disk, so don't recreate them. \(problem)")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(palette.foreground.opacity(0.8))
                         .lineLimit(2)
@@ -271,6 +274,14 @@ struct RootView: View {
             floating { Page(trail: ["Waiting on you"]) { AttentionInbox() } }
         case .usage:
             floating { Page(trail: ["Usage"]) { UsageSheet() } }
+        case .team:
+            floating { TeamView(onOpen: { openBot($0) }) }
+        case .groups:
+            floating {
+                Page(trail: ["Group chats"]) {
+                    GroupsListView(onOpen: { destination = .group($0) })
+                }
+            }
         case .group(let id):
             if let group = model.groups.first(where: { $0.id == id }) {
                 // Like a bot page, it draws its own card.
@@ -279,8 +290,19 @@ struct RootView: View {
                 floating { NothingSelected() }
             }
         case .none:
-            floating { NothingSelected() }
+            if model.bots.isEmpty {
+                floating { RosterEmpty() }
+            } else {
+                floating { NothingSelected() }
+            }
         }
+    }
+
+    /// Goes to a bot's thread from a page inside the panel, marking it read as the rail does.
+    private func openBot(_ id: BotID) {
+        destination = .bot(id)
+        model.selectedBotID = id
+        if let bot = model.bots.first(where: { $0.id == id }) { model.markRead(bot) }
     }
 
     /// The floating card every page sits on: inset from the window on three sides and flush to
@@ -324,16 +346,8 @@ struct Page<Content: View>: View {
 }
 
 struct NothingSelected: View {
-    @Environment(\.palette) private var palette
     var body: some View {
-        VStack(spacing: Theme.Space.step) {
-            Text("No bot selected")
-                .font(Theme.Typography.heading)
-                .foregroundStyle(palette.foreground)
-            Text("Pick one on the left, or make a new one.")
-                .font(Theme.Typography.label)
-                .foregroundStyle(palette.mutedForeground)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyState(title: "No bot selected", message: "Pick one on the left, or make a new one.")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

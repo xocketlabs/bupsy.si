@@ -9,6 +9,7 @@ import SwiftUI
 struct BotPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     let bot: Bot
 
     @State private var draft = ""
@@ -31,34 +32,27 @@ struct BotPage: View {
     private var objectives: [Objective] { model.objectives.filter { $0.botID == bot.id.rawValue } }
 
     var body: some View {
-        HStack(spacing: 0) {
-            PanelSurface {
+        // One card, like every page: the chat on the left and, when open, the bot's details on
+        // the right behind a hairline, so the two read as one object rather than two windows.
+        PanelSurface {
+            HStack(spacing: 0) {
                 VStack(spacing: 0) {
+                    topbar
                     conversation
                     Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
                              replyingTo: $replyingTo,
                              onSend: send, onStop: { model.stop(bot.id) })
                 }
-                // The pill floats over the transcript rather than sitting in a bar above it, so
-                // the conversation reaches the top of the window instead of starting below a
-                // strip of chrome that never changes.
-                .overlay(alignment: .top) {
-                    ZStack(alignment: .top) { TopFade(); titlePill }
+                .frame(maxWidth: .infinity)
+
+                if showsDetails {
+                    Rectangle().fill(palette.border).frame(width: 1)
+                    details
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
-            .padding(.vertical, 8)
-            // Flush to the details panel when it is open, exactly as the card is flush to the rail.
-            .padding(.trailing, showsDetails ? 0 : 8)
-
-            // Outside the card, on the window, full height — the mirror of the rail. It used to be
-            // inside the card, so opening it filled the card's right side with the rail's colour,
-            // swallowed the rounded corner on that edge, and made the two sides of the window
-            // different shapes.
-            if showsDetails {
-                details
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
         }
+        .padding([.top, .bottom, .trailing], 8)
         // Each sheet on its own view: two sheets on one view and SwiftUI silently shows only one.
         // The panel already lists routines and goals, so "New" opens the form itself rather than
         // a second list with its own New button.
@@ -78,40 +72,42 @@ struct BotPage: View {
 
     // MARK: - Title
 
-    /// Names the bot, and opens everything else about it.
+    /// Where you are, what the bot is up to, and the way into everything else about it.
     ///
-    /// Replaces a breadcrumb and a page header that together cost about 160pt at the top of every
-    /// conversation to say something the sidebar already showed in bold. What a bot *said* is the
-    /// reason to be on this screen; what it is configured to do is a question you ask occasionally,
-    /// so it lives one click away rather than above the thing you came for.
-    private var titlePill: some View {
-        Button { withAnimation(.easeOut(duration: 0.16)) { showsDetails.toggle() } } label: {
-            HStack(spacing: Theme.Space.tight) {
-                BotFace(bot: bot, mood: mood, size: Theme.scaled(20))
-                Text(bot.name)
-                    .font(Theme.Typography.body)
-                    .fontWeight(.medium)
-                    .foregroundStyle(palette.foreground)
-                if let badge = limitBadge {
-                    Text(badge)
-                        .font(Theme.Typography.badge)
-                        .foregroundStyle(palette.mutedForeground)
+    /// What a bot *said* is the reason to be on this screen; what it is configured to do is a
+    /// question you ask occasionally, so it lives one click away rather than above the thread.
+    private var topbar: some View {
+        Topbar(trail: crumbs) {
+            statusBadge
+            Button {
+                withAnimation(.easeOut(duration: 0.16)) { showsDetails.toggle() }
+            } label: {
+                HStack(spacing: Theme.Space.snug) {
+                    BotFace(bot: bot, mood: mood, size: Theme.scaled(18))
+                    Text(showsDetails ? "Hide details" : "Details")
                 }
-                Image(systemName: showsDetails ? "chevron.up" : "chevron.down")
-                    .font(.system(size: Theme.scaled(8), weight: .semibold))
-                    .foregroundStyle(palette.mutedForeground)
             }
-            .padding(.leading, Theme.Space.snug)
-            .padding(.trailing, Theme.Space.step)
-            .padding(.vertical, 7)
-            .background(palette.popover, in: .capsule)
-            .overlay(Capsule().stroke(palette.border, lineWidth: 1))
-            .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
-            .contentShape(.capsule)
+            .buttonStyle(ThreadButtonStyle(kind: .secondary, height: Theme.Size.control))
+            .help("Settings, goals and routines for \(bot.name)")
         }
-        .buttonStyle(.plain)
-        .help("Settings, goals and routines for \(bot.name)")
-        .padding(.top, Theme.Space.step)
+    }
+
+    private var crumbs: [String] {
+        if showsDetails { return [bot.name, "Details"] }
+        if let folder = bot.folder, !folder.isEmpty { return [folder, bot.name] }
+        return [bot.name, "Chat"]
+    }
+
+    /// At most one status at a time, in order of how much it needs you.
+    @ViewBuilder
+    private var statusBadge: some View {
+        if model.isWaitingForApproval(bot.id) {
+            ThreadStatusBadge(text: "Needs you", tone: palette.primary, dot: true)
+        } else if thread.isRunning {
+            ThreadStatusBadge(text: "Working", tone: palette.infoText, dot: true)
+        } else if let badge = limitBadge {
+            ThreadStatusBadge(text: badge, tone: limitIsHigh ? palette.warning : nil)
+        }
     }
 
     private var mood: BotMood {
@@ -127,33 +123,32 @@ struct BotPage: View {
     /// is something you do *while* looking at what it said, and a sheet would cover exactly the
     /// evidence you are deciding from.
     private var details: some View {
-        VStack(spacing: 0) {
-            detailsHead
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                detailsHead
+                tabBar
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.section) {
-                    switch tab {
-                    case .details:
-                        if let routine = routines.first(where: { $0.id == openRoutineID }) {
-                            routineDetail(routine)
-                        } else {
-                            settings
-                            goals
-                            routineSection
-                            watchSection
-                        }
-                    case .activity:
-                        usage
-                        history
-                    case .files:
-                        BotFilesList(bot: bot)
-                    case .computer:
-                        computer
+                switch tab {
+                case .details:
+                    if let routine = routines.first(where: { $0.id == openRoutineID }) {
+                        routineDetail(routine)
+                    } else {
+                        settings
+                        goals
+                        routineSection
+                        watchSection
                     }
+                case .activity:
+                    usage
+                    history
+                case .files:
+                    BotFilesList(bot: bot)
+                case .computer:
+                    computer
                 }
-                .padding(.horizontal, Theme.Space.gutter)
-                .padding(.vertical, Theme.Space.section)
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, Theme.Space.section)
         }
         .frame(width: 340)
         // A routine open for one bot must not stay open, unrelated, on the next.
@@ -161,41 +156,53 @@ struct BotPage: View {
         // Clipped, because a card wider than the panel should truncate rather than draw over the
         // conversation beside it.
         .clipped()
-        .background(palette.sidebar)
     }
 
-    /// Who the bot is, then what you want to know about it.
-    ///
-    /// The identity sits above the tabs rather than inside one of them: it is the answer to
-    /// "which bot am I looking at", which stays true whichever tab is open.
+    private var isDark: Bool { colorScheme == .dark }
+
+    /// Who the bot is: its face, its name and label, and its job in a sentence.
     private var detailsHead: some View {
-        VStack(spacing: Theme.Space.snug) {
+        VStack(alignment: .leading, spacing: Theme.Space.step) {
             BotFace(bot: bot, mood: mood, size: 64)
-            Text(bot.name)
-                .font(Theme.Typography.heading)
-                .foregroundStyle(palette.foreground)
-            InlineLabelField(bot: bot)
-                .padding(.bottom, 2)
+            HStack(spacing: Theme.Space.snug) {
+                Text(bot.name)
+                    .font(.system(size: Theme.scaled(16), weight: .semibold))
+                    .tracking(-0.3)
+                    .foregroundStyle(palette.foreground)
+                InlineLabelField(bot: bot)
+            }
             if let job = bot.personaPrompt, !job.isEmpty {
                 Text(job)
-                    .font(Theme.Typography.caption)
+                    .font(Theme.Typography.body)
                     .foregroundStyle(palette.mutedForeground)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(3)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Picker("", selection: $tab) {
-                ForEach(DetailTab.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.top, Theme.Space.tight)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, Theme.Space.gutter)
-        // The same clearance as the rail, which also runs up under the title bar.
-        .padding(.top, 30)
-        .padding(.bottom, Theme.Space.gutter)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The four questions worth asking about a bot, as a segmented strip.
+    private var tabBar: some View {
+        HStack(spacing: 2) {
+            ForEach(DetailTab.allCases, id: \.self) { item in
+                Button { tab = item } label: {
+                    Text(item.label)
+                        .font(Theme.Typography.label.weight(tab == item ? .medium : .regular))
+                        .foregroundStyle(tab == item ? palette.foreground : palette.mutedForeground)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 32)
+                        .background(tab == item ? (isDark ? palette.cardHover : palette.background) : Color.clear,
+                                    in: .rect(cornerRadius: Theme.Radius.control))
+                        .shadow(color: tab == item ? Color.black.opacity(0.06) : Color.clear, radius: 1, y: 1)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.base))
     }
 
     /// Where this bot's work actually happens.
@@ -312,10 +319,11 @@ struct BotPage: View {
     /// labels truncate first, and there is nowhere to say what the setting is called. A row keeps
     /// the name on the left at full width and truncates only the value.
     private var settings: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-            SettingsGroup(title: "Runs with") {
-                SettingRow(label: "Engine", value: bot.engine.displayName,
-                           icon: "cpu", showsDivider: false) {
+        VStack(alignment: .leading, spacing: 20) {
+            // What it runs with, as label and value. Each value is its own menu, so the fact you
+            // can see is the control that changes it; "Change" opens the full editor.
+            ThreadNestedCard(base: isDark ? palette.sidebar : palette.card) {
+                BotPanelMenuRow(label: "Engine", value: bot.engine.displayName) {
                     ForEach(EngineID.supported, id: \.self) { engine in
                         Button {
                             model.setEngine(bot, engine)
@@ -325,12 +333,10 @@ struct BotPage: View {
                         }
                     }
                 }
-                SettingRow(label: "Model", value: modelLabel ?? "Default",
-                           icon: "slider.horizontal.3") {
+                BotPanelMenuRow(label: "Model", value: modelLabel ?? "Default") {
                     ModelMenuItems(bot: bot)
                 }
-                SettingRow(label: "Runs on", value: machineName,
-                           icon: bot.machineID == nil ? "laptopcomputer" : "server.rack") {
+                BotPanelMenuRow(label: "Runs on", value: machineName) {
                     Button("This Mac") { model.assign(bot, to: nil) }
                     if !model.machines.isEmpty {
                         Divider()
@@ -339,23 +345,7 @@ struct BotPage: View {
                         }
                     }
                 }
-            }
-
-            SettingsGroup(title: "Can touch") {
-                SettingRow(label: "Folder", value: folderLabel,
-                           icon: "folder", showsDivider: false) {
-                    Button("Choose folder…") { model.chooseWorkdir(for: bot) }
-                    if bot.workdir != nil {
-                        Button("Use its own folder") { model.setWorkdir(bot, nil) }
-                    }
-                    Divider()
-                    Button("Show in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting(
-                            [model.workingDirectory(for: bot)])
-                    }
-                }
-                SettingRow(label: "Trust", value: trustLabel,
-                           icon: "hand.raised", tone: trustTone) {
+                BotPanelMenuRow(label: "Trust", value: trustLabel, tone: trustTone) {
                     ForEach(Autonomy.allCases, id: \.self) { level in
                         Button {
                             model.setAutonomy(bot, level)
@@ -367,8 +357,7 @@ struct BotPage: View {
                 }
                 // Claude only: Codex has no way to leave out the apps on its account.
                 if bot.engine == .claude {
-                    SettingRow(label: "Apps", value: bot.onlyBupsyApps ? "Only bupsy's" : "All of yours",
-                               icon: "puzzlepiece.extension") {
+                    BotPanelMenuRow(label: "Apps", value: bot.onlyBupsyApps ? "Only bupsy's" : "All of yours") {
                         Button {
                             model.setOnlyBupsyApps(bot, false)
                         } label: {
@@ -383,8 +372,7 @@ struct BotPage: View {
                         }
                     }
                 }
-                SettingRow(label: "Folder in sidebar", value: bot.folder ?? "None",
-                           icon: "tray.2") {
+                BotPanelMenuRow(label: "Section", value: bot.folder ?? "Unassigned") {
                     ForEach(model.folders, id: \.self) { folder in
                         Button {
                             model.setFolder(bot, folder)
@@ -394,10 +382,99 @@ struct BotPage: View {
                     }
                     if bot.folder != nil {
                         Divider()
-                        Button("Remove from folder") { model.setFolder(bot, nil) }
+                        Button("Move to Unassigned") { model.setFolder(bot, nil) }
                     }
                 }
+            } footer: {
+                Button { editingBot = bot } label: {
+                    Text("Change")
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.mutedForeground)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Edit \(bot.name)'s face, job, engine and trust")
             }
+
+            folderField
+        }
+    }
+
+    /// The folder it can touch, as a field you can copy from, with the ways to change it.
+    private var folderField: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            Text("Folder")
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.mutedForeground)
+            HStack(spacing: Theme.Space.snug) {
+                Text(folderPath)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .help(model.workingDirectory(for: bot).path)
+                Spacer(minLength: Theme.Space.snug)
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(model.workingDirectory(for: bot).path, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: Theme.scaled(11)))
+                        .foregroundStyle(palette.mutedForeground)
+                        .frame(width: 24, height: 24)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Copy the path")
+                Menu {
+                    Button("Choose folder...") { model.chooseWorkdir(for: bot) }
+                    if bot.workdir != nil {
+                        Button("Use its own folder") { model.setWorkdir(bot, nil) }
+                    }
+                    Divider()
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting(
+                            [model.workingDirectory(for: bot)])
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: Theme.scaled(11), weight: .semibold))
+                        .foregroundStyle(palette.mutedForeground)
+                        .frame(width: 24, height: 24)
+                        .contentShape(.rect)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Change folder")
+            }
+            .padding(.leading, Theme.Space.gutter)
+            .padding(.trailing, Theme.Space.snug)
+            .frame(height: Theme.Size.control + 4)
+            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.card).strokeBorder(palette.border)
+            }
+        }
+    }
+
+    private var folderPath: String {
+        guard let path = bot.workdir else { return "Its own folder" }
+        return path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+    }
+
+    /// A small heading with its New button, the way the panel's sections start.
+    private func panelHeader(_ title: String, help: String, action: @escaping () -> Void) -> some View {
+        HStack {
+            Text(title)
+                .font(Theme.Typography.body.weight(.medium))
+                .foregroundStyle(palette.foreground)
+            Spacer(minLength: Theme.Space.snug)
+            Button(action: action) {
+                Label("New", systemImage: "plus")
+            }
+            .buttonStyle(ThreadButtonStyle(kind: .ghost, height: 32))
+            .help(help)
         }
     }
 
@@ -466,15 +543,18 @@ struct BotPage: View {
                 GeometryReader { geometry in
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(alignment: .leading, spacing: Theme.Space.step) {
+                        VStack(alignment: .leading, spacing: 0) {
                             ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
-                                if showsDaySeparator(at: index) { DaySeparator(date: entry.at) }
-                                if index == firstUnreadIndex { NewDivider().id(NewDivider.anchor) }
-                                Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index),
-                                       onReply: { author, text in
-                                           replyingTo = ReplyTarget(author: author, text: text)
-                                       })
-                                    .id(entry.id)
+                                VStack(alignment: .leading, spacing: Theme.Space.step) {
+                                    if showsDaySeparator(at: index) { DaySeparator(date: entry.at) }
+                                    if index == firstUnreadIndex { NewDivider().id(NewDivider.anchor) }
+                                    Bubble(entry: entry, bot: bot, showsAvatar: showsAvatar(at: index),
+                                           onReply: { author, text in
+                                               replyingTo = ReplyTarget(author: author, text: text)
+                                           })
+                                }
+                                .padding(.top, gap(before: index))
+                                .id(entry.id)
                             }
                             // Not while it is waiting on you. The dots say "the bot is working" —
                             // under an approval card that is false, and it is false at exactly
@@ -482,14 +562,14 @@ struct BotPage: View {
                             // until they answer.
                             if thread.isRunning && !model.isWaitingForApproval(bot.id) {
                                 AgentThinking(bot: bot, thread: thread)
+                                    .padding(.top, Theme.Space.step)
                                     .id("thinking")
                             }
                         }
-                        // Top padding clears the floating title pill, which overlays this.
-                        .padding(.top, 56)
-                        .padding(.bottom, Theme.Space.gutter)
-                        .padding(.horizontal, Theme.Space.section)
-                        .frame(maxWidth: Theme.Size.contentMaxWidth)
+                        .padding(.top, Theme.Space.gutter)
+                        .padding(.bottom, Theme.Space.section)
+                        .padding(.horizontal, 32)
+                        .frame(maxWidth: ThreadLayout.columnMaxWidth)
                         // Centred, not leading: the composer is centred in the pane, and a
                         // transcript hugging the left edge while the box you type into sits in
                         // the middle reads as two unrelated panels.
@@ -525,9 +605,9 @@ struct BotPage: View {
                                     .font(.system(size: Theme.scaled(12), weight: .semibold))
                                     .foregroundStyle(palette.foreground)
                                     .frame(width: 32, height: 32)
-                                    .background(palette.card, in: .circle)
+                                    .background(palette.background, in: .circle)
                                     .overlay(Circle().strokeBorder(palette.border))
-                                    .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+                                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
                             }
                             .buttonStyle(.plain)
                             .help("Jump to the latest message")
@@ -571,8 +651,47 @@ struct BotPage: View {
 
     private var limitBadge: String? {
         guard let tightest = thread.latestLimits?.tightest else { return nil }
-        let window = tightest.name.replacingOccurrences(of: "_", with: "-")
+        let window: String
+        switch tightest.name {
+        case "five_hour": window = "5-hour"
+        case "seven_day": window = "weekly"
+        case "seven_day_opus": window = "weekly Opus"
+        default: window = tightest.name.replacingOccurrences(of: "_", with: "-")
+        }
         return "\(Int(tightest.window.utilization * 100))% of \(window) limit"
+    }
+
+    /// Worth an amber wash once more than half a window is gone.
+    private var limitIsHigh: Bool {
+        (thread.latestLimits?.tightest?.window.utilization ?? 0) >= 0.6
+    }
+
+    /// Room between entries: a bot's tool lines stack tight under its words, separate turns
+    /// breathe.
+    private func gap(before index: Int) -> CGFloat {
+        guard index > 0 else { return 0 }
+        let current = thread.entries[index].kind
+        // Entries that draw nothing take no room.
+        switch current {
+        case .finished: return 0
+        case .tool(let name, let arguments, _, _):
+            if case .hidden = BupsyToolLine(tool: name, argumentsJSON: arguments) { return 0 }
+        default: break
+        }
+        let previous = thread.entries[index - 1].kind
+        if Self.isAside(current) && Self.isAside(previous) { return 4 }
+        if Self.isAside(current) { return Theme.Space.step }
+        switch current {
+        case .approval, .question, .failure, .limits: return Theme.Space.gutter
+        default: return 20
+        }
+    }
+
+    private static func isAside(_ kind: TranscriptEntry.Kind) -> Bool {
+        switch kind {
+        case .tool, .thinking: true
+        default: false
+        }
     }
 
     /// The first message from the bot that arrived after you last read it, or nil when there is
@@ -591,26 +710,20 @@ struct BotPage: View {
             thread.entries[index].at, inSameDayAs: thread.entries[index - 1].at)
     }
 
+    /// A bot's words open with its face, name and time, unless they carry straight on from its
+    /// previous words.
     private func showsAvatar(at index: Int) -> Bool {
-        guard thread.entries[index].isFromBot else { return false }
+        guard case .assistantText = thread.entries[index].kind else { return false }
         guard index > 0 else { return true }
-        return !thread.entries[index - 1].isFromBot
+        if case .assistantText = thread.entries[index - 1].kind { return false }
+        return true
     }
 
     // MARK: - On its own
 
     private var goals: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-            SectionHeader(
-                icon: "target",
-                title: "Standing goals",
-                badge: objectives.isEmpty ? nil : "\(objectives.filter(\.enabled).count) active",
-                subtitle: "Things \(bot.name) keeps true, checked on a schedule"
-            ) {
-                Button { showsObjectives = true } label: { Label("New", systemImage: "plus") }
-                    .buttonStyle(QuietButton(compact: true))
-                    .help("New goal")
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            panelHeader("Standing goals", help: "New goal") { showsObjectives = true }
 
             if objectives.isEmpty {
                 EmptyRow(text: "No standing goals yet.") { showsObjectives = true }
@@ -634,7 +747,7 @@ struct BotPage: View {
                                         MetaDot()
                                         Text(outcome.label)
                                             .foregroundStyle(outcome.needsAttention
-                                                             ? palette.primary : Color.green)
+                                                             ? palette.primary : palette.success)
                                     }
                                 }
                                 .font(Theme.Typography.caption)
@@ -656,17 +769,8 @@ struct BotPage: View {
     }
 
     private var routineSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-            SectionHeader(
-                icon: "clock",
-                title: "Routines",
-                badge: routines.isEmpty ? nil : "\(routines.filter(\.enabled).count)",
-                subtitle: "Jobs \(bot.name) does on a schedule"
-            ) {
-                Button { showsRoutines = true } label: { Label("New", systemImage: "plus") }
-                    .buttonStyle(QuietButton(compact: true))
-                    .help("New routine")
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            panelHeader("Routines", help: "New routine") { showsRoutines = true }
 
             if routines.isEmpty {
                 EmptyRow(text: "No routines yet.") { showsRoutines = true }
@@ -710,14 +814,8 @@ struct BotPage: View {
     /// Folders this bot watches: it runs when files in them change.
     private var watchSection: some View {
         let watches = model.folderWatches.filter { $0.botID == bot.id.rawValue }
-        return VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-            SectionHeader(icon: "folder.badge.gearshape", title: "Folder watches",
-                          badge: watches.isEmpty ? nil : "\(watches.filter(\.enabled).count)",
-                          subtitle: "Runs when files change in a folder") {
-                Button { showsNewWatch = true } label: { Label("New", systemImage: "plus") }
-                    .buttonStyle(QuietButton(compact: true))
-                    .help("New folder watch")
-            }
+        return VStack(alignment: .leading, spacing: 10) {
+            panelHeader("Folder watches", help: "New folder watch") { showsNewWatch = true }
             if watches.isEmpty {
                 EmptyRow(text: "No folder watches yet.") { showsNewWatch = true }
             } else {
@@ -781,7 +879,7 @@ struct BotPage: View {
                     .font(Theme.Typography.caption)
                     .foregroundStyle(palette.mutedForeground)
                 if !routine.enabled {
-                    Text("Paused — it will not run until you resume it.")
+                    Text("Paused. It will not run until you resume it.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(palette.primary)
                 }
@@ -893,7 +991,7 @@ struct BotPage: View {
 // MARK: - Shell pieces
 
 /// Breadcrumbs rather than a title. A page in a dashboard says where you are, not just what
-/// you are looking at.
+/// you are looking at: Bupsy, then the bot or page, then the view, the last one in full weight.
 struct Topbar<Trailing: View>: View {
     @Environment(\.palette) private var palette
     let trail: [String]
@@ -901,23 +999,24 @@ struct Topbar<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: Theme.Space.snug) {
-            HStack(spacing: Theme.Space.snug) {
-                Text("bupsy").foregroundStyle(palette.mutedForeground)
+            HStack(spacing: Theme.Space.tight) {
+                Text("Bupsy").foregroundStyle(palette.mutedForeground)
                 ForEach(Array(trail.enumerated()), id: \.offset) { index, part in
-                    Text("/").foregroundStyle(palette.border)
+                    Text("|").foregroundStyle(palette.border)
                     Text(part)
                         .foregroundStyle(index == trail.count - 1
-                                         ? palette.foreground : palette.mutedForeground)
+                                         ? palette.foreground.opacity(0.8) : palette.mutedForeground)
                         .fontWeight(index == trail.count - 1 ? .medium : .regular)
                 }
             }
-            .font(Theme.Typography.body)
+            .font(.system(size: Theme.scaled(14)))
+            .lineLimit(1)
 
             Spacer(minLength: Theme.Space.step)
-            trailing
+            HStack(spacing: Theme.Space.step) { trailing }
         }
-        .padding(.horizontal, 20)
-        .frame(height: 56)
+        .padding(.horizontal, Theme.Space.section)
+        .frame(height: 64)
     }
 }
 
@@ -1160,9 +1259,8 @@ struct InlineLabelField: View {
     var body: some View {
         Group {
             if editing {
-                TextField("", text: $text, prompt: Text("PA, Finance, Research…"))
+                TextField("", text: $text, prompt: Text("PA, Finance, Research..."))
                     .textFieldStyle(.plain)
-                    .multilineTextAlignment(.center)
                     .font(Theme.Typography.caption)
                     .frame(maxWidth: 160)
                     .focused($focused)
@@ -1176,7 +1274,7 @@ struct InlineLabelField: View {
                     focused = true
                 } label: {
                     if let role = bot.role {
-                        RoleTag(text: role)
+                        ThreadStatusBadge(text: role, tone: palette.infoText)
                     } else {
                         // A small dashed pill, so it reads as a control rather than stray text
                         // squeezed between the name and the job.
@@ -1281,5 +1379,55 @@ struct NewFolderWatchSheet: View {
         panel.canChooseFiles = false
         panel.prompt = "Watch"
         if panel.runModal() == .OK, let url = panel.url { path = url.path }
+    }
+}
+
+/// A label on the left and its value on the right, where the value is a menu that changes it.
+/// The rows of the details panel's setup card.
+private struct BotPanelMenuRow<Items: View>: View {
+    @Environment(\.palette) private var palette
+    let label: String
+    let value: String
+    var tone: Color?
+    @ViewBuilder var items: Items
+    @State private var hovering = false
+
+    init(label: String, value: String, tone: Color? = nil, @ViewBuilder items: () -> Items) {
+        self.label = label
+        self.value = value
+        self.tone = tone
+        self.items = items()
+    }
+
+    var body: some View {
+        HStack(spacing: Theme.Space.step) {
+            Text(label)
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.mutedForeground)
+                .lineLimit(1)
+                .fixedSize()
+            Spacer(minLength: Theme.Space.snug)
+            Menu {
+                items
+            } label: {
+                HStack(spacing: 4) {
+                    // Coloured here rather than left to the enclosing style: a borderless menu
+                    // adopts the app tint for its label otherwise.
+                    Text(value)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(tone ?? palette.foreground)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: Theme.scaled(8), weight: .semibold))
+                        .foregroundStyle(palette.mutedForeground.opacity(hovering ? 1 : 0.45))
+                }
+                .contentShape(.rect)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .onHover { hovering = $0 }
+        }
     }
 }

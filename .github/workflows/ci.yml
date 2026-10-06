@@ -55,9 +55,17 @@ jobs:
         run: |
           set -o pipefail
           xcodegen generate
+          # Compile errors are also posted as annotations, so they show on the PR's Files tab
+          # (and through the API) without anyone having to open the raw log.
           xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac \
             -configuration Debug -destination 'platform=macOS' \
-            CODE_SIGNING_ALLOWED=NO build | tail -20
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | tail -20 || {
+            grep -E '^/.*: error: ' build.log | sort -u | head -40 | while IFS= read -r line; do
+              file="${line%%:*}"; rest="${line#*:}"; lineno="${rest%%:*}"
+              echo "::error file=${file#"$GITHUB_WORKSPACE"/},line=${lineno}::${line##*: error: }"
+            done
+            exit 1
+          }
 
       # Only on a manual run: a dev DMG anyone with access can download from the run's Artifacts.
       - name: Package a DMG

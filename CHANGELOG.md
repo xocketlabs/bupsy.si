@@ -5,6 +5,23 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**A new look, matching the Bupsy design system**
+- Every bot is now Bupsy: a gummy little character with a status light on its antenna. Pick from
+  eight shapes (Bup, Blob, Pill, Cat, Bunny, Bear, Ghost, Imp) and eight colours. Its face shows
+  what it is doing: idle, working, needs you, done, asleep, or something went wrong.
+- Faces picked under the old shapes reset to Bup in the same colour. Pick a new one any time.
+- A new app icon: Bupsy rising out of a dark tile, antenna glowing.
+- Popups have a new frame, with keyboard hints on the footer. When a bot is asking, it peeks over
+  the top.
+- Sidebar folders are now called sections, so they no longer get mixed up with a bot's work folder.
+- Empty places show a napping bot and one line on what to do next.
+- Every screen restyled to match: onboarding with a scene per step, the bot creator, chats (the
+  working bot peeks over the message box), Waiting on you, search, group chats, routines and goals,
+  Apps, Usage, Permissions and Machines.
+- New Team page: your bots by section, in columns. Move a bot with its menu or drag it across.
+- New Group chats page, and the sidebar's sections now fold.
+- The menu bar shows each bot's live face, and a bot that needs you can be answered right there.
+
 ## 0.1.0 — first public build
 
 A native Mac app for a team of AI bots that run on your own Claude Code or Codex sign-in.

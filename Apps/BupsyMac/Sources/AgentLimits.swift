@@ -3,8 +3,8 @@ import SwiftUI
 
 /// How much room a bot has left: the context window it last used, and your plan's usage limits.
 ///
-/// One card, two halves. The context bar is split by where the tokens went — what the engine
-/// reused from earlier turns, what was new, and the reply — so "why is this turn so big" has an
+/// One card, two halves. The context bar is split by where the tokens went: what the engine
+/// reused from earlier turns, what was new, and the reply, so "why is this turn so big" has an
 /// answer at a glance. Click it to see the numbers. Below, each plan limit as a bar with when it
 /// resets, which is the question people actually have about a limit.
 struct AgentLimitsCard: View {
@@ -28,7 +28,7 @@ struct AgentLimitsCard: View {
         return [
             Segment(id: "Reused from earlier", tokens: cached, colour: palette.info),
             Segment(id: "New this turn", tokens: input, colour: palette.primary),
-            Segment(id: "Reply", tokens: reply, colour: Color(red: 0.24, green: 0.72, blue: 0.62)),
+            Segment(id: "Reply", tokens: reply, colour: palette.success),
         ].filter { $0.tokens > 0 }
     }
 
@@ -42,8 +42,7 @@ struct AgentLimitsCard: View {
             }
             if let limits, !limits.windows.isEmpty { plan(limits) }
         }
-        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).strokeBorder(palette.border))
+        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
     }
 
     private var context: some View {
@@ -109,7 +108,7 @@ struct AgentLimitsCard: View {
 
     private func plan(_ limits: RateLimit) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Plan usage limits · \(bot.engine.displayName)")
+            Text("\(bot.engine.displayName) plan limits")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(palette.mutedForeground)
             ForEach(limits.windows.sorted { $0.key < $1.key }, id: \.key) { name, window in
@@ -127,7 +126,7 @@ struct AgentLimitsCard: View {
                     GeometryReader { proxy in
                         Capsule().fill(palette.foreground.opacity(0.08))
                             .overlay(alignment: .leading) {
-                                Capsule().fill(window.utilization > 0.85 ? palette.destructive : palette.primary)
+                                Capsule().fill(Self.tone(window.utilization, palette))
                                     .frame(width: max(4, proxy.size.width * min(1, window.utilization)))
                             }
                     }
@@ -138,14 +137,23 @@ struct AgentLimitsCard: View {
         .padding(12)
     }
 
+    /// Quiet until it is worth noticing: the accent, then amber from 70%, red from 85%.
+    static func tone(_ utilization: Double, _ palette: Palette.Scheme) -> Color {
+        switch utilization {
+        case 0.85...: palette.destructive
+        case 0.7...: palette.warning
+        default: palette.primary
+        }
+    }
+
     private func percent(_ part: Int, of whole: Int) -> Int { Int((Double(part) / Double(whole) * 100).rounded()) }
 
     static func label(_ name: String) -> String {
         switch name {
         case "five_hour": "5-hour limit"
-        case "seven_day": "Weekly · all models"
-        case "seven_day_opus": "Weekly · Opus"
-        case "seven_day_sonnet": "Weekly · Sonnet"
+        case "seven_day": "Weekly, all models"
+        case "seven_day_opus": "Weekly, Opus"
+        case "seven_day_sonnet": "Weekly, Sonnet"
         default: name.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }

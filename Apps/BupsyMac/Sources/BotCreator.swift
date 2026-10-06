@@ -3,9 +3,10 @@ import SwiftUI
 
 /// Making or editing a bot, on one screen.
 ///
-/// The face is the centrepiece: large, live, with every shape in a ring around it to pick from
-/// and the colours beneath. Then who it is (name, role, job) as a tidy card of rows, and how it
-/// runs (engine, model, trust) as another. Used for "Set up a bot yourself" and for Edit.
+/// Two columns in the app's sheet. On the left the bot itself, live on a tinted stage and
+/// reacting as you go (asleep until it has a name, upset if the name is taken), with the shapes
+/// and colours beneath it. On the right who it is (name, role, section, job) and how it runs
+/// (engine, model, trust). Used for "Set up a bot yourself" and for Edit.
 struct BotCreatorSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
@@ -17,172 +18,266 @@ struct BotCreatorSheet: View {
     @State private var name = ""
     @State private var role = ""
     @State private var job = ""
+    /// The section it is filed in. Empty means unassigned.
+    @State private var folder = ""
+    @State private var typingNewSection = false
     @State private var engine = EngineID.claude
     @State private var modelID: String?
     @State private var trust = Autonomy.ask
-    @State private var shape = BotShape.circle
+    @State private var shape = BotShape.bup
     @State private var colour = 8
     @State private var faceChanged = false
     @State private var loaded = false
 
+    init(editing: Bot? = nil) {
+        self.editing = editing
+    }
+
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+    private var trimmedFolder: String { folder.trimmingCharacters(in: .whitespaces) }
     private var nameTaken: Bool { model.isNameTaken(name, except: editing?.id) }
-    private var taken: Set<BotShape> { Set(model.bots.filter { $0.id != editing?.id }.map(\.effectiveShape)) }
+    private var others: [Bot] { model.bots.filter { $0.id != editing?.id } }
+    private var taken: Set<BotShape> { Set(others.map(\.effectiveShape)) }
+
+    /// The colour of the first other bot wearing each shape, for the dot on its tile.
+    private var wearers: [BotShape: Color] {
+        var result: [BotShape: Color] = [:]
+        for bot in others where result[bot.effectiveShape] == nil {
+            result[bot.effectiveShape] = BotFace.colour(of: bot)
+        }
+        return result
+    }
+
+    private var safeColour: Int { ((colour % BotShape.palette.count) + BotShape.palette.count) % BotShape.palette.count }
+    private var tint: Color { BotShape.palette[safeColour] }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 14) {
-                    header
-                    FaceRing(shape: $shape, colour: colour, taken: taken) { faceChanged = true }
-                    ColourRow(colour: $colour, onShuffle: shuffle) { faceChanged = true }
-                    identity
-                    preferences
+        SheetFrame(title: displayName,
+                   icon: editing == nil ? "plus.circle" : "pencil",
+                   subtitle: "Pick its face, give it a job, choose how careful it is.",
+                   width: 760,
+                   tone: .primary,
+                   primaryVerb: editing == nil ? "create" : "save") {
+            HStack(alignment: .top, spacing: Theme.Space.section) {
+                VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                    preview
+                    AvatarPicker(shape: $shape, colour: $colour, taken: taken, wearers: wearers,
+                                 onChange: { faceChanged = true })
                 }
-                .padding(.horizontal, 22)
-                .padding(.top, 18)
-                .padding(.bottom, 20)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                fields
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            Rectangle().fill(palette.border).frame(height: 1)
-            HStack(spacing: Theme.Space.snug) {
-                if nameTaken {
-                    Text("Another bot is already called that.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.destructive)
-                }
-                Spacer(minLength: 0)
-                Button("Cancel") { dismiss() }.buttonStyle(QuietButton())
-                Button(editing == nil ? "Create bot" : "Save", action: save)
-                    .buttonStyle(PrimaryButton())
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(trimmedName.isEmpty || nameTaken)
-            }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 14)
+        } actions: {
+            Button("Cancel") { dismiss() }
+                .buttonStyle(QuietButton())
+            Button(editing == nil ? "Create bot" : "Save", action: save)
+                .buttonStyle(PrimaryButton())
+                .keyboardShortcut(.defaultAction)
+                .disabled(trimmedName.isEmpty || nameTaken)
         }
-        .frame(width: 460, height: 640)
-        .background(palette.popover)
         .onAppear(perform: load)
     }
 
-    private var header: some View {
-        ZStack {
-            Text(trimmedName.isEmpty ? (editing == nil ? "New bot" : "Edit bot") : trimmedName)
-                .font(.system(size: Theme.scaled(15), weight: .semibold))
-                .foregroundStyle(palette.foreground)
-                .lineLimit(1)
-            HStack {
-                Spacer()
-                Button { dismiss() } label: {
+    private var displayName: String {
+        trimmedName.isEmpty ? (editing == nil ? "New bot" : "Edit bot") : trimmedName
+    }
+
+    // MARK: - Preview
+
+    /// The bot, live, on a stage in its own colour.
+    private var preview: some View {
+        VStack(spacing: 10) {
+            BotFace(hue: 0.5, mood: previewMood, size: 120, shape: shape, colour: safeColour)
+            VStack(spacing: 1) {
+                Text(displayName)
+                    .font(.system(size: Theme.scaled(14), weight: .medium))
+                    .foregroundStyle(palette.foreground)
+                    .lineLimit(1)
+                Text(previewCaption)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(nameTaken ? palette.destructiveText : palette.mutedForeground)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
+        .padding(.horizontal, Theme.Space.step)
+        .background { MascotStageBackground(tint: tint, cornerRadius: 14) }
+        .animation(.easeOut(duration: 0.2), value: safeColour)
+    }
+
+    private var previewMood: BotMood {
+        if nameTaken { return .failed }
+        if trimmedName.isEmpty { return .sleeping }
+        return .idle
+    }
+
+    private var previewCaption: String {
+        if nameTaken { return "Pick another name" }
+        if trimmedName.isEmpty { return "Waiting for a name" }
+        let trimmedRole = role.trimmingCharacters(in: .whitespaces)
+        switch (trimmedRole.isEmpty, trimmedFolder.isEmpty) {
+        case (false, false): return "\(trimmedRole) in \(trimmedFolder)"
+        case (false, true): return trimmedRole
+        case (true, false): return "In \(trimmedFolder)"
+        case (true, true): return engine.displayName
+        }
+    }
+
+    // MARK: - Fields
+
+    private var fields: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Field(label: "Name") {
+                VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                    TextField("", text: $name, prompt: Text("Give it a name"))
+                        .textFieldStyle(BupsyFieldStyle())
+                    if nameTaken {
+                        Text("Another bot is already called that.")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.destructiveText)
+                    }
+                }
+            }
+
+            HStack(alignment: .top, spacing: Theme.Space.step) {
+                Field(label: "Role") {
+                    TextField("", text: $role, prompt: Text("Research, PA..."))
+                        .textFieldStyle(BupsyFieldStyle())
+                }
+                .frame(maxWidth: .infinity)
+                Field(label: "Section") { sectionControl }
+                    .frame(maxWidth: .infinity)
+            }
+
+            Field(label: "Job") {
+                TextField("", text: $job,
+                          prompt: Text("What should it do? e.g. watch my inbox and flag anything urgent"),
+                          axis: .vertical)
+                    .textFieldStyle(BupsyFieldStyle())
+                    .lineLimit(3...5)
+            }
+
+            HStack(alignment: .top, spacing: Theme.Space.step) {
+                Field(label: "Engine") {
+                    selectField(engine.displayName) {
+                        ForEach(EngineID.supported, id: \.self) { option in
+                            Button {
+                                engine = option
+                                modelID = nil
+                            } label: {
+                                Label(option.displayName, systemImage: engine == option ? "checkmark" : "")
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                Field(label: "Model") {
+                    selectField(modelLabel) {
+                        ForEach(modelOptions) { option in
+                            Button { modelID = option.id } label: {
+                                Label(option.label, systemImage: modelID == option.id ? "checkmark" : "")
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            Field(label: "Trust", hint: "If nobody answers when it asks, the answer is no.") {
+                selectField(trust.menuLabel, tone: trust == .auto ? palette.destructiveText : nil) {
+                    ForEach(Autonomy.allCases, id: \.self) { level in
+                        Button { trust = level } label: {
+                            Label(level.menuLabel, systemImage: trust == level ? "checkmark" : "")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A menu of the sections in use, or a field for a new one.
+    @ViewBuilder
+    private var sectionControl: some View {
+        if typingNewSection {
+            HStack(spacing: Theme.Space.tight) {
+                TextField("", text: $folder, prompt: Text("Section name"))
+                    .textFieldStyle(BupsyFieldStyle())
+                Button {
+                    typingNewSection = false
+                    if !sections.contains(trimmedFolder) { folder = "" }
+                } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: Theme.scaled(10), weight: .bold))
+                        .font(.system(size: Theme.scaled(10), weight: .semibold))
                         .foregroundStyle(palette.mutedForeground)
                         .frame(width: 24, height: 24)
-                        .background(palette.foreground.opacity(0.07), in: .circle)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .help("Pick an existing section")
+            }
+        } else {
+            selectField(trimmedFolder.isEmpty ? "Unassigned" : trimmedFolder) {
+                ForEach(sections, id: \.self) { section in
+                    Button { folder = section } label: {
+                        Label(section, systemImage: trimmedFolder == section ? "checkmark" : "")
+                    }
+                }
+                Button { folder = "" } label: {
+                    Label("Unassigned", systemImage: trimmedFolder.isEmpty ? "checkmark" : "")
+                }
+                Divider()
+                Button("New section...") {
+                    folder = ""
+                    typingNewSection = true
+                }
             }
         }
     }
 
-    private var identity: some View {
-        VStack(spacing: 0) {
-            fieldRow("Name") {
-                TextField("", text: $name, prompt: Text("Give it a name"))
-            }
-            divider
-            fieldRow("Role") {
-                TextField("", text: $role, prompt: Text("Research, PA, Finance…"))
-            }
-            divider
-            fieldRow("Job", alignTop: true) {
-                TextField("", text: $job, prompt: Text("What should it do? e.g. watch my inbox and flag anything urgent"),
-                          axis: .vertical)
-                    .lineLimit(2...5)
-            }
-        }
-        .padding(6)
-        .background(palette.card, in: .rect(cornerRadius: 14))
+    /// The sections in use, plus the one this bot is already in if the list leaves it out.
+    private var sections: [String] {
+        var list = model.folders
+        let current = editing.flatMap { edited in model.bots.first { $0.id == edited.id } }?.folder ?? ""
+        if !current.isEmpty && !list.contains(current) { list.append(current) }
+        return list
     }
 
-    private var preferences: some View {
-        VStack(spacing: 0) {
-            prefRow("cpu", "Engine", engine.displayName) {
-                ForEach(EngineID.supported, id: \.self) { option in
-                    Button { engine = option; modelID = nil } label: {
-                        Label(option.displayName, systemImage: engine == option ? "checkmark" : "")
-                    }
-                }
-            }
-            divider
-            prefRow("slider.horizontal.3", "Model", modelLabel) {
-                ForEach(modelOptions) { option in
-                    Button { modelID = option.id } label: {
-                        Label(option.label, systemImage: modelID == option.id ? "checkmark" : "")
-                    }
-                }
-            }
-            divider
-            prefRow("hand.raised", "Trust", trust.menuLabel) {
-                ForEach(Autonomy.allCases, id: \.self) { level in
-                    Button { trust = level } label: {
-                        Label(level.menuLabel, systemImage: trust == level ? "checkmark" : "")
-                    }
-                }
-            }
-        }
-        .padding(6)
-        .background(palette.card, in: .rect(cornerRadius: 14))
-    }
-
-    private var divider: some View { Rectangle().fill(palette.border).frame(height: 1).padding(.horizontal, 8) }
-
-    private func fieldRow<Field: View>(_ label: String, alignTop: Bool = false, @ViewBuilder field: () -> Field) -> some View {
-        HStack(alignment: alignTop ? .top : .center, spacing: 10) {
-            Text(label)
+    /// A menu that looks like a field: the value on the left, a chevron on the right.
+    ///
+    /// The field look is drawn behind the menu rather than in its label, because a
+    /// `.borderlessButton` menu sizes its label to the text and would not stretch the background.
+    private func selectField<Items: View>(_ value: String, tone: Color? = nil,
+                                          @ViewBuilder items: () -> Items) -> some View {
+        Menu {
+            items()
+        } label: {
+            Text(value)
                 .font(Theme.Typography.body)
-                .foregroundStyle(palette.foreground)
-                .frame(width: 64, alignment: .leading)
-                .padding(.top, alignTop ? 7 : 0)
-            field()
-                .textFieldStyle(.plain)
-                .font(Theme.Typography.body)
-                .foregroundStyle(palette.foreground)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(palette.foreground.opacity(0.06), in: .rect(cornerRadius: 8))
+                .foregroundStyle(tone ?? palette.foreground)
+                .lineLimit(1)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-    }
-
-    private func prefRow<Items: View>(_ icon: String, _ label: String, _ value: String,
-                                      @ViewBuilder items: () -> Items) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: Theme.scaled(12)))
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, Theme.Space.step)
+        .padding(.trailing, 28)
+        .frame(height: 38)
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.control)
+                .strokeBorder(palette.border)
+        }
+        .overlay(alignment: .trailing) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: Theme.scaled(9), weight: .semibold))
                 .foregroundStyle(palette.mutedForeground)
-                .frame(width: 18)
-            Text(label).font(Theme.Typography.body).foregroundStyle(palette.foreground)
-            Spacer(minLength: 0)
-            Menu { items() } label: {
-                HStack(spacing: 4) {
-                    Text(value).lineLimit(1)
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: Theme.scaled(8), weight: .semibold))
-                }
-                .font(Theme.Typography.caption.weight(.medium))
-                .foregroundStyle(palette.foreground)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .background(palette.popover, in: .rect(cornerRadius: 7))
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(palette.border))
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
+                .padding(.trailing, Theme.Space.step)
+                .allowsHitTesting(false)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 9)
     }
 
     private var modelOptions: [ModelOption] {
@@ -193,6 +288,8 @@ struct BotCreatorSheet: View {
         modelOptions.first { $0.id == modelID }?.label ?? modelID ?? "Default"
     }
 
+    // MARK: - Load and save
+
     private func load() {
         guard !loaded else { return }
         loaded = true
@@ -200,6 +297,7 @@ struct BotCreatorSheet: View {
             name = bot.name
             role = bot.role ?? ""
             job = bot.personaPrompt ?? ""
+            folder = bot.folder ?? ""
             engine = bot.engine
             modelID = bot.model
             trust = bot.autonomy
@@ -207,30 +305,25 @@ struct BotCreatorSheet: View {
             colour = bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue)
         } else {
             // A fresh bot starts on a shape nobody else wears.
-            shape = BotShape.allCases.first { !taken.contains($0) } ?? .circle
+            shape = BotShape.allCases.first { !taken.contains($0) } ?? .bup
             colour = Int.random(in: 0..<BotShape.palette.count - 1)
         }
     }
 
-    private func shuffle() {
-        let free = BotShape.allCases.filter { $0 != shape && !taken.contains($0) }
-        shape = (free.isEmpty ? BotShape.allCases : free).randomElement() ?? shape
-        colour = Int.random(in: 0..<BotShape.palette.count)
-        faceChanged = true
-    }
-
     private func save() {
+        let section: String? = trimmedFolder.isEmpty ? nil : trimmedFolder
         if let editing, let bot = model.bots.first(where: { $0.id == editing.id }) {
             model.rename(bot, to: trimmedName)
             model.setJob(bot, job)
             model.setRole(bot, role)
-            if faceChanged { model.setAvatar(bot, shape: shape, colour: colour) }
+            if faceChanged { model.setAvatar(bot, shape: shape, colour: safeColour) }
             if bot.engine != engine { model.setEngine(bot, engine) }
             model.setModel(bot, modelID)
             model.setAutonomy(bot, trust)
+            if (bot.folder ?? "") != (section ?? "") { model.setFolder(bot, section) }
         } else {
             model.addBot(name: trimmedName, engine: engine, job: job.trimmingCharacters(in: .whitespaces),
-                         shape: shape, colour: colour)
+                         folder: section, shape: shape, colour: safeColour)
             if let bot = model.bots.first(where: { $0.name == trimmedName }) {
                 model.setRole(bot, role)
                 model.setModel(bot, modelID)
@@ -238,88 +331,5 @@ struct BotCreatorSheet: View {
             }
         }
         dismiss()
-    }
-}
-
-/// The big live face with every shape on a ring around it.
-struct FaceRing: View {
-    @Environment(\.palette) private var palette
-    @Binding var shape: BotShape
-    let colour: Int
-    let taken: Set<BotShape>
-    var onPick: () -> Void
-
-    private let ring: CGFloat = 104
-    private let small: CGFloat = 32
-
-    var body: some View {
-        let shapes = BotShape.allCases
-        ZStack {
-            Circle()
-                .fill(RadialGradient(colors: [BotShape.palette[colour % BotShape.palette.count].opacity(0.22), .clear],
-                                     center: .center, startRadius: 0, endRadius: 90))
-                .frame(width: 180, height: 180)
-            BotFace(hue: 0.5, mood: .idle, size: 112, shape: shape, colour: colour)
-                .id("\(shape.rawValue)-\(colour)")
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
-            ForEach(Array(shapes.enumerated()), id: \.element) { index, option in
-                let angle = Double(index) / Double(shapes.count) * 2 * .pi - .pi / 2
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { shape = option }
-                    onPick()
-                } label: {
-                    StillBotFace(shape: option, colour: colour, size: small)
-                        .padding(3)
-                        .background(Circle().fill(option == shape ? palette.primary.opacity(0.18) : .clear))
-                        .overlay(Circle().strokeBorder(option == shape ? palette.primary : .clear, lineWidth: 1.5))
-                        .overlay(alignment: .topTrailing) {
-                            if taken.contains(option) && option != shape {
-                                Circle().fill(palette.mutedForeground).frame(width: 5, height: 5)
-                            }
-                        }
-                        .scaleEffect(option == shape ? 1.12 : 1)
-                }
-                .buttonStyle(.plain)
-                .help(taken.contains(option) ? "\(option.label) — another bot wears this" : option.label)
-                .offset(x: cos(angle) * ring, y: sin(angle) * ring)
-            }
-        }
-        .frame(width: ring * 2 + small + 12, height: ring * 2 + small + 12)
-    }
-}
-
-/// The colour swatches, ending in a rainbow that shuffles the whole face.
-struct ColourRow: View {
-    @Environment(\.palette) private var palette
-    @Binding var colour: Int
-    var onShuffle: () -> Void
-    var onPick: () -> Void
-
-    var body: some View {
-        HStack(spacing: 5) {
-            ForEach(BotShape.palette.indices, id: \.self) { index in
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) { colour = index }
-                    onPick()
-                } label: {
-                    Circle()
-                        .fill(LinearGradient(colors: [BotShape.palette[index].opacity(0.85), BotShape.palette[index]],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 17, height: 17)
-                        .overlay(Circle().strokeBorder(Color.black.opacity(0.08)))
-                        .padding(2)
-                        .overlay(Circle().strokeBorder(index == colour ? palette.foreground : .clear, lineWidth: 1.5))
-                }
-                .buttonStyle(.plain)
-            }
-            Button(action: onShuffle) {
-                Circle()
-                    .fill(AngularGradient(colors: [.red, .orange, .yellow, .green, .blue, .purple, .red], center: .center))
-                    .frame(width: 17, height: 17)
-                    .padding(2)
-            }
-            .buttonStyle(.plain)
-            .help("Surprise me")
-        }
     }
 }

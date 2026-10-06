@@ -5,7 +5,7 @@ import SwiftUI
 // new-bot sheet, both of which the rail uses.
 
 /// Right-click. Everything here is also in the bot's profile, where it is visible rather than
-/// hidden — this is the shortcut, not the only route.
+/// hidden. This is the shortcut, not the only route.
 struct BotMenu: View {
     @Environment(AppModel.self) private var model
     let bot: Bot
@@ -25,7 +25,7 @@ struct BotMenu: View {
                 Button {
                     model.setFolder(bot, folder)
                 } label: {
-                    Label(folder, systemImage: bot.folder == folder ? "checkmark" : "folder")
+                    Label(folder, systemImage: bot.folder == folder ? "checkmark" : "rectangle.stack")
                 }
             }
             Button {
@@ -82,15 +82,16 @@ struct NewBotSheet: View {
     @State private var name = ""
     @State private var engine = EngineID.claude
     @State private var job = ""
-    @State private var shape = BotShape.circle
+    @State private var shape = BotShape.bup
     @State private var colour = 0
-    /// Until the face is touched, it follows the name — the automatic face, kept distinct from the
+    /// Until the face is touched, it follows the name: the automatic face, kept distinct from the
     /// rest of the roster. Once someone picks, their pick stays put while they keep typing.
     @State private var faceChosen = false
 
     var body: some View {
         SheetFrame(title: "New bot", icon: "sparkles",
-                   subtitle: "It starts fully gated — it asks before doing anything beyond reading.") {
+                   subtitle: "It starts fully gated. It asks before doing anything beyond reading.",
+                   primaryVerb: "create") {
             HStack(spacing: Theme.Space.step) {
                 BotFace(hue: previewHue, mood: .idle, size: 56,
                         shape: faceChosen ? shape : nil, colour: faceChosen ? colour : nil)
@@ -174,4 +175,152 @@ struct NewBotSheet: View {
         let raw = name.isEmpty ? 0.55 : Double(abs(hash) % 360) / 360
         return model.distinctHue(near: raw)
     }
+}
+
+/// The main area when there are no bots at all.
+///
+/// Bupsy waving, two ways to make the first bot (one click, where the bot asks what it is for,
+/// or the full creator), and three ordinary jobs to start from. Self-contained: it makes bots
+/// through the model, and making one selects it, which is what navigates to it.
+struct RosterEmpty: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    @State private var settingUp = false
+
+    init() {}
+
+    /// Jobs a first bot is commonly given. Picking one makes a bot with that job, gated as usual.
+    private static let starters: [RosterEmptyStarter] = [
+        RosterEmptyStarter(name: "Inbox", shape: .bear, colour: 6,
+                           title: "Keep my inbox under a day old",
+                           job: "Watch my inbox and flag anything urgent. Keep it under a day old.",
+                           meta: ["Works best with a mail app connected", "Asks before it acts"]),
+        RosterEmptyStarter(name: "Researcher", shape: .pill, colour: 1,
+                           title: "Research a topic and send me a summary",
+                           job: "Research the topics I give you and send me a short, plain summary with sources.",
+                           meta: ["Searches the web", "Reports back in its thread"]),
+        RosterEmptyStarter(name: "Builder", shape: .cat, colour: 2,
+                           title: "Fix my builds when CI goes red",
+                           job: "When a build fails, find out why and propose a fix.",
+                           meta: ["Works in a repo folder", "Asks before running commands"]),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Topbar(trail: ["Roster"]) { EmptyView() }
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 40) {
+                        hero
+                        starters
+                    }
+                    .padding(32)
+                    .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                }
+            }
+        }
+        .sheet(isPresented: $settingUp) { BotCreatorSheet() }
+    }
+
+    private var hero: some View {
+        VStack(spacing: 20) {
+            BotFace(hue: 0, mood: .waitingForYou, size: 150, shape: .bup, colour: 0)
+                .accessibilityHidden(true)
+            VStack(spacing: Theme.Space.snug) {
+                Text("No bots yet")
+                    .font(.system(size: Theme.scaled(22), weight: .semibold))
+                    .tracking(-0.5)
+                    .foregroundStyle(palette.foreground)
+                Text("Make your first one. It asks what it's for, names itself and gets to work.")
+                    .font(.system(size: Theme.scaled(14)))
+                    .foregroundStyle(palette.mutedForeground)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 420)
+            }
+            HStack(spacing: Theme.Space.snug) {
+                Button {
+                    model.quickCreateBot(engine: preferredEngine)
+                } label: {
+                    Label("New bot", systemImage: "plus")
+                }
+                .buttonStyle(PrimaryButton())
+                Button {
+                    settingUp = true
+                } label: {
+                    Label("Set it up yourself", systemImage: "slider.horizontal.3")
+                }
+                .buttonStyle(QuietButton())
+            }
+            Text("Or press Cmd N from anywhere")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+        }
+    }
+
+    private var starters: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.step) {
+            Text("Jobs people start with")
+                .font(Theme.Typography.body.weight(.medium))
+                .foregroundStyle(palette.mutedForeground)
+            ForEach(Self.starters, id: \.title) { starter in
+                Button { start(starter) } label: {
+                    CardRow {
+                        StillBotFace(shape: starter.shape, colour: starter.colour, size: 40)
+                            .frame(width: 44, height: 44)
+                            .background(BotShape.palette[starter.colour].opacity(0.14),
+                                        in: .rect(cornerRadius: Theme.Radius.control))
+                    } content: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(starter.title)
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(palette.foreground)
+                            HStack(spacing: Theme.Space.snug) {
+                                ForEach(Array(starter.meta.enumerated()), id: \.offset) { index, part in
+                                    if index > 0 { MetaDot() }
+                                    Text(part)
+                                }
+                            }
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                        }
+                    } trailing: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: Theme.scaled(10), weight: .semibold))
+                            .foregroundStyle(palette.mutedForeground)
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Make a bot with this job")
+            }
+        }
+        .frame(maxWidth: 560)
+    }
+
+    /// The first engine that is signed in, so a starter bot can actually run.
+    private var preferredEngine: EngineID {
+        EngineID.supported.first { model.engineStatus[$0]?.isUsable == true } ?? .claude
+    }
+
+    private func start(_ starter: RosterEmptyStarter) {
+        var name = starter.name
+        var counter = 2
+        while model.isNameTaken(name) {
+            name = "\(starter.name) \(counter)"
+            counter += 1
+        }
+        model.addBot(name: name, engine: preferredEngine, job: starter.job,
+                     shape: starter.shape, colour: starter.colour)
+    }
+}
+
+/// One suggested first job on the empty roster.
+struct RosterEmptyStarter: Sendable {
+    let name: String
+    let shape: BotShape
+    let colour: Int
+    let title: String
+    let job: String
+    let meta: [String]
 }
