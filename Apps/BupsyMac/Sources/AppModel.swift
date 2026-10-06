@@ -127,6 +127,13 @@ final class AppModel {
         loadBots()
         loadSections()
         loadGroups()
+        // Quitting stops every run. Left alone, an engine and the commands it started carry on
+        // after the app has gone, with no gate answering and nothing on screen.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopEverything() }
+        }
         // `self.store`, not `store` — the initialiser parameter shadows the property, and is nil
         // in normal use. Written as `store?` this silently loaded zero routines on every launch,
         // with `try?` swallowing the nothing that happened. Routines then never fired, and no
@@ -1310,6 +1317,10 @@ final class AppModel {
         alreadyShown: Bool = false, separateMessages: [String]? = nil,
         triggerID: String? = nil
     ) -> Bool {
+        // The bot as it is now, not as it was when this run was asked for: a message queued
+        // behind a run, or a turn waiting in a group, must use the trust level, folder and job
+        // you have set since. Gone means deleted while it waited, so nothing runs.
+        guard let bot = bots.first(where: { $0.id == bot.id }) else { return false }
         // One run per bot at a time, wherever it is. A bot cannot answer in a group while it is
         // still working on something you asked it directly.
         guard running[bot.id] == nil, let adapter = adapters[bot.engine] else { return false }
@@ -1375,9 +1386,14 @@ final class AppModel {
         let runGate = try? ApprovalGate.temporary()
         if let gate = runGate {
             gates[bot.id] = gate
+            gateRuns[bot.id] = run.id
             gateSettings = try? GateInstaller.install(gateDirectory: gate.directory).path
             watchGate(gate, bot: bot, thread: thread, run: run.id)
         }
+        // Claude takes its approvals from the gate. Without one it would fall back on the
+        // person's own Claude Code permissions and run whatever those allow, unasked, so a
+        // gate that could not be set up fails the run instead.
+        let ungated = bot.engine == .claude && gateSettings == nil
 
         let request = RunRequest(
             prompt: bot.personaPrompt.map { "\($0)\n\n\(prompt)" } ?? prompt,
@@ -1385,8 +1401,10 @@ final class AppModel {
             resume: thread.conversationID,
             model: bot.model,
             autonomy: bot.autonomy,
-            mcpConfigPaths: (try? MCPConfig.write(
-                connectors,
+            // In the run's own gate folder, never a shared path: two runs starting together
+            // would otherwise read each other's config, and with it the other bot's identity.
+            mcpConfigPaths: (try? runGate.map { gate in try MCPConfig.write(
+                connectors, to: gate.directory,
                 including: Self.bupsyMCPBinary.map {
                     MCPConfig.bupsyServer(
                         binary: $0,
@@ -1394,7 +1412,7 @@ final class AppModel {
                         botID: bot.id.rawValue,
                         roster: writeRoster(excluding: bot))
                 }
-            )).flatMap { $0 }.map { [$0] } ?? [],
+            ) }).flatMap { $0 }.flatMap { $0 }.map { [$0] } ?? [],
             gateSettingsPath: gateSettings,
             onlyGivenApps: bot.onlyBupsyApps
         )
@@ -1407,13 +1425,22 @@ final class AppModel {
             if assertion.acquire() { awake[bot.id] = assertion }
         }
 
-        let connectorEnvNames = Array(Set(connectors.filter(\.enabled).flatMap(\.requiredEnvNames)))
+        // Only an engine that reads the MCP config needs connector keys. Codex does not, and its
+        // shell would otherwise have them in reach for nothing.
+        let connectorEnvNames = bot.engine == .claude
+            ? Array(Set(connectors.filter(\.enabled).flatMap(\.requiredEnvNames))) : []
         let token = UUID()
         runTokens[bot.id] = token
+        let outboxToken = UUID().uuidString
+        outboxTokens[outboxToken] = bot.id
         running[bot.id] = Task { [host, store] in
             var seq = 1
             var failed = false
             var reply = ""
+            // What this run itself reported. The thread's `latestUsage` still holds the last
+            // run's figures until a new line arrives, so a run stopped or failed before then
+            // would otherwise be charged the previous run's tokens and cost.
+            var runUsage: Usage?
             defer {
                 // This run's own gate always closes. The bot's shared state is only cleared if
                 // this run still owns it: after Stop, a new run may already be in the slot.
@@ -1432,6 +1459,7 @@ final class AppModel {
                     runTokens[bot.id] = nil
                     activeThread[bot.id] = nil
                     gates[bot.id] = nil
+                    gateRuns[bot.id] = nil
                     awake[bot.id]?.release()
                     awake[bot.id] = nil
                 }
@@ -1441,9 +1469,9 @@ final class AppModel {
                 // Carried from the stream's usage line, which arrives before `.done`. Without
                 // this the columns exist and are never written, which is how the usage panel came
                 // to be permanently absent rather than merely empty.
-                finished.inputTokens = thread.latestUsage?.inputTokens
-                finished.outputTokens = thread.latestUsage?.outputTokens
-                finished.costUSD = thread.latestUsage?.costUSD
+                finished.inputTokens = runUsage?.inputTokens
+                finished.outputTokens = runUsage?.outputTokens
+                finished.costUSD = runUsage?.costUSD
                 try? store?.save(finished)
                 if let id = thread.conversationID {
                     try? store?.save(ConversationRecord(
@@ -1453,6 +1481,10 @@ final class AppModel {
                 }
                 lastRunEnded[bot.id] = Date()
                 if ownsSlot { recordRunEnded(bot.id, failed: failed) }
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(30))
+                    self?.outboxTokens[outboxToken] = nil
+                }
                 // Stopped, by you or by Pause: not finished, so its half-written reply is not
                 // posted to a group or handed on, read as a goal's answer or announced as done.
                 // Decided by what `stop` recorded, not by whether it is still paused, so a quick
@@ -1461,6 +1493,9 @@ final class AppModel {
                     if let triggerID { checkingObjectives.remove(triggerID) }
                     if let groupID, let group = groupThreads[groupID], group.speaking == bot.id {
                         group.speaking = nil
+                        // Stopping a bot mid-turn ends the conversation there, rather than
+                        // handing on to whoever was next.
+                        groupChains[groupID] = nil
                     }
                     // After Pause, what is queued behind it waits for `resumeAll`.
                     if !byPause { Task { @MainActor [weak self] in self?.botBecameFree(bot) } }
@@ -1475,7 +1510,11 @@ final class AppModel {
                 // Connector variables set in the person's shell profile, which an app opened from
                 // Finder does not inherit. Passed in the engine's environment only, so the
                 // `${NAME}` references in the MCP config resolve; never written anywhere.
+                if ungated {
+                    throw GateUnavailable()
+                }
                 var invocation = adapter.invocation(for: request)
+                invocation.environment["BUPSY_RUN_TOKEN"] = outboxToken
                 if !connectorEnvNames.isEmpty {
                     let values = await Task.detached {
                         LoginShellEnvironment.resolved(connectorEnvNames)
@@ -1490,6 +1529,9 @@ final class AppModel {
                         thread.apply(event)
                         if case .failed = event { failed = true }
                         if case .text(let chunk) = event { reply += chunk }
+                        // Claude sends a usage line; Codex reports it only on `.done`.
+                        if case .usage(let usage) = event { runUsage = usage }
+                        if case .done(let outcome) = event, let usage = outcome.usage { runUsage = usage }
                         persist(event, run: run.id, seq: seq)
                         seq += 1
                     }
@@ -1549,10 +1591,17 @@ final class AppModel {
             }
             for await request in await gate.requests() {
                 guard let self else { return }
+                // Read fresh for every call: lowering a bot's trust, or taking a tool off its
+                // list, applies to the run already going, not just the next one. A bot deleted
+                // mid-run gets nothing more.
+                guard let live = self.bots.first(where: { $0.id == bot.id }) else {
+                    try? await gate.decide(request.id, .deny(reason: "The bot was deleted."))
+                    continue
+                }
                 let outcome = AutonomyPolicy.decide(
                     tool: request.tool,
-                    autonomy: bot.autonomy,
-                    allowlist: bot.toolAllowlist
+                    autonomy: live.autonomy,
+                    allowlist: live.toolAllowlist
                 )
                 switch outcome {
                 case .allow(let rule):
@@ -1607,7 +1656,7 @@ final class AppModel {
                 approval.id,
                 allow ? .allow(reason: "you approved it") : .deny(reason: "you declined it"))
         }
-        recordDecision(run: nil, requestID: approval.id, tool: approval.tool,
+        recordDecision(run: gateRuns[bot.id], requestID: approval.id, tool: approval.tool,
                        inputJSON: approval.inputJSON,
                        decision: allow ? "allowed" : "denied",
                        rule: always && allow ? "you said always allow" : "decided by you")
@@ -1630,6 +1679,13 @@ final class AppModel {
         links.forget(from: sender, to: recipient)
         try? store?.deleteLink(from: sender, to: recipient)
     }
+
+    /// Each run's secret for the outbox, and the bot it belongs to. Kept a little after the run
+    /// ends, since a request written just before exit is picked up on the next poll.
+    private var outboxTokens: [String: BotID] = [:]
+
+    /// The run each open gate belongs to, so a decision you make lands in that run's audit log.
+    private var gateRuns: [BotID: String] = [:]
 
     private func recordDecision(run: String?, request: GateRequest, decision: String, rule: String) {
         recordDecision(run: run, requestID: request.id, tool: request.tool,
@@ -1666,6 +1722,7 @@ final class AppModel {
         activeThread[botID] = nil
         Task { [gate = gates[botID]] in await gate?.stop() }
         gates[botID] = nil
+        gateRuns[botID] = nil
         awake[botID]?.release()
         awake[botID] = nil
         current.isRunning = false
@@ -1767,6 +1824,7 @@ final class AppModel {
         stopEverything()
         // A stopped turn never reports back, so no group is left showing a bot mid-reply.
         for thread in groupThreads.values { thread.speaking = nil }
+        groupChains.removeAll()
         syncLaunchAgent()
     }
 
@@ -1905,6 +1963,12 @@ final class AppModel {
 
     /// Deletes the conversation, never the bots in it.
     func deleteGroup(_ group: ChatGroup) {
+        // A member answering in it stops: its reply has nowhere to go.
+        for (botID, thread) in activeThread
+        where groupSideThreads["\(botID.rawValue)|\(group.id)"] === thread {
+            stop(botID)
+        }
+        groupChains[group.id] = nil
         try? store?.deleteGroup(id: group.id)
         groups.removeAll { $0.id == group.id }
         groupThreads[group.id] = nil
@@ -1967,8 +2031,27 @@ final class AppModel {
         let routing = members(of: group).map { GroupRouting.Member(id: $0.id.rawValue, name: $0.name) }
         let first = GroupRouting.addressees(of: message, members: routing,
                                             lead: group.leadBotID?.rawValue)
-        runTurns(in: group, queue: first, taken: 0)
+        // Joins the conversation already going, if there is one. You spoke, so the bots get
+        // their full allowance of turns again.
+        var chain = groupChains[group.id] ?? GroupChain(queue: [], taken: 0)
+        for member in first where !chain.queue.contains(member) { chain.queue.append(member) }
+        chain.taken = 0
+        groupChains[group.id] = chain
+        runTurns(in: group)
     }
+
+    /// A group's conversation in progress: who is still to answer, and how many turns the bots
+    /// have taken since you last spoke.
+    ///
+    /// One per group. A second message while bots are still answering joins this chain rather
+    /// than starting another beside it, and a bot that was busy elsewhere rejoins it when free.
+    /// Separate chains talked over each other and each got the full turn limit, so the limit,
+    /// which is there to protect your quota, could be passed.
+    private struct GroupChain {
+        var queue: [GroupRouting.Member]
+        var taken: Int
+    }
+    private var groupChains: [String: GroupChain] = [:]
 
     /// Answers one bot at a time, following hand-offs, until the queue is empty or the ceiling
     /// is reached.
@@ -1976,33 +2059,42 @@ final class AppModel {
     /// One at a time on purpose. Bots answering in parallel would each reply without seeing the
     /// others, and the thread would read as several people talking over one another — the thing
     /// a group conversation is supposed to fix, not reproduce.
-    private func runTurns(in group: ChatGroup, queue: [GroupRouting.Member], taken: Int) {
+    private func runTurns(in group: ChatGroup) {
         let thread = groupThread(for: group)
-        // Paused: bots do not hand work on to each other. The first turn is your own message,
-        // which still goes; the ones after it wait for you.
-        guard let next = queue.first, !(isPaused && taken > 0) else {
-            thread.speaking = nil
+        // Deleted while a turn was out: nothing more is said in it.
+        guard let group = groups.first(where: { $0.id == group.id }) else {
+            groupChains[group.id] = nil
+            groupThreads[group.id] = nil
             return
         }
-        let rest = Array(queue.dropFirst())
+        // A turn is under way. It carries the chain on when it finishes.
+        guard thread.speaking == nil else { return }
+        // Paused: bots do not hand work on to each other. The first turn is your own message,
+        // which still goes; the ones after it wait for you.
+        guard var chain = groupChains[group.id], let next = chain.queue.first,
+              !(isPaused && chain.taken > 0) else {
+            groupChains[group.id] = nil
+            return
+        }
 
         // The group's own limit, read fresh so a change made mid-chain applies to the next turn.
-        let limit = groups.first(where: { $0.id == group.id })?.turnLimit ?? group.turnLimit
-        guard !GroupRouting.shouldPause(afterTaking: taken, limit: limit) else {
+        guard !GroupRouting.shouldPause(afterTaking: chain.taken, limit: group.turnLimit) else {
             // Pause rather than run on: the bots don't keep each other going on your quota. The
             // note makes the group read as waiting on you until you say something.
-            thread.speaking = nil
+            groupChains[group.id] = nil
             // Once is enough: a late turn from a bot that was busy elsewhere can arrive here too.
             if thread.messages.last?.isPauseNote != true {
                 appendGroupMessage(GroupMessageRecord(
                     groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "Bupsy",
-                    text: GroupMessageRecord.pauseNote(after: GroupRouting.effectiveTurnLimit(limit))),
+                    text: GroupMessageRecord.pauseNote(after: GroupRouting.effectiveTurnLimit(group.turnLimit))),
                     to: group)
             }
             return
         }
+        chain.queue.removeFirst()
+        groupChains[group.id] = chain
         guard let bot = bots.first(where: { $0.id.rawValue == next.id }) else {
-            runTurns(in: group, queue: rest, taken: taken)
+            runTurns(in: group)
             return
         }
 
@@ -2013,7 +2105,7 @@ final class AppModel {
 
         let started = startRun(prompt, bot: bot, thread: groupSideThread(bot, in: group),
                                groupID: group.id) { [weak self] reply in
-            guard let self else { return }
+            guard let self, self.groups.contains(where: { $0.id == group.id }) else { return }
             let said = reply.trimmingCharacters(in: .whitespacesAndNewlines)
             if !said.isEmpty {
                 self.appendGroupMessage(GroupMessageRecord(
@@ -2023,26 +2115,38 @@ final class AppModel {
             // Joining a group is the permission for its members to hand work to each other:
             // the person chose them, and every hand-off appears in the thread they are reading.
             // Each bot's *actions* still pass through its own approval gate.
-            var queue = rest
+            var chain = self.groupChains[group.id] ?? GroupChain(queue: [], taken: 0)
             for handOff in GroupRouting.handOffs(from: next, reply: said, members: routing)
-            where !queue.contains(handOff) {
-                queue.append(handOff)
+            where !chain.queue.contains(handOff) {
+                chain.queue.append(handOff)
             }
-            self.runTurns(in: group, queue: queue, taken: taken + 1)
+            chain.taken += 1
+            self.groupChains[group.id] = chain
+            thread.speaking = nil
+            self.runTurns(in: group)
         }
 
         if !started {
             // A bot runs one thing at a time. Busy elsewhere, it waits and answers here as soon as
-            // it is free — said in the thread, so silence never reads as being ignored.
+            // it is free — said in the thread, so silence never reads as being ignored. It rejoins
+            // this group's chain, so its late turn counts against the same limit.
             thread.speaking = nil
             appendGroupMessage(GroupMessageRecord(
                 groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "Bupsy",
                 text: "\(bot.name) is finishing something in another chat. It'll reply here next."),
                 to: group)
+            let takenThen = chain.taken
             waitingForBot[bot.id, default: []].append { [weak self] in
-                self?.runTurns(in: group, queue: [next], taken: taken)
+                guard let self else { return }
+                var chain = self.groupChains[group.id] ?? GroupChain(queue: [], taken: takenThen)
+                if !chain.queue.contains(next) { chain.queue.insert(next, at: 0) }
+                self.groupChains[group.id] = chain
+                self.runTurns(in: group)
+                // Nothing started (paused, the limit reached, the group deleted, another turn
+                // under way): whatever else waits for this bot goes now.
+                if self.running[bot.id] == nil { self.botBecameFree(bot) }
             }
-            runTurns(in: group, queue: rest, taken: taken)
+            runTurns(in: group)
         }
     }
 
@@ -2076,7 +2180,9 @@ final class AppModel {
     /// Starts listening for messages bots want to send each other.
     func startOutbox() {
         guard outbox == nil else { return }
-        let watcher = OutboxWatcher { [weak self] request in
+        let watcher = OutboxWatcher(sender: { [weak self] token in
+            self?.outboxTokens[token]?.rawValue
+        }) { [weak self] request in
             switch request {
             case .message(let from, let toName, let text):
                 self?.receive(from: from, toName: toName, text: text)
@@ -2365,7 +2471,7 @@ final class AppModel {
         case .some(false):
             // Dropped rather than retried. A refused link must not become a loop, and the sender
             // learning it was refused is not information it needs — the person already decided.
-            storageProblem = nil
+            break
         case .none:
             pendingIntroductions.append(
                 PendingIntroduction(from: sender, to: recipient, text: text))
@@ -2878,7 +2984,17 @@ final class AppModel {
     }
 
     func deleteBot(_ bot: Bot) {
+        // Whatever it is doing stops first, and nothing waiting for it starts later: a deleted
+        // bot must not keep working in its folder, or be woken by a queued message.
+        stop(bot.id)
+        queued[bot.id] = nil
+        queuedNote[bot.id] = nil
+        waitingForBot[bot.id] = nil
         for watch in folderWatches where watch.botID == bot.id.rawValue { deleteFolderWatch(watch) }
+        // The database drops its routines and goals with it; these copies go too, and launchd
+        // stops waking the app for them.
+        routines.removeAll { $0.botID == bot.id.rawValue }
+        objectives.removeAll { $0.botID == bot.id.rawValue }
         bots.removeAll { $0.id == bot.id }
         threads[bot.id] = nil
         try? store?.deleteBot(id: bot.id.rawValue)
@@ -2888,5 +3004,13 @@ final class AppModel {
         if selectedBotID == bot.id {
             selectedBotID = bots.first { !$0.hidden }?.id ?? bots.first?.id
         }
+        syncLaunchAgent()
+    }
+}
+
+/// The approval gate could not be set up, so a run that depends on it is not started.
+private struct GateUnavailable: LocalizedError {
+    var errorDescription: String? {
+        "Bupsy couldn't set up the approval check for this run, so it didn't start. Try again; if it keeps happening, check that your Mac has free disk space."
     }
 }

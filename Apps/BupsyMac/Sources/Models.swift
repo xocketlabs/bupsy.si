@@ -313,6 +313,8 @@ final class Thread {
         case .done(let outcome):
             settleOpenTools(stopped: false)
             if let id = outcome.conversationID { conversationID = id }
+            // Codex has no separate usage line; its figures come with the outcome.
+            if let usage = outcome.usage { latestUsage = usage }
             entries.append(TranscriptEntry(kind: .finished(outcome)))
 
         case .failed(let failure):

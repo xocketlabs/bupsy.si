@@ -36,8 +36,13 @@ final class OutboxWatcher {
 
     private var timer: Timer?
     private let onRequest: (Request) -> Void
+    /// The bot a run token belongs to. Who sent a request is taken from this, never from the
+    /// file's own "from": every bot shares this folder, and any bot that can write a file could
+    /// put another bot's id there and borrow its links and its name.
+    private let sender: (String) -> String?
 
-    init(onRequest: @escaping (Request) -> Void) {
+    init(sender: @escaping (String) -> String?, onRequest: @escaping (Request) -> Void) {
+        self.sender = sender
         self.onRequest = onRequest
     }
 
@@ -86,9 +91,12 @@ final class OutboxWatcher {
 
             // Deleted rather than retried when unreadable. A file we cannot read will not become
             // readable, and leaving it here would mean parsing it again every second forever.
+            // A file without a live run's token was not written by bupsy-mcp for a run we
+            // started, so it is dropped unread.
             guard let data = try? Data(contentsOf: file),
                   let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let from = payload["from"] as? String
+                  let token = payload["token"] as? String, !token.isEmpty,
+                  let from = sender(token)
             else { continue }
 
             func field(_ key: String) -> String? {

@@ -218,7 +218,10 @@ public enum MCPConfig {
     /// `roster` is the file `list_bots` reads — names and jobs, the same things the sidebar shows.
     public static func bupsyServer(binary: String, outbox: String, botID: String,
                                    roster: String? = nil) -> [String: Any] {
-        var env = ["BUPSY_OUTBOX": outbox, "BUPSY_BOT_ID": botID]
+        // The run token is a reference the engine fills in from its own environment, so the
+        // secret is never written into this file, which other bots' tools could read.
+        var env = ["BUPSY_OUTBOX": outbox, "BUPSY_BOT_ID": botID,
+                   "BUPSY_RUN_TOKEN": "${BUPSY_RUN_TOKEN}"]
         if let roster { env["BUPSY_ROSTER"] = roster }
         return ["command": binary, "env": env]
     }
