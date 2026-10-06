@@ -18,7 +18,7 @@ func TestDashedPromptIsNeverAFlag(t *testing.T) {
 	}
 
 	_, codex := Codex{}.Command(Request{Prompt: "-x", Autonomy: AutonomyAsk, Resume: "t-1"})
-	wantCodex := []string{"exec", "--json", "resume", "t-1", "--sandbox", "read-only", "--skip-git-repo-check", "--", "-x"}
+	wantCodex := []string{"exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "resume", "t-1", "--", "-x"}
 	if !reflect.DeepEqual(codex, wantCodex) {
 		t.Errorf("codex argv:\n  got  %v\n  want %v", codex, wantCodex)
 	}
