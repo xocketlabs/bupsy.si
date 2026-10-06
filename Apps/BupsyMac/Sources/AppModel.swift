@@ -125,6 +125,7 @@ final class AppModel {
             }
         }
         loadBots()
+        loadSections()
         loadGroups()
         // `self.store`, not `store` — the initialiser parameter shadows the property, and is nil
         // in normal use. Written as `store?` this silently loaded zero routines on every launch,
@@ -675,6 +676,8 @@ final class AppModel {
     private var heldWatchChanges: [String: (paths: Set<String>, since: Date)] = [:]
 
     private func folderChanged(_ id: String, _ changed: [String]) {
+        // Paused: a change is let go rather than kept for later, the same as a skipped routine.
+        guard !isPaused else { return }
         guard let watch = folderWatches.first(where: { $0.id == id }), watch.enabled,
               let bot = bots.first(where: { $0.id.rawValue == watch.botID }) else { return }
         let wanted = changed.filter { watch.matches($0) }
@@ -731,7 +734,8 @@ final class AppModel {
     @discardableResult
     private func runFolderWatch(_ watch: FolderWatch, bot: Bot, changed: [String]) -> Bool {
         let name = watch.name
-        return sendTriggered(watch.prompt(for: changed), to: bot, triggerID: watch.id) { [weak self] reply in
+        return sendTriggered(watch.prompt(for: changed), to: bot, triggerID: watch.id,
+                             automatic: true) { [weak self] reply in
             self?.notifier.routineFinished(bot: bot.name, routine: name,
                                            summary: reply.split(separator: "\n").first.map(String.init),
                                            botID: bot.id)
@@ -788,7 +792,10 @@ final class AppModel {
             Routine(id: $0.id, botID: $0.botID, name: "check", prompt: "",
                     cron: $0.checkCron, enabled: $0.enabled, tier: $0.tier)
         }
-        let intervals = RoutineScheduler().launchdIntervals(for: routines + objectiveRoutines)
+        // Paused: launchd has nothing to wake the app for, so the agent comes out until resume.
+        let intervals = isPaused
+            ? []
+            : RoutineScheduler().launchdIntervals(for: routines + objectiveRoutines)
         let appPath = Bundle.main.bundlePath
         Task.detached { [weak self] in
             do {
@@ -816,8 +823,14 @@ final class AppModel {
     /// Runs whatever is due. Called at launch — including when launchd started us for exactly
     /// this reason — and on a timer while the app is open.
     func runDueRoutines(now: Date = Date()) {
+        // Paused: each slot that comes round is marked as filled without running, so nothing
+        // piles up to fire in a burst on resume, and no "finished" notification is posted.
+        if isPaused {
+            skipDueWork(now: now)
+            return
+        }
         for objective in dueObjectives(now: now) {
-            checkObjective(objective)
+            checkObjective(objective, automatic: true)
         }
         for due in RoutineScheduler().due(routines: routines, now: now) {
             guard let bot = bots.first(where: { $0.id.rawValue == due.routine.botID })
@@ -835,7 +848,8 @@ final class AppModel {
                     + due.scheduledFor.formatted(date: .omitted, time: .shortened) + ".)"
                 : ""
             let name = due.routine.name
-            sendTriggered(due.routine.prompt + note, to: bot, triggerID: due.routine.id) { [weak self] reply in
+            sendTriggered(due.routine.prompt + note, to: bot, triggerID: due.routine.id,
+                          automatic: true) { [weak self] reply in
                 // Unattended work that finishes silently may as well not have run.
                 self?.notifier.routineFinished(
                     bot: bot.name, routine: name,
@@ -890,8 +904,10 @@ final class AppModel {
         try? store?.save(objectives[index])
     }
 
-    /// Runs one check now.
-    func checkObjective(_ objective: Objective) {
+    /// Runs one check now. `automatic` is true when the schedule started it rather than a person,
+    /// so a pause holds it.
+    func checkObjective(_ objective: Objective, automatic: Bool = false) {
+        if automatic && isPaused { return }
         guard let bot = bots.first(where: { $0.id.rawValue == objective.botID }) else { return }
 
         // Recorded before the run, so a crash mid-check cannot cause it to repeat immediately.
@@ -902,7 +918,7 @@ final class AppModel {
 
         checkingObjectives.insert(objective.id)
         let started = sendTriggered(ObjectiveCheck.prompt(for: objective), to: bot,
-                                    triggerID: objective.id) { [weak self] reply in
+                                    triggerID: objective.id, automatic: automatic) { [weak self] reply in
             self?.checkingObjectives.remove(objective.id)
             guard let self,
                   let index = self.objectives.firstIndex(where: { $0.id == objective.id })
@@ -1207,15 +1223,20 @@ final class AppModel {
     /// messages typed while the bot is busy: it waits its turn as a run of its own, after them,
     /// and keeps its finish handler, so its notification still arrives. Returns false only when
     /// it could neither start nor wait, so the caller can undo anything it marked as in flight.
+    ///
+    /// `automatic` marks work nobody started by hand (a schedule, a goal check, a folder watch).
+    /// While paused that is let go: refused here, and dropped if it was waiting for its bot.
     @discardableResult
     func sendTriggered(
-        _ prompt: String, to bot: Bot, triggerID: String,
+        _ prompt: String, to bot: Bot, triggerID: String, automatic: Bool = false,
         onFinish: (@MainActor @Sendable (String) -> Void)?
     ) -> Bool {
+        if automatic && isPaused { return false }
         if running[bot.id] != nil {
             waitingForBot[bot.id, default: []].append { [weak self] in
                 guard let self else { return }
-                let waited = self.sendTriggered(prompt, to: bot, triggerID: triggerID, onFinish: onFinish)
+                let waited = self.sendTriggered(prompt, to: bot, triggerID: triggerID,
+                                                automatic: automatic, onFinish: onFinish)
                 // Nothing started and nothing to wait for: let whatever is queued behind it go.
                 if !waited || self.running[bot.id] == nil { self.botBecameFree(bot) }
             }
@@ -1679,6 +1700,58 @@ final class AppModel {
         for id in running.keys { stop(id) }
     }
 
+    // MARK: - Pause
+
+    private static let pausedKey = "si.bupsy.paused"
+
+    /// Paused: what was running stops, and nothing starts on its own until resume. Routines,
+    /// goal checks, folder watches and bots handing work to each other are held; a message you
+    /// send, or "Run now", still goes, so a paused app is never a dead one. Saved per home, so it
+    /// survives a relaunch.
+    private(set) var isPaused = AppHome.defaults.bool(forKey: "si.bupsy.paused") {
+        didSet { AppHome.defaults.set(isPaused, forKey: Self.pausedKey) }
+    }
+
+    /// Stops every run and holds everything automatic until `resumeAll()`.
+    func pauseAll() {
+        guard !isPaused else { return }
+        isPaused = true
+        // Changes kept for a busy bot are let go, like any other automatic work while paused.
+        heldWatchChanges.removeAll()
+        // A check dropped while it waited for its bot never reports back, so none stays "Checking…".
+        checkingObjectives.removeAll()
+        stopEverything()
+        syncLaunchAgent()
+    }
+
+    /// Lets automatic work start again. Whatever fell due while paused is marked as filled
+    /// first, so resuming starts from the next slot instead of firing a run of late routines.
+    func resumeAll() {
+        guard isPaused else { return }
+        skipDueWork(now: Date())
+        isPaused = false
+        syncLaunchAgent()
+    }
+
+    func togglePause() {
+        if isPaused { resumeAll() } else { pauseAll() }
+    }
+
+    /// Records every due routine slot and goal check as handled without running it. Nothing is
+    /// sent and nothing is notified: a skipped run is not a run.
+    private func skipDueWork(now: Date) {
+        for objective in dueObjectives(now: now) {
+            guard let index = objectives.firstIndex(where: { $0.id == objective.id }) else { continue }
+            objectives[index].lastCheckedAt = now
+            try? store?.save(objectives[index])
+        }
+        for due in RoutineScheduler().due(routines: routines, now: now) {
+            guard let index = routines.firstIndex(where: { $0.id == due.routine.id }) else { continue }
+            routines[index].lastFiredAt = due.scheduledFor
+            try? store?.save(routines[index])
+        }
+    }
+
     func addBot(name: String, engine: EngineID, job: String = "", folder: String? = nil,
                 shape: BotShape? = nil, colour: Int? = nil) {
         guard !isNameTaken(name) else { return }
@@ -1686,6 +1759,7 @@ final class AppModel {
             name: name, engine: engine,
             personaPrompt: job.isEmpty ? nil : job)
         bot.folder = folder
+        if let folder { noteSection(folder) }
         bot.avatarHue = distinctHue(near: bot.avatarHue)
         bot.avatarShape = shape
         bot.avatarColour = colour
@@ -2274,9 +2348,12 @@ final class AppModel {
     private func handOver(_ text: String, from sender: Bot, to recipient: Bot) {
         let key = "\(sender.id.rawValue)>\(recipient.id.rawValue)"
         let recent = (autoRuns[key] ?? []).filter { $0 > Date().addingTimeInterval(-600) }
-        guard running[recipient.id] == nil, recent.count < Self.autoRunsPerPair else {
+        guard !isPaused, running[recipient.id] == nil, recent.count < Self.autoRunsPerPair else {
             append(message: text, from: sender, to: recipient)
-            if recent.count >= Self.autoRunsPerPair {
+            if isPaused {
+                thread(for: recipient.id).entries.append(TranscriptEntry(kind: .note(
+                    "Bots are paused, so this one is waiting for you.")))
+            } else if recent.count >= Self.autoRunsPerPair {
                 thread(for: recipient.id).entries.append(TranscriptEntry(kind: .note(
                     "\(sender.name) and \(recipient.name) have handed work back and forth a lot. "
                         + "This one is waiting for you.")))
@@ -2538,19 +2615,86 @@ final class AppModel {
 
     // MARK: - Folders
 
-    /// The folders in use, in the order their first bot appears.
+    /// Every section, empty ones included, in the order they were made.
     ///
-    /// Derived rather than stored. A folder exists exactly as long as something is in it, so
-    /// there is no way to end up with an empty folder nobody can see or delete — the failure mode
-    /// of every "create a folder, then put things in it" design.
-    var folders: [String] {
+    /// Stored, so a section stays when its last bot leaves and can be made before its first. Kept
+    /// in the app's own defaults, a JSON array of names, beside the sidebar's folds
+    /// (`SidebarFolds`). A bot's section is still the string on the bot; this list only says
+    /// which sections exist. Change it through `addSection`, `renameFolder` and `deleteSection`.
+    private(set) var sectionNames: [String] = []
+
+    private static let sectionsKey = "bupsy.sections"
+
+    /// Reads the stored list. With none stored yet (every install before sections were kept),
+    /// it is seeded from the bots' own sections, so nothing on screen moves. Any section a bot
+    /// is in but the list lacks is added, so the two can never disagree about what exists.
+    private func loadSections() {
+        let stored = AppHome.defaults.string(forKey: Self.sectionsKey)
+            .flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONDecoder().decode([String].self, from: $0) }
+        var names = stored ?? []
+        for bot in bots {
+            if let folder = bot.folder, !folder.isEmpty, !names.contains(folder) {
+                names.append(folder)
+            }
+        }
+        sectionNames = names
+        if stored != names { saveSections() }
+    }
+
+    private func saveSections() {
+        guard let data = try? JSONEncoder().encode(sectionNames),
+              let json = String(data: data, encoding: .utf8) else { return }
+        AppHome.defaults.set(json, forKey: Self.sectionsKey)
+    }
+
+    /// Adds a section to the list if it is new. New sections go at the end.
+    private func noteSection(_ name: String) {
+        guard !name.isEmpty, !sectionNames.contains(name) else { return }
+        sectionNames.append(name)
+        saveSections()
+    }
+
+    /// Makes a section, empty or not. Returns the trimmed name, or nil when it was blank.
+    @discardableResult
+    func addSection(_ name: String) -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        noteSection(trimmed)
+        return trimmed
+    }
+
+    /// Sections in the order these bots first appear in them, then the sections none of them
+    /// is in (empty ones, say), in the order they were made. The order a list showed before
+    /// sections were stored is kept; a new section joins at the end.
+    func sectionOrder(for members: [Bot]) -> [String] {
         var seen: [String] = []
-        for bot in bots where !bot.pinned && !bot.hidden {
+        for bot in members {
             if let folder = bot.folder, !folder.isEmpty, !seen.contains(folder) {
                 seen.append(folder)
             }
         }
+        for name in sectionNames where !seen.contains(name) {
+            seen.append(name)
+        }
         return seen
+    }
+
+    /// The sidebar's sections, empty ones included. Pinned and hidden bots do not set the order,
+    /// since the sidebar lists them elsewhere.
+    var folders: [String] {
+        sectionOrder(for: bots.filter { !$0.pinned && !$0.hidden })
+    }
+
+    /// Every section, for pickers and Move to menus: a section holding only pinned or hidden
+    /// bots is still one you can move a bot into.
+    var allSections: [String] {
+        sectionOrder(for: bots)
+    }
+
+    /// Whether a section by this name exists, with or without bots.
+    func sectionExists(_ name: String) -> Bool {
+        sectionNames.contains(name) || bots.contains { $0.folder == name }
     }
 
     /// Bots with no folder. Shown first, above the named folders, because filing is optional.
@@ -2568,26 +2712,44 @@ final class AppModel {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         let trimmed = folder?.trimmingCharacters(in: .whitespaces)
         bots[index].folder = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        if let filed = bots[index].folder { noteSection(filed) }
         persistOrder()
     }
 
-    /// Renames a folder everywhere at once, since the folder *is* the string on each bot.
+    /// Renames a folder everywhere at once, since the folder *is* the string on each bot. A name
+    /// another section already has merges the two: the list keeps that one, in its place.
     func renameFolder(_ old: String, to new: String) {
         let trimmed = new.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, trimmed != old else { return }
         for index in bots.indices where bots[index].folder == old {
             bots[index].folder = trimmed
         }
+        if sectionNames.contains(trimmed) {
+            sectionNames.removeAll { $0 == old }
+        } else if let position = sectionNames.firstIndex(of: old) {
+            sectionNames[position] = trimmed
+        } else {
+            sectionNames.append(trimmed)
+        }
+        saveSections()
         persistOrder()
     }
 
     /// Empties a folder rather than deleting its bots. Deleting a container should never delete
-    /// the things inside it — that is how people lose work they did not mean to.
+    /// the things inside it. That is how people lose work they did not mean to. The section
+    /// itself stays, empty; `deleteSection` is what removes it.
     func dissolveFolder(_ folder: String) {
         for index in bots.indices where bots[index].folder == folder {
             bots[index].folder = nil
         }
         persistOrder()
+    }
+
+    /// Removes a section. Its bots move to Unassigned; no bot, chat or routine is deleted.
+    func deleteSection(_ name: String) {
+        dissolveFolder(name)
+        sectionNames.removeAll { $0 == name }
+        saveSections()
     }
 
     /// Writes every bot back with its current position, which is what both folder membership and

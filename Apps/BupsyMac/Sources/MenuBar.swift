@@ -9,7 +9,7 @@ import SwiftUI
 /// waiting, and answer it, without the window ever coming forward.
 ///
 /// Laid out like the design's menu: a status line ("2 working, 1 needs you"), every bot with its
-/// face and what it is doing, then New bot, Open Bupsy, Stop all bots and Quit. This is the
+/// face and what it is doing, then New bot, Open Bupsy, Pause all bots and Quit. This is the
 /// native-menu version (the default `MenuBarExtra` style), so the faces are drawn to images and
 /// each status rides in the item's title. `MenuBarPanel` below is the same content as a drawn
 /// panel, for `.menuBarExtraStyle(.window)`.
@@ -21,7 +21,7 @@ struct MenuBarView: View {
         let bots = model.bots.filter { !$0.hidden }
         let status = MenuBarStatus(model: model)
 
-        Text(status.headline)
+        Text(model.isPaused ? "Paused. \(status.headline)" : status.headline)
 
         ForEach(bots) { bot in
             MenuBarBotItem(bot: bot)
@@ -43,12 +43,14 @@ struct MenuBarView: View {
         }
         .keyboardShortcut("o")
 
+        // Not disabled when nothing is running: pausing also holds routines, goals and folder
+        // watches, which is worth doing on a quiet roster too.
         Button {
-            model.stopEverything()
+            model.togglePause()
         } label: {
-            Label("Stop all bots", systemImage: "stop.fill")
+            Label(model.isPaused ? "Resume bots" : "Pause all bots",
+                  systemImage: model.isPaused ? "play.fill" : "pause.fill")
         }
-        .disabled(status.working == 0)
 
         Divider()
 
@@ -63,8 +65,10 @@ struct MenuBarStatus {
     let working: Int
     let waiting: Int
     let hasBots: Bool
+    let paused: Bool
 
     init(model: AppModel) {
+        paused = model.isPaused
         working = model.bots.filter { model.isRunning($0.id) }.count
         waiting = model.attentionItems.count
         hasBots = !model.bots.isEmpty
@@ -97,12 +101,14 @@ struct MenuBarStatus {
     }
 
     /// What a bot's row says: what it is doing while it works ("Reading 3 files"), and when it
-    /// wakes while it sleeps ("Asleep until 2:00 AM").
+    /// wakes while it sleeps ("Asleep until 2:00 AM"), or "Paused" while bots are paused.
     static func text(for bot: Bot, mood: BotMood, in model: AppModel) -> String {
         switch mood {
         case .working:
             return model.liveStatus(for: bot)
         case .sleeping:
+            // Paused: the next routine is skipped, so "asleep until" would be a promise it breaks.
+            if model.isPaused { return "Paused" }
             guard let next = model.nextRoutineDate(for: bot) else { return "Asleep" }
             if Calendar.current.isDateInToday(next) {
                 return "Asleep until \(next.formatted(date: .omitted, time: .shortened))"
@@ -115,7 +121,9 @@ struct MenuBarStatus {
 
     /// What VoiceOver says for the menu bar icon.
     var accessibilityLabel: String {
-        if waiting > 0 { return "Bupsy, \(waiting) \(waiting == 1 ? "needs" : "need") you" }
+        let needs = "\(waiting) \(waiting == 1 ? "needs" : "need") you"
+        if paused { return waiting > 0 ? "Bupsy, paused, \(needs)" : "Bupsy, paused" }
+        if waiting > 0 { return "Bupsy, \(needs)" }
         if working > 0 { return "Bupsy, \(working) working" }
         return "Bupsy, all quiet"
     }
@@ -261,12 +269,20 @@ private struct MenuBarPanelContent: View {
         let status = MenuBarStatus(model: model)
 
         VStack(alignment: .leading, spacing: 0) {
-            Text(status.headline)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(palette.mutedForeground)
-                .padding(.horizontal, Theme.Space.step)
-                .padding(.top, Theme.Space.snug)
-                .padding(.bottom, Theme.Space.xs)
+            HStack(spacing: Theme.Space.snug) {
+                Text(status.headline)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                Spacer(minLength: Theme.Space.snug)
+                // Quiet on purpose: paused is a choice, not something wrong.
+                if model.isPaused {
+                    Badge(text: "Paused", tone: .neutral)
+                        .help("Routines and goals won't start on their own until you resume")
+                }
+            }
+            .padding(.horizontal, Theme.Space.step)
+            .padding(.top, Theme.Space.snug)
+            .padding(.bottom, Theme.Space.xs)
 
             if bots.isEmpty {
                 Text("Make one and it shows up here.")
@@ -299,10 +315,13 @@ private struct MenuBarPanelContent: View {
                 MenuBarNavigation.show(nil, model: model, openWindow: openWindow)
             }
             .keyboardShortcut("o")
-            MenuBarPanelAction(icon: "stop.fill", title: "Stop all bots", shortcut: nil) {
-                model.stopEverything()
+            // Pausing stops what is running and holds routines, goals and folder watches, so it
+            // is never disabled; a message you send still goes while paused.
+            MenuBarPanelAction(icon: model.isPaused ? "play.fill" : "pause.fill",
+                               title: model.isPaused ? "Resume bots" : "Pause all bots",
+                               shortcut: nil) {
+                model.togglePause()
             }
-            .disabled(status.working == 0)
 
             separator
 
@@ -354,7 +373,7 @@ private struct MenuBarPanelBotRow: View {
             } label: {
                 HStack(spacing: Theme.Space.snug) {
                     // Only a bot with something going on moves; a quiet roster costs no frames.
-                    BotFace(bot: bot, mood: mood, size: 22, still: mood == .idle)
+                    BotFace(bot: bot, mood: mood, size: 22, still: mood == .idle || mood == .sleeping)
                     Text(bot.name)
                         .font(Theme.Typography.body)
                         .foregroundStyle(palette.foreground)

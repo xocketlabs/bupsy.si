@@ -52,7 +52,7 @@ Paths are under `Apps/BupsyMac/Sources` unless stated. The fixes are grouped int
 - [x] **P1** Menu bar icon is SF circles, not the Bupsy template glyph with a pink dot; no VoiceOver label. MenuBar.swift:401. (SET-17, SYS-7)
 - [x] **P2** Menu bar status says only Needs you / Working / Idle; use the live status text and next routine time ("Asleep until 2am"); "Stop all bots" vs board's "Pause all bots". (SET-34, SYS-6)
 - [x] **P2** At sidebar size (16 to 25pt) the antenna and status light are under 1pt and vanish; error spiral eyes smudge. Set minimum stroke and bulb size when mini; frame overhang in BotRow. BotFace.swift:143, NavRail.swift:829. (SYS-19)
-- [ ] **P2** Sidebar unread dot is 6pt blue (`info`); board is 8pt pink. Decide and align. (NAV-25)
+- [x] **P2** Sidebar unread dot is 6pt blue (`info`); board is 8pt pink. Decide and align. (NAV-25) Decided, no change: the owner keeps the small blue dot, so pink only ever means "needs you".
 
 ## Batch 4: chat
 
@@ -163,6 +163,19 @@ Paths are under `Apps/BupsyMac/Sources` unless stated. The fixes are grouped int
 
 1. Starter bots or onboarding's first bot (Batch 5, first item).
 2. Unread dot: pink like the board, or keep a second colour so pink only means "needs you".
+   **Decided:** keep the small blue dot. NAV-25 closed with no change.
 3. Groups menu: Archive (board) or Delete with a confirm.
+   **Decided:** keep Delete with a confirm, as built.
 4. "Pause all bots" (board) needs a real pause; today it stops runs.
+   **Decided and built:** the menu bar's "Pause all bots" (and Bupsy > Pause all bots) stops what is
+   running and holds routines, goal checks, folder watches and bot-to-bot hand-offs until "Resume
+   bots". Messages you send and Run now / Check now still go. Slots missed while paused are skipped,
+   not caught up on resume, and post no notifications. The launch agent is removed while paused. The
+   pause survives a relaunch (`si.bupsy.paused` in the app's defaults). Shown as a "Paused" badge in
+   the menu bar panel, a banner with Resume at the top of the sidebar, and napping faces.
 5. Empty named sections: persist them (board shows an empty Work column) or drop that state from the design.
+   **Decided and built:** sections are stored (`bupsy.sections` in the app's defaults, seeded from
+   the bots' sections on first launch) and stay when empty: in the sidebar (a "No bots yet" row with
+   Add), as a Team column, and in every Move to menu and section picker. New section can be made
+   empty. Rename keeps the list in step (merging still works). "Delete section…" on the section's
+   menu asks first, then moves its bots to Unassigned; nothing else is deleted.

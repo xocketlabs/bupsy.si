@@ -58,6 +58,11 @@ struct BupsyApp: App {
             CommandGroup(replacing: .newItem) {
                 NewChatCommand().environment(model)
             }
+            // Bupsy > Pause all bots, beside Settings. No shortcut: it is not something to hit by
+            // accident, and every obvious one is taken.
+            CommandGroup(after: .appSettings) {
+                PauseCommand().environment(model)
+            }
             CommandGroup(after: .help) {
                 Button("Keyboard shortcuts") {
                     NotificationCenter.default.post(name: .bupsyShowKeyboardShortcuts, object: nil)
@@ -109,6 +114,17 @@ private struct NewChatCommand: View {
             model.startChat()
         }
         .keyboardShortcut("n", modifiers: .command)
+    }
+}
+
+/// Bupsy > Pause all bots, or Resume bots while paused. The same toggle as the menu bar's.
+private struct PauseCommand: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Button(model.isPaused ? "Resume bots" : "Pause all bots") {
+            model.togglePause()
+        }
     }
 }
 

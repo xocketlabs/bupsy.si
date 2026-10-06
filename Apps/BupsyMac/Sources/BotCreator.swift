@@ -258,10 +258,10 @@ struct BotCreatorSheet: View {
 
     /// The sections in use, plus the one this bot is already in if the list leaves it out.
     private var sections: [String] {
-        var list = model.folders
+        // Every section, empty ones and ones holding only pinned bots included.
+        var list = model.allSections
         let current = editing.flatMap { edited in model.bots.first { $0.id == edited.id } }?.folder ?? ""
         if !current.isEmpty && !list.contains(current) { list.append(current) }
-        // A section whose "+" opened this may hold only pinned bots, which `folders` leaves out.
         if let initialSection, !initialSection.isEmpty, !list.contains(initialSection) {
             list.append(initialSection)
         }

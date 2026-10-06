@@ -14,7 +14,8 @@ extension AppModel {
     ///
     /// In order: it needs you (an undecided approval anywhere it runs, a goal that needs
     /// attention, a question you have not answered), it is working, its last run failed, it just
-    /// finished, it is asleep (every routine off, or its machine stopped), otherwise idle.
+    /// finished, it is asleep (bots paused, every routine off, or its machine stopped), otherwise
+    /// idle.
     func mood(for bot: Bot) -> BotMood {
         // Read so a view showing this mood redraws when a "done" face should end.
         _ = moodTick
@@ -95,6 +96,8 @@ extension AppModel {
     }
 
     private func isAsleep(_ bot: Bot) -> Bool {
+        // Paused, nothing starts on its own, so every bot not doing something naps.
+        if isPaused { return true }
         if let machineID = bot.machineID,
            let machine = machines.first(where: { $0.id == machineID }),
            ["stopped", "archived", "paused"].contains(machine.state) {

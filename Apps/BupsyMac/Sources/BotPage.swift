@@ -214,7 +214,7 @@ struct BotPage: View {
         } else if mood == .failed {
             ThreadStatusBadge(text: "Last run failed", tone: palette.destructive, dot: true)
         } else if mood == .sleeping {
-            ThreadStatusBadge(text: "Asleep")
+            ThreadStatusBadge(text: model.isPaused ? "Paused" : "Asleep")
         } else if let tightest = thread.latestLimits?.tightest {
             ThreadStatusBadge(
                 text: LimitScale.badge(name: tightest.name, utilization: tightest.window.utilization),
@@ -470,7 +470,7 @@ struct BotPage: View {
                     }
                 }
                 BotPanelMenuRow(label: "Section", value: bot.folder ?? "Unassigned") {
-                    ForEach(model.folders, id: \.self) { folder in
+                    ForEach(model.allSections, id: \.self) { folder in
                         Button {
                             model.setFolder(bot, folder)
                         } label: {

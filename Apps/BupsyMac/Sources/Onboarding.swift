@@ -937,7 +937,8 @@ struct OnboardingSheet: View {
         for folder in model.folders.prefix(3) {
             let count = model.bots(in: folder).count
             options.append(SectionOption(title: folder, icon: "rectangle.stack",
-                                         detail: count == 1 ? "1 bot" : "\(count) bots"))
+                                         detail: count == 0 ? "No bots yet"
+                                             : count == 1 ? "1 bot" : "\(count) bots"))
         }
         for preset in Self.presetSections where !options.contains(where: {
             $0.title.compare(preset.title, options: .caseInsensitive) == .orderedSame

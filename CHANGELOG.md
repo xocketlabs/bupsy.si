@@ -32,6 +32,12 @@ PR as the change; the release moves it under a version.
   of Claude Code and Codex from the You menu; it opens the vendor's own command in Terminal.
 - Keyboard shortcuts sheet (Cmd /). Folded sidebar sections stay folded.
 - Approval notifications have Allow and Deny buttons.
+- Pause all bots, from the menu bar or the Bupsy menu, is now a real pause: it stops what is running
+  and holds routines, goals and folder watches until you resume. Anything that falls due while
+  paused is skipped, not run in a burst later. Messages you send still go. The pause lasts across
+  a relaunch.
+- Sections stay when their last bot leaves, and can be made empty. Delete a section from its menu;
+  its bots move to Unassigned.
 
 ## 0.1.0 — first public build
 

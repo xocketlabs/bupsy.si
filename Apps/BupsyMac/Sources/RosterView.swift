@@ -37,7 +37,7 @@ struct BotMenu: View {
         Divider()
 
         Section("Move to") {
-            ForEach(model.folders, id: \.self) { folder in
+            ForEach(model.allSections, id: \.self) { folder in
                 Button {
                     model.setFolder(bot, folder)
                 } label: {
@@ -151,6 +151,21 @@ extension View {
             button: "Delete bot",
             message: { _ in
                 "Its conversation, routines and folder watches are deleted too. This can't be undone."
+            },
+            perform: perform)
+    }
+
+    /// Asks before deleting a section, in the same words wherever it is offered. Only the
+    /// section goes: its bots move to Unassigned.
+    func confirmsSectionDeletion(
+        _ section: Binding<String?>, perform: @escaping (String) -> Void
+    ) -> some View {
+        confirmsDeletion(
+            of: section,
+            title: { "Delete the \($0) section?" },
+            button: "Delete section",
+            message: { _ in
+                "Its bots move to Unassigned. No bots, chats or routines are deleted."
             },
             perform: perform)
     }

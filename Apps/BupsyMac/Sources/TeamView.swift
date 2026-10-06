@@ -23,6 +23,9 @@ struct TeamView: View {
     @State private var deletingBot: Bot?
     /// The column a dragged card is over, so it can light up. "" is Unassigned.
     @State private var dropTarget: String?
+    /// The section being renamed or deleted from a column's menu.
+    @State private var renamingSection: TeamSectionRename?
+    @State private var deletingSection: String?
 
     init(onOpen: @escaping (BotID) -> Void = { _ in }) {
         self.onOpen = onOpen
@@ -34,14 +37,9 @@ struct TeamView: View {
     /// sits in the sidebar, not which section it belongs to.
     private var visibleBots: [Bot] { model.bots.filter { !$0.hidden } }
 
+    /// Every section, empty ones included, so a column stays when its last bot leaves.
     private var sections: [String] {
-        var seen: [String] = []
-        for bot in visibleBots {
-            if let folder = bot.folder, !folder.isEmpty, !seen.contains(folder) {
-                seen.append(folder)
-            }
-        }
-        return seen
+        model.sectionOrder(for: visibleBots)
     }
 
     private func members(of section: String?) -> [Bot] {
@@ -145,6 +143,15 @@ struct TeamView: View {
         .background {
             Color.clear.confirmsBotDeletion($deletingBot) { model.deleteBot($0) }
         }
+        .background {
+            Color.clear.sheet(item: $renamingSection) { RenameFolderSheet(folder: $0.name) }
+        }
+        .background {
+            Color.clear.confirmsSectionDeletion($deletingSection) { section in
+                model.deleteSection(section)
+                SidebarFolds.unfold(section)
+            }
+        }
     }
 
     private var header: some View {
@@ -240,6 +247,13 @@ struct TeamView: View {
             .padding(.horizontal, Theme.Space.xs)
             .padding(.top, Theme.Space.hairline)
             .padding(.bottom, Theme.Space.xs)
+            .contextMenu {
+                if let section {
+                    Button("Rename section…") { renamingSection = TeamSectionRename(name: section) }
+                    Divider()
+                    Button("Delete section…", role: .destructive) { deletingSection = section }
+                }
+            }
 
             if bots.isEmpty {
                 emptyColumn(title: title, section: section)
@@ -317,7 +331,7 @@ struct TeamView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .help("Make a section by moving bots into it")
+        .help("Make a new section")
     }
 
     // MARK: Actions
@@ -399,7 +413,7 @@ struct TeamBotCard: View {
         VStack(alignment: .leading, spacing: Theme.Space.step) {
             HStack(spacing: Theme.Space.step) {
                 // A board of idle faces holds still; only a bot with something going on moves.
-                BotFace(bot: bot, mood: mood, size: Theme.Size.tile, still: mood == .idle)
+                BotFace(bot: bot, mood: mood, size: Theme.Size.tile, still: mood == .idle || mood == .sleeping)
                     .overlay(alignment: .bottomTrailing) { statusDot }
                     .accessibilityHidden(true)
 
@@ -501,7 +515,7 @@ struct TeamBotCard: View {
         case .done:
             return preview.map { "Done: \($0)" } ?? "Done"
         case .sleeping:
-            return "Asleep"
+            return model.isPaused ? "Paused" : "Asleep"
         case .idle:
             if let preview { return preview }
             if let job = bot.personaPrompt?.split(separator: "\n").first, !job.isEmpty {
@@ -584,12 +598,18 @@ struct TeamCreatorRequest: Identifiable {
     let section: String?
 }
 
+/// A section to rename from a column's menu. Its own type because `.sheet(item:)` needs
+/// `Identifiable`, which `String` is not.
+struct TeamSectionRename: Identifiable {
+    let name: String
+    var id: String { name }
+}
+
 // MARK: - New section
 
-/// Makes a section by moving bots into it.
+/// Makes a section, and moves bots into it if any are picked.
 ///
-/// A section exists exactly as long as a bot is in it, so making one and filling it are the same
-/// action: pick a name and at least one bot.
+/// A section stays until it is deleted, so it can start empty and be filled later.
 struct TeamNewSectionSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
@@ -611,7 +631,7 @@ struct TeamNewSectionSheet: View {
         SheetFrame(title: "New section", icon: "rectangle.stack",
                    subtitle: "A sidebar group for bots that work on the same thing.",
                    width: 480, primaryVerb: "create") {
-            Field(label: "Name", hint: "A section stays in the sidebar while it has bots in it.") {
+            Field(label: "Name", hint: "A section stays in the sidebar until you delete it, even when it's empty.") {
                 TextField("", text: $name, prompt: Text("Clients"))
                     .bupsyField()
                     .onSubmit(commit)
@@ -650,7 +670,7 @@ struct TeamNewSectionSheet: View {
             Button("Create section", action: commit)
                 .buttonStyle(PrimaryButton())
                 .keyboardShortcut(.defaultAction)
-                .disabled(trimmed.isEmpty || chosen.isEmpty)
+                .disabled(trimmed.isEmpty)
         }
         .onAppear {
             if let preselected { chosen.insert(preselected) }
@@ -685,7 +705,7 @@ struct TeamNewSectionSheet: View {
 
     private var countLine: String {
         switch chosen.count {
-        case 0: "Pick at least one"
+        case 0: "Optional. You can add bots later"
         case 1: "1 bot moves here"
         default: "\(chosen.count) bots move here"
         }
@@ -726,8 +746,9 @@ struct TeamNewSectionSheet: View {
     }
 
     private func commit() {
-        guard !trimmed.isEmpty, !chosen.isEmpty else { return }
-        let isNew = !model.folders.contains(trimmed)
+        guard !trimmed.isEmpty else { return }
+        let isNew = !model.sectionExists(trimmed)
+        model.addSection(trimmed)
         for bot in model.bots where chosen.contains(bot.id) {
             model.setFolder(bot, trimmed)
         }

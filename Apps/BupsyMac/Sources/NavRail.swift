@@ -30,6 +30,8 @@ struct NavRail: View {
     /// Set to ask before deleting. Owned here, not by the context menu, which is gone on click.
     @State private var deletingBot: Bot?
     @State private var deletingGroup: ChatGroup?
+    /// The section the person picked "Delete section…" for, until they confirm.
+    @State private var deletingSection: String?
     /// The engine the person picked "Sign out" for, until they confirm.
     @State private var signingOut: EngineID?
     /// True after a sign-in or sign-out was started from the You menu, so a failure is shown here
@@ -89,6 +91,7 @@ struct NavRail: View {
         VStack(alignment: .leading, spacing: 0) {
             header
                 .padding(.bottom, Theme.Space.gutter)
+            pausedBanner
             places
                 .padding(.bottom, Theme.Space.snug)
 
@@ -133,6 +136,12 @@ struct NavRail: View {
                     destination = .groups
                 }
                 model.deleteGroup(group)
+            }
+        }
+        .background {
+            Color.clear.confirmsSectionDeletion($deletingSection) { section in
+                model.deleteSection(section)
+                SidebarFolds.unfold(section)
             }
         }
         .background {
@@ -269,24 +278,33 @@ struct NavRail: View {
                     }
                 }
 
+                // Every section, empty ones too: a section stays until it is deleted.
                 ForEach(model.folders, id: \.self) { folder in
                     let members = model.bots(in: folder)
-                    if !members.isEmpty {
-                        VStack(alignment: .leading, spacing: Theme.Space.hairline) {
-                            sectionHeader(folder, key: folder, members: members,
-                                          addHelp: "Set up a bot yourself in \(folder)",
-                                          onAdd: { startAdding(to: folder) })
-                                .contextMenu {
-                                    Button("Rename section…") {
-                                        sheet = .renameFolder(folder)
-                                    }
-                                    // Named for what it does. "Delete folder" would read as
-                                    // deleting the bots inside it, which it never does.
-                                    Button("Move these bots to Unassigned") {
-                                        model.dissolveFolder(folder)
-                                    }
+                    VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                        sectionHeader(folder, key: folder, members: members,
+                                      addHelp: "Set up a bot yourself in \(folder)",
+                                      onAdd: { startAdding(to: folder) })
+                            .contextMenu {
+                                Button("Rename section…") {
+                                    sheet = .renameFolder(folder)
                                 }
-                            if !collapsed.contains(folder) {
+                                // Named for what it does: the bots leave, the section stays.
+                                Button("Move these bots to Unassigned") {
+                                    model.dissolveFolder(folder)
+                                }
+                                .disabled(!model.bots.contains { $0.folder == folder })
+                                Divider()
+                                // Asks first. Its bots move to Unassigned; nothing is deleted
+                                // but the section.
+                                Button("Delete section…", role: .destructive) {
+                                    deletingSection = folder
+                                }
+                            }
+                        if !collapsed.contains(folder) {
+                            if members.isEmpty {
+                                emptySectionRow(folder)
+                            } else {
                                 ForEach(members) { row(for: $0) }
                             }
                         }
@@ -487,9 +505,60 @@ struct NavRail: View {
         }
     }
 
+    /// A section with nothing listed under it: a quiet line and a way to add a bot. Its bots may
+    /// all be pinned or hidden, which is listed elsewhere, so the line says which.
+    private func emptySectionRow(_ folder: String) -> some View {
+        let filedElsewhere = model.bots.contains { $0.folder == folder }
+        return HStack(spacing: Theme.Space.snug) {
+            Text(filedElsewhere ? "Its bots are pinned or hidden" : "No bots yet")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.sidebarMutedForeground)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button { startAdding(to: folder) } label: {
+                Label("Add", systemImage: "plus")
+            }
+            .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
+            .help("Set up a bot yourself in \(folder)")
+            .accessibilityLabel("Set up a bot yourself in \(folder)")
+        }
+        .padding(.leading, Theme.Space.step)
+        .padding(.trailing, Theme.Space.xs)
+        .frame(minHeight: Theme.Size.controlSm)
+    }
+
+    /// While bots are paused: one quiet line saying what that means, and the way back. Paused
+    /// is a choice, not a fault, so it wears the rail's own fill rather than a warning colour.
+    @ViewBuilder
+    private var pausedBanner: some View {
+        if model.isPaused {
+            HStack(alignment: .top, spacing: Theme.Space.snug) {
+                Image(systemName: "pause.circle.fill")
+                    .font(.system(size: Theme.scaled(13)))
+                    .foregroundStyle(palette.sidebarMutedForeground)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                    Text("Bots are paused. Routines and goals won't start on their own.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.foreground)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button { model.resumeAll() } label: {
+                        Label("Resume", systemImage: "play.fill")
+                    }
+                    .buttonStyle(BupsyButtonStyle(kind: .secondary, size: .sm))
+                    .help("Let routines, goals and folder watches start on their own again")
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(Theme.Space.compact)
+            .background(palette.sidebarAccent, in: .rect(cornerRadius: Theme.Radius.lg))
+            .padding(.bottom, Theme.Space.step)
+            .accessibilityElement(children: .contain)
+        }
+    }
+
     /// No second mascot here: the page beside it already has one. A heading and a line of how,
-    /// as the board shows. There is no "+ New section" row, because a section only exists while
-    /// a bot is in it, so one cannot be made before the first bot.
+    /// as the board shows.
     private var empty: some View {
         VStack(alignment: .leading, spacing: Theme.Space.hairline) {
             sectionHeader("Bots")
@@ -957,10 +1026,10 @@ struct BotRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: Theme.Space.compact) {
-                // Still when idle and not selected: a sidebar of faces all breathing at 30fps is
+                // Still when idle or asleep and not selected: a sidebar of faces all breathing at 30fps is
                 // noise and battery. The face is 22pt, so the frame is too (no overhang).
                 BotFace(bot: bot, mood: mood, size: Theme.scaled(22),
-                        still: mood == .idle && !selected)
+                        still: (mood == .idle || mood == .sleeping) && !selected)
                     .overlay(alignment: .bottomTrailing) { statusDot }
                     .frame(width: Theme.scaled(22), height: Theme.scaled(22))
 
@@ -1078,15 +1147,18 @@ struct RenameFolderSheet: View {
     /// The other section the new name already belongs to, if any.
     private var mergeTarget: String? {
         guard !trimmed.isEmpty, trimmed != folder else { return nil }
-        return model.bots.contains { $0.folder == trimmed } ? trimmed : nil
+        return model.sectionExists(trimmed) ? trimmed : nil
     }
 
     private var hint: String {
         let moving = memberCount == 1 ? "1 bot moves" : "\(memberCount) bots move"
         if let target = mergeTarget {
+            if memberCount == 0 {
+                return "There's already a section called \(target). The two become one."
+            }
             return "There's already a section called \(target). \(moving) into it and the two become one."
         }
-        return "\(moving) with it."
+        return memberCount == 0 ? "No bots in it yet." : "\(moving) with it."
     }
 
     var body: some View {
@@ -1117,11 +1189,7 @@ struct RenameFolderSheet: View {
     }
 }
 
-/// Files one bot into a folder that does not exist yet.
-///
-/// Creating the folder and putting something in it are the same action on purpose: a folder here
-/// exists exactly as long as a bot is in it, so there is no way to make an empty one and then
-/// wonder where it went.
+/// Files one bot into a section that does not exist yet.
 struct NewFolderSheet: View {
     let bot: Bot
 
