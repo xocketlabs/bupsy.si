@@ -148,7 +148,7 @@ jobs:
     continue-on-error: true   # informational until a port is actually committed to
     steps:
       - uses: actions/checkout@v7
-      - uses: swift-actions/setup-swift@v2
+      - uses: swift-actions/setup-swift@v3
         with:
           swift-version: "6.0"
       - name: Build BupsyKit
