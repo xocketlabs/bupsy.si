@@ -3,7 +3,7 @@ name: CI
 # Private repos pay for Actions by the minute, and macOS minutes count ten times. So CI runs on
 # pull requests only — a squash merge puts exactly the tested code on main, and running it all
 # again there doubled the bill for no new information — and skips changes that cannot break a
-# build. Run it by hand from the Actions tab for a dev DMG or the portability check.
+# build. Run it by hand from the Actions tab for a dev DMG, ticking "portable" for the Linux check.
 on:
   pull_request:
     paths-ignore:
@@ -14,6 +14,11 @@ on:
       - "LICENSE"
       - "NOTICE"
   workflow_dispatch:
+    inputs:
+      portable:
+        description: "Also try the Linux build (informational; stops at GRDB, uses paid minutes)"
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -143,8 +148,10 @@ jobs:
   portable:
     name: Core builds without Apple frameworks
     runs-on: ubuntu-latest
-    # Informational, and it always stops at GRDB, so it runs only when asked for.
-    if: github.event_name == 'workflow_dispatch'
+    # Informational, and it always stops at GRDB. It is also the one job on GitHub's own
+    # machines, billed by the minute, so a manual run for a dev DMG skips it unless the box is
+    # ticked: a known failure is not worth paid minutes or a red run.
+    if: github.event_name == 'workflow_dispatch' && inputs.portable
     continue-on-error: true   # informational until a port is actually committed to
     steps:
       - uses: actions/checkout@v7
