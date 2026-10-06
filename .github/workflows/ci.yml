@@ -94,7 +94,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.24"
           # No cache path, because there is nothing to cache: this module has no dependencies and
