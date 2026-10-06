@@ -20,8 +20,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/engine"
-	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/host"
+	"github.com/xocketlabs/bupsy.si/tools/bupsy-run/internal/engine"
+	"github.com/xocketlabs/bupsy.si/tools/bupsy-run/internal/host"
 )
 
 func main() {

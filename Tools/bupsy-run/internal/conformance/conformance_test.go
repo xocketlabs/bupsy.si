@@ -22,10 +22,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/cron"
-	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/engine"
-	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/gate"
-	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/objective"
+	"github.com/xocketlabs/bupsy.si/tools/bupsy-run/internal/cron"
+	"github.com/xocketlabs/bupsy.si/tools/bupsy-run/internal/engine"
+	"github.com/xocketlabs/bupsy.si/tools/bupsy-run/internal/gate"
+	"github.com/xocketlabs/bupsy.si/tools/bupsy-run/internal/objective"
 )
 
 // root walks up to the repository root so the cases are read from one place rather than copied

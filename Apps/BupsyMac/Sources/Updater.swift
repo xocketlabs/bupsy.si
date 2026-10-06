@@ -19,7 +19,7 @@ import SwiftUI
 @MainActor
 final class Updater: ObservableObject {
     /// Where people get builds while there is no feed.
-    static let releasesURL = URL(string: "https://github.com/vanshpatelx/bupsy.si/releases/latest")!
+    static let releasesURL = URL(string: "https://github.com/xocketlabs/bupsy.si/releases/latest")!
 
     private let controller: SPUStandardUpdaterController?
 

@@ -8,7 +8,7 @@ set -euo pipefail
 VERSION="${1:?usage: appcast.sh <version> <signature> <dmg>}"
 SIGNATURE="${2:-}"
 DMG="${3:?}"
-REPO="${REPO:-vanshpatelx/bupsy.si}"
+REPO="${REPO:-xocketlabs/bupsy.si}"
 
 LENGTH=$(stat -f%z "$DMG" 2>/dev/null || stat -c%s "$DMG")
 DATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")

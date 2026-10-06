@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/vanshpatelx/bupsy.si/tools/bupsy-run/internal/engine"
+	"github.com/xocketlabs/bupsy.si/tools/bupsy-run/internal/engine"
 )
 
 // Run spawns an engine process and calls emit for every canonical event, in order, as they arrive.
