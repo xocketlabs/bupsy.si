@@ -24,6 +24,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Every `uses:` is pinned to a full commit SHA, with the release it came from in a comment. A tag
+# is a pointer the action's owner (or whoever compromises them) can move, and these steps run with
+# this repository's token on our own Mac. Dependabot understands SHA pins and keeps them current,
+# so pinning costs nothing but a reviewed diff per bump.
+#
+# Jobs that can land on the self-hosted runner (MAC_RUNNER) skip pull requests opened by
+# Dependabot. A dependency bump executes new upstream code — a new action, a new Swift package
+# with its build plugins and tests — and that must not run unattended on someone's personal
+# machine. Review the diff, then run CI by hand (Actions → CI → Run workflow, on the Dependabot
+# branch); a manual run is started by a person, so it is not skipped. The repository is private,
+# so other pull requests come only from collaborators, who are trusted to run code here anyway.
+# A skipped job reports as passing to branch protection, which is why the manual run before
+# merging is the rule rather than a nicety.
 jobs:
   # The package tests and the app build share one macOS machine. Two jobs meant paying twice for
   # checkout, toolchain start-up and minute rounding, at ten times the Linux rate.
@@ -39,19 +52,23 @@ jobs:
     # MAC_RUNNER picks the machine: unset → GitHub's macos-15; set to ["self-hosted","bupsy-mac"]
     # → the runner on our own Mac, which costs no Actions minutes.
     runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"macos-15"') }}
+    # Not for Dependabot: see the note above `jobs:`.
+    if: github.actor != 'dependabot[bot]'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Show toolchain
         run: swift --version
 
+      # --force-resolved-versions builds exactly what Package.resolved pins, and fails rather than
+      # quietly resolving something newer. A dependency changes only through a reviewed commit.
       - name: Test
-        run: swift test --package-path Packages/BupsyKit
+        run: swift test --package-path Packages/BupsyKit --force-resolved-versions
 
       # Its own step, so the log says plainly which thing broke: "the Swift core stopped agreeing
       # with the shared definition" is a different failure from an ordinary test going red.
       - name: Conformance
-        run: swift test --package-path Packages/BupsyKit --filter Conformance
+        run: swift test --package-path Packages/BupsyKit --force-resolved-versions --filter Conformance
 
       - name: Install xcodegen
         run: command -v xcodegen >/dev/null || brew install xcodegen
@@ -79,7 +96,7 @@ jobs:
 
       - name: Upload the DMG
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Bupsy-${{ github.sha }}
           path: |
@@ -97,9 +114,11 @@ jobs:
     name: Headless core (Go)
     # Plain Go with no cgo, so it runs anywhere; on the Mac runner when that is set.
     runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
+    # Not for Dependabot: see the note above `jobs:`.
+    if: github.actor != 'dependabot[bot]'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.24"
           # No cache path, because there is nothing to cache: this module has no dependencies and
@@ -154,20 +173,22 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.portable
     continue-on-error: true   # informational until a port is actually committed to
     steps:
-      - uses: actions/checkout@v7
-      - uses: swift-actions/setup-swift@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: swift-actions/setup-swift@364295d9c23900ce04d4e5cc708387921b4e50f9 # v3.0.0-beta.1
         with:
           swift-version: "6.0"
       - name: Build BupsyKit
-        run: swift build --package-path Packages/BupsyKit
+        run: swift build --package-path Packages/BupsyKit --force-resolved-versions
       - name: Test BupsyKit
-        run: swift test --package-path Packages/BupsyKit
+        run: swift test --package-path Packages/BupsyKit --force-resolved-versions
 
   boundaries:
     name: Credential boundary
     runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
+    # Not for Dependabot: see the note above `jobs:`.
+    if: github.actor != 'dependabot[bot]'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The rule from CONTRIBUTING.md §1, enforced rather than trusted: nothing in this
       # codebase may read a vendor credential file. Keep this grep narrow and loud.
