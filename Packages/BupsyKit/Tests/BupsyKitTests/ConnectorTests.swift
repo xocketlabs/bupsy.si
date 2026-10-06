@@ -168,7 +168,8 @@ struct LoginShellEnvironmentTests {
         #expect(!LoginShellEnvironment.isValidName("$(id)"))
 
         let script = LoginShellEnvironment.script(for: ["OK_NAME", "bad name", "A`b`"])
-        #expect(script == #"printf '%s\0' "OK_NAME=$OK_NAME""#)
+        #expect(script == #"printf '\0'; printf '%s\0' "OK_NAME=$OK_NAME""#)
+        #expect(LoginShellEnvironment.script(for: ["bad name"]).isEmpty)
     }
 
     /// The process's own value wins, so a Bupsy started from a terminal behaves as it always did.
@@ -178,12 +179,13 @@ struct LoginShellEnvironmentTests {
         #expect(values == ["BUPSY_TEST_SET": "here"])
     }
 
-    /// The script really runs in a POSIX shell and round-trips a value with awkward characters.
+    /// The script really runs in a POSIX shell and round-trips a value with awkward characters,
+    /// even after a profile has printed something of its own.
     @Test("the generated script prints values a shell set")
     func scriptRuns() throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "BUPSY_T='a=b c'; export BUPSY_T; "
+        process.arguments = ["-c", "echo 'Welcome back'; BUPSY_T='a=b c'; export BUPSY_T; "
             + LoginShellEnvironment.script(for: ["BUPSY_T", "BUPSY_UNSET_\(UUID().uuidString.prefix(4))"])]
         let pipe = Pipe()
         process.standardOutput = pipe

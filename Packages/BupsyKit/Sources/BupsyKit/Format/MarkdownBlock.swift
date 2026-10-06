@@ -105,8 +105,13 @@ public enum MarkdownBlock: Equatable, Sendable {
         // "#hashtag" and "#1" are not headings: a heading's hashes are followed by a space.
         guard rest.first == " " else { return nil }
         var text = rest.trimmingCharacters(in: .whitespaces)
-        // A closing run of hashes ("## Setup ##") is decoration, not text.
-        while text.hasSuffix("#") { text.removeLast() }
+        // A closing run of hashes ("## Setup ##") is decoration, not text. Only after a space,
+        // though: "## Using C#" keeps its hash.
+        let closing = text.reversed().prefix { $0 == "#" }.count
+        let beforeClosing = text.dropLast(closing)
+        if closing > 0, beforeClosing.isEmpty || beforeClosing.last == " " {
+            text = String(beforeClosing)
+        }
         text = text.trimmingCharacters(in: .whitespaces)
         return text.isEmpty ? nil : (level: hashes.count, text: text)
     }

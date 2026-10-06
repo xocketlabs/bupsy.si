@@ -384,6 +384,14 @@ struct GroupPage: View {
     private var members: [Bot] { model.members(of: group) }
 
     var body: some View {
+        page
+            // Kept per group on the model, like a bot's draft, so leaving the group keeps it.
+            .onAppear { draft = model.groupDrafts[group.id] ?? "" }
+            .onChange(of: draft) { _, text in model.groupDrafts[group.id] = text.isEmpty ? nil : text }
+    }
+
+    @ViewBuilder
+    private var page: some View {
         PanelSurface {
             VStack(spacing: 0) {
                 Topbar(trail: [group.name]) {

@@ -249,7 +249,7 @@ struct ConnectorRow: View {
         self.server = server
     }
 
-    private var missing: [String] { server.missingEnv() }
+    private var missing: [String] { model.missingConnectorEnv[server.name] ?? [] }
     private var live: ConnectorState? { model.liveStatus(of: server) }
 
     var body: some View {

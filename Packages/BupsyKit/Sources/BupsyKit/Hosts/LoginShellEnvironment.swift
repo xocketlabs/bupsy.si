@@ -54,10 +54,13 @@ public enum LoginShellEnvironment {
     }
 
     /// The command the login shell runs: each name and its value, NUL separated, so a value
-    /// holding a newline or an equals sign comes back intact.
+    /// holding a newline or an equals sign comes back intact. It starts with a NUL of its own, so
+    /// whatever a profile prints first ("Hi", a version manager's banner) is a record of its own
+    /// and is dropped, instead of being glued to the first name.
     static func script(for names: [String]) -> String {
-        names.filter { isValidName($0) }
-            .map { "printf '%s\\0' \"\($0)=$\($0)\"" }
+        let valid = names.filter { isValidName($0) }
+        guard !valid.isEmpty else { return "" }
+        return (["printf '\\0'"] + valid.map { "printf '%s\\0' \"\($0)=$\($0)\"" })
             .joined(separator: "; ")
     }
 
@@ -111,6 +114,10 @@ public enum LoginShellEnvironment {
         }
     }
 
+    /// How long a profile gets before it is given up on: long enough for nvm or conda to start,
+    /// short enough that a profile that never returns (one that attaches to tmux) costs little.
+    static let shellTimeout: TimeInterval = 5
+
     private static func readFromShell(_ names: [String]) -> [String: String] {
         #if os(Windows)
         return [:]
@@ -120,15 +127,40 @@ public enum LoginShellEnvironment {
         let process = Process()
         process.executableURL = URL(
             fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
-        process.arguments = ["-l", "-c", command]
+        // Interactive as well as login: zsh reads `~/.zshrc`, where most people export things,
+        // only for an interactive shell. Nothing to read from, so it never waits on input.
+        process.arguments = ["-i", "-l", "-c", command]
+        process.standardInput = FileHandle.nullDevice
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
-        guard let waitForExit = try? process.launchForWaiting() else { return [:] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        waitForExit()
-        guard process.terminationStatus == 0 else { return [:] }
-        return parse(data, names: names)
+
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+        guard (try? process.run()) != nil else { return [:] }
+        // Read while it runs, so a chatty profile cannot fill the pipe and stall the shell.
+        let output = Output()
+        let read = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            output.set(pipe.fileHandleForReading.readDataToEndOfFile())
+            read.signal()
+        }
+        guard exited.wait(timeout: .now() + shellTimeout) == .success else {
+            process.terminate()
+            return [:]
+        }
+        // Something the profile started in the background can hold the pipe open after the
+        // shell itself is gone; what was printed is already there.
+        guard read.wait(timeout: .now() + 1) == .success,
+              process.terminationStatus == 0 else { return [:] }
+        return parse(output.get(), names: names)
         #endif
+    }
+
+    private final class Output: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        func set(_ value: Data) { lock.lock(); data = value; lock.unlock() }
+        func get() -> Data { lock.lock(); defer { lock.unlock() }; return data }
     }
 }

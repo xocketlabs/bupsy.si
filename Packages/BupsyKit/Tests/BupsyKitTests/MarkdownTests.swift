@@ -149,6 +149,13 @@ struct MarkdownTests {
         ])
     }
 
+    /// Closing hashes need a space before them; a hash that ends a word is text.
+    @Test("a heading ending in a hash keeps it")
+    func headingEndingInHash() {
+        #expect(MarkdownBlock.parse("## Using C#") == [.heading(level: 2, text: "Using C#")])
+        #expect(MarkdownBlock.parse("## Setup ###") == [.heading(level: 2, text: "Setup")])
+    }
+
     /// A hashtag, an issue number or a shebang is not a heading.
     @Test("hashes without a space after them stay prose")
     func hashesThatAreNotHeadings() {

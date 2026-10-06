@@ -294,8 +294,11 @@ struct TeamView: View {
     }
 
     private func emptyColumn(title: String, section: String?) -> some View {
-        EmptyState(
-            title: section == nil ? "Every bot is in a section" : "No bots in \(title) yet",
+        // Hidden bots still belong here, so it is not empty, and deleting it would move them.
+        let onlyHidden = section != nil && model.bots.contains { $0.folder == section && $0.hidden }
+        return EmptyState(
+            title: section == nil ? "Every bot is in a section"
+                : onlyHidden ? "Its bots are hidden" : "No bots in \(title) yet",
             message: section == nil
                 ? "Drag a bot here to take it out of its section."
                 : "Drag a bot here, or make one that starts in this section.",

@@ -167,10 +167,33 @@ final class AppModel {
     /// "missing" check on the Connectors page answers from memory instead of waiting on a shell.
     /// Values stay in memory only; nothing here logs or saves them.
     private func prefetchConnectorEnv() {
-        let names = Array(Set(connectors.flatMap(\.requiredEnvNames)))
-        guard !names.isEmpty else { return }
-        Task.detached(priority: .utility) { LoginShellEnvironment.prefetch(names) }
+        let servers = connectors
+        guard servers.contains(where: { !$0.requiredEnvNames.isEmpty }) else {
+            missingConnectorEnv = [:]
+            return
+        }
+        envCheck += 1
+        let check = envCheck
+        Task.detached(priority: .utility) { [weak self] in
+            var missing: [String: [String]] = [:]
+            for server in servers { missing[server.name] = server.missingEnv() }
+            await MainActor.run {
+                // A newer check (a connector edited meanwhile) wins over this one.
+                guard let self, self.envCheck == check else { return }
+                self.missingConnectorEnv = missing
+            }
+        }
     }
+
+    /// The variables each connector still needs, by server name: names only, never values.
+    /// Filled by `prefetchConnectorEnv`, so the Connectors page never waits on a login shell.
+    private(set) var missingConnectorEnv: [String: [String]] = [:]
+
+    /// What you typed and have not sent, per bot and per group, so leaving a page keeps it. In
+    /// memory only. Not observed: only a page appearing reads it, never a view body.
+    @ObservationIgnored var botDrafts: [BotID: String] = [:]
+    @ObservationIgnored var groupDrafts: [String: String] = [:]
+    private var envCheck = 0
 
     func addConnector(_ server: MCPServer) {
         guard !connectors.contains(where: { $0.name == server.name }) else { return }
@@ -1427,9 +1450,16 @@ final class AppModel {
                 }
                 lastRunEnded[bot.id] = Date()
                 if ownsSlot { recordRunEnded(bot.id, failed: failed) }
-                onFinish?(reply)
-                // Next tick, so whatever onFinish started (a group hand-off) claims the bot first.
-                Task { @MainActor [weak self] in self?.botBecameFree(bot) }
+                // Stopped by Pause: not finished, so its half-written reply is not posted to a
+                // group, read as a goal's answer or announced as done, and nothing queued behind
+                // it starts. `resumeAll` lets the queue go. Decided by what Pause recorded, not by
+                // whether it is still paused, so a quick resume cannot let the reply through.
+                if stoppedByPause.remove(token) == nil {
+                    onFinish?(reply)
+                    // Next tick, so whatever onFinish started (a group hand-off) claims the bot
+                    // first.
+                    Task { @MainActor [weak self] in self?.botBecameFree(bot) }
+                }
             }
             do {
                 // Connector variables set in the person's shell profile, which an app opened from
@@ -1720,7 +1750,10 @@ final class AppModel {
         heldWatchChanges.removeAll()
         // A check dropped while it waited for its bot never reports back, so none stays "Checking…".
         checkingObjectives.removeAll()
+        stoppedByPause.formUnion(runTokens.values)
         stopEverything()
+        // A stopped turn never reports back, so no group is left showing a bot mid-reply.
+        for thread in groupThreads.values { thread.speaking = nil }
         syncLaunchAgent()
     }
 
@@ -1731,7 +1764,12 @@ final class AppModel {
         skipDueWork(now: Date())
         isPaused = false
         syncLaunchAgent()
+        // Messages typed to a bot that Pause stopped mid-run were kept for now.
+        for bot in bots where running[bot.id] == nil { botBecameFree(bot) }
     }
+
+    /// Runs Pause stopped, by token, until each one's cleanup has seen it.
+    private var stoppedByPause: Set<UUID> = []
 
     func togglePause() {
         if isPaused { resumeAll() } else { pauseAll() }
@@ -1926,7 +1964,9 @@ final class AppModel {
     /// a group conversation is supposed to fix, not reproduce.
     private func runTurns(in group: ChatGroup, queue: [GroupRouting.Member], taken: Int) {
         let thread = groupThread(for: group)
-        guard let next = queue.first else {
+        // Paused: bots do not hand work on to each other. The first turn is your own message,
+        // which still goes; the ones after it wait for you.
+        guard let next = queue.first, !(isPaused && taken > 0) else {
             thread.speaking = nil
             return
         }

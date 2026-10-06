@@ -38,6 +38,9 @@ PR as the change; the release moves it under a version.
   a relaunch.
 - Sections stay when their last bot leaves, and can be made empty. Delete a section from its menu;
   its bots move to Unassigned.
+- What you type to a bot or a group is kept when you switch away and come back.
+- Apps that need a key set in your shell (LINEAR_API_KEY and the like) now find it in `~/.zshrc`
+  too, and the Apps page no longer stalls while it looks.
 
 ## 0.1.0 — first public build
 

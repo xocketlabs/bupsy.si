@@ -64,6 +64,15 @@ struct BotPage: View {
     private var detailsVisible: Bool { showsDetails && openRoutine == nil }
 
     var body: some View {
+        page
+            // The page is rebuilt for each bot, so what you typed is kept on the model, per bot:
+            // leaving and coming back finds it, and it can never follow you to another bot.
+            .onAppear { draft = model.botDrafts[bot.id] ?? "" }
+            .onChange(of: draft) { _, text in model.botDrafts[bot.id] = text.isEmpty ? nil : text }
+    }
+
+    @ViewBuilder
+    private var page: some View {
         // One card, like every page: the chat on the left and, when open, the bot's details on
         // the right behind a hairline, so the two read as one object rather than two windows.
         PanelSurface {
@@ -754,9 +763,11 @@ struct BotPage: View {
                     .onChange(of: thread.entries.count) { old, new in
                         guard let last = thread.entries.last else { return }
                         // Your own message always takes you to it; anything else waits for you
-                        // on the jump button while you are reading further up.
-                        var isYours = false
-                        if case .userMessage = last.kind { isYours = true }
+                        // on the jump button while you are reading further up. Looked for among
+                        // everything just added: to a busy bot, the "Queued" note lands after it.
+                        let isYours = thread.entries.suffix(max(0, new - old)).contains {
+                            if case .userMessage = $0.kind { true } else { false }
+                        }
                         if awayFromBottom && !isYours {
                             let added = thread.entries.suffix(max(0, new - old))
                             unseenCount += added.filter { Self.countsAsNew($0.kind) }.count
