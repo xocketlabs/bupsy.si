@@ -551,6 +551,8 @@ struct TeamNewSectionSheet: View {
     let preselected: BotID?
     @State private var name = ""
     @State private var chosen: Set<BotID> = []
+    /// Saved into the sidebar's folded sections (`SidebarFolds`) when the section is created.
+    @State private var foldByDefault = false
 
     init(preselected: BotID? = nil) {
         self.preselected = preselected
@@ -594,6 +596,8 @@ struct TeamNewSectionSheet: View {
                     RoundedRectangle(cornerRadius: Theme.Radius.base).strokeBorder(palette.border)
                 }
             }
+
+            foldRow
         } actions: {
             Button("Cancel") { dismiss() }
                 .buttonStyle(QuietButton())
@@ -604,6 +608,33 @@ struct TeamNewSectionSheet: View {
         }
         .onAppear {
             if let preselected { chosen.insert(preselected) }
+        }
+    }
+
+    /// Folded, the section header still shows how many bots it holds, in pink when one of them
+    /// needs you, so folding it hides nothing urgent.
+    private var foldRow: some View {
+        HStack(spacing: Theme.Space.snug) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Fold it in the sidebar by default")
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(palette.foreground)
+                Text("Bots that need you still show their count when it's folded.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: Theme.Space.snug)
+            Toggle("", isOn: $foldByDefault)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, Theme.Space.step)
+        .padding(.vertical, Theme.Space.step)
+        .background(palette.background, in: .rect(cornerRadius: Theme.Radius.base))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.base).strokeBorder(palette.border)
         }
     }
 
@@ -652,8 +683,16 @@ struct TeamNewSectionSheet: View {
 
     private func commit() {
         guard !trimmed.isEmpty, !chosen.isEmpty else { return }
+        let isNew = !model.folders.contains(trimmed)
         for bot in model.bots where chosen.contains(bot.id) {
             model.setFolder(bot, trimmed)
+        }
+        // The same store the sidebar's fold caret writes. Off leaves an existing section's fold
+        // alone and only makes sure a brand new one starts open.
+        if foldByDefault {
+            SidebarFolds.fold(trimmed)
+        } else if isNew {
+            SidebarFolds.unfold(trimmed)
         }
         dismiss()
     }

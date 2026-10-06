@@ -149,6 +149,9 @@ struct NewObjectiveSheet: View {
     /// Set when this sheet is the "Standing goal" tab of the new-routine sheet: picking the
     /// Routine tab hands back to it. nil when it was opened on its own, and then it has no tabs.
     let onSwitchToRoutine: (() -> Void)?
+    /// Set when this is one tab of the new-routine sheet: any other tab picked is handed back.
+    /// Takes over from `onSwitchToRoutine` when both are given.
+    let onSwitchKind: ((RoutineSheetKind) -> Void)?
 
     @State private var goal = ""
     @State private var doneWhen = ""
@@ -157,9 +160,11 @@ struct NewObjectiveSheet: View {
     /// Always "Standing goal" here; choosing Routine hands back and resets it.
     @State private var kindTab = RoutineSheetKind.goal
 
-    init(bot: Bot, onSwitchToRoutine: (() -> Void)? = nil) {
+    init(bot: Bot, onSwitchToRoutine: (() -> Void)? = nil,
+         onSwitchKind: ((RoutineSheetKind) -> Void)? = nil) {
         self.bot = bot
         self.onSwitchToRoutine = onSwitchToRoutine
+        self.onSwitchKind = onSwitchKind
     }
 
     var body: some View {
@@ -172,7 +177,7 @@ struct NewObjectiveSheet: View {
             tone: .info,
             primaryVerb: "save"
         ) {
-            if onSwitchToRoutine != nil {
+            if onSwitchToRoutine != nil || onSwitchKind != nil {
                 RoutineKindPicker(selection: $kindTab)
             }
 
@@ -225,9 +230,14 @@ struct NewObjectiveSheet: View {
             if !availableTiers.contains(tier) { tier = .launchAgent }
         }
         .onChange(of: kindTab) {
-            guard kindTab == .routine else { return }
+            guard kindTab != .goal else { return }
+            let picked = kindTab
             kindTab = .goal
-            onSwitchToRoutine?()
+            if let onSwitchKind {
+                onSwitchKind(picked)
+            } else if picked == .routine {
+                onSwitchToRoutine?()
+            }
         }
     }
 

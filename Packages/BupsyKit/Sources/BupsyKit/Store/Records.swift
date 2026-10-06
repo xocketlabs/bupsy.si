@@ -286,12 +286,16 @@ public struct GroupRecord: Codable, FetchableRecord, PersistableRecord, Sendable
     public var sortIndex: Int
     public var pinned: Bool
     public var lastReadAt: Date?
+    /// How many bot turns in a row, with nobody speaking, before the group pauses and checks
+    /// with the person. See `GroupRouting.turnLimitChoices`.
+    public var turnLimit: Int
 
     public init(id: String = UUID().uuidString, name: String, leadBotID: String?,
                 createdAt: Date = Date(), sortIndex: Int = 0, pinned: Bool = false,
-                lastReadAt: Date? = nil) {
+                lastReadAt: Date? = nil, turnLimit: Int = GroupRouting.defaultTurnLimit) {
         self.id = id; self.name = name; self.leadBotID = leadBotID; self.createdAt = createdAt
         self.sortIndex = sortIndex; self.pinned = pinned; self.lastReadAt = lastReadAt
+        self.turnLimit = turnLimit
     }
 }
 

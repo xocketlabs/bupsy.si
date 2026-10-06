@@ -21,12 +21,27 @@ final class Notifier {
         authorised = (try? await centre.requestAuthorization(options: [.alert, .sound])) ?? false
     }
 
-    func needsApproval(bot: String, tool: String, summary: String) {
+    /// - Parameter approvalID: the gate request's id, when the caller has it. With it, Allow and
+    ///   Deny on the banner answer exactly that request; without it they match on bot, tool and
+    ///   summary, which is what the banner showed.
+    func needsApproval(bot: String, tool: String, summary: String, approvalID: String? = nil) {
+        // A bot's question with set answers comes through here too, as "a question". Allow and
+        // Deny mean nothing for it, so it gets a plain banner that opens the app.
+        let isToolRequest = tool != "a question"
+        var info: [String: String] = [:]
+        if isToolRequest {
+            info = [ApprovalNotificationActions.botKey: bot,
+                    ApprovalNotificationActions.toolKey: tool,
+                    ApprovalNotificationActions.summaryKey: summary]
+            if let approvalID { info[ApprovalNotificationActions.approvalKey] = approvalID }
+        }
         post(
             id: "approval-\(bot)-\(summary.hashValue)",
             title: "\(bot) needs you",
             body: summary.isEmpty ? "Wants to use \(tool)" : summary,
-            sound: true
+            sound: true,
+            category: isToolRequest ? ApprovalNotificationActions.category : nil,
+            info: info
         )
     }
 
@@ -49,7 +64,8 @@ final class Notifier {
         post(id: "failed-\(bot)", title: "\(bot) stopped", body: reason, sound: false)
     }
 
-    private func post(id: String, title: String, body: String, sound: Bool) {
+    private func post(id: String, title: String, body: String, sound: Bool,
+                      category: String? = nil, info: [String: String] = [:]) {
         // You are looking at the app; a banner over it is noise.
         guard !NSApp.isActive else { return }
 
@@ -61,12 +77,109 @@ final class Notifier {
             content.title = title
             content.body = String(body.prefix(240))
             if sound { content.sound = .default }
+            if let category { content.categoryIdentifier = category }
+            if !info.isEmpty { content.userInfo = info }
 
             // A stable id per cause, so ten tool calls in one run replace each other rather than
             // stacking ten banners.
             try? await UNUserNotificationCenter.current().add(
                 UNNotificationRequest(identifier: id, content: content, trigger: nil))
         }
+    }
+}
+
+/// Allow and Deny on an approval banner, answered without opening the window.
+///
+/// The buttons call `AppModel.decide`, the same path the in-app approval card, the attention
+/// inbox and the menu bar use, so a decision made from a banner is recorded, audited and shown
+/// in the thread exactly like one made anywhere else. If the request was already answered or
+/// timed out by the time the button is pressed, nothing matches and nothing happens.
+@MainActor
+final class ApprovalNotificationActions: NSObject, UNUserNotificationCenterDelegate {
+    static let category = "bupsy.approval"
+    static let allowAction = "bupsy.approval.allow"
+    static let denyAction = "bupsy.approval.deny"
+    static let botKey = "bot"
+    static let toolKey = "tool"
+    static let summaryKey = "summary"
+    static let approvalKey = "approval"
+
+    private weak var model: AppModel?
+    /// A press that arrived before the model was attached, as at a launch the banner caused.
+    private var waiting: [(action: String, info: [String: String])] = []
+
+    override init() {
+        super.init()
+        // Set as early as possible: a press on a banner that launched the app is delivered to
+        // whichever delegate is set when it finishes launching.
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    /// Registers the category and starts answering. Registering needs no permission, so this is
+    /// safe at launch; the permission prompt still waits for the first notification.
+    func attach(to model: AppModel) {
+        self.model = model
+        let allow = UNNotificationAction(identifier: Self.allowAction, title: "Allow", options: [])
+        let deny = UNNotificationAction(identifier: Self.denyAction, title: "Deny", options: [.destructive])
+        let category = UNNotificationCategory(identifier: Self.category, actions: [allow, deny],
+                                              intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+        let pending = waiting
+        waiting = []
+        for item in pending { handle(action: item.action, info: item.info) }
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        // Copied out as plain strings here, so nothing that is not Sendable crosses to the main
+        // actor.
+        let action = response.actionIdentifier
+        var info: [String: String] = [:]
+        for (key, value) in response.notification.request.content.userInfo {
+            if let key = key as? String, let value = value as? String { info[key] = value }
+        }
+        Task { @MainActor in
+            self.handle(action: action, info: info)
+        }
+        completionHandler()
+    }
+
+    private func handle(action: String, info: [String: String]) {
+        guard action == Self.allowAction || action == Self.denyAction else { return }
+        guard let model else {
+            waiting.append((action: action, info: info))
+            return
+        }
+        guard let botName = info[Self.botKey],
+              let bot = model.bots.first(where: { $0.name == botName }),
+              let approval = Self.pending(for: bot, info: info, in: model)
+        else { return }
+        model.decide(approval, allow: action == Self.allowAction, for: bot)
+    }
+
+    /// The undecided request the banner was about: by id when it carried one, otherwise the one
+    /// with the same tool and summary, in the bot's own thread or its thread inside a group.
+    private static func pending(for bot: Bot, info: [String: String], in model: AppModel) -> PendingApproval? {
+        var candidates: [PendingApproval] = []
+        for entry in model.thread(for: bot.id).entries {
+            if case .approval(let approval) = entry.kind, approval.decided == nil {
+                candidates.append(approval)
+            }
+        }
+        for group in model.groups {
+            for (member, approval) in model.pendingApprovals(in: group) where member.id == bot.id {
+                candidates.append(approval)
+            }
+        }
+        if let id = info[approvalKey] {
+            return candidates.first { $0.id == id }
+        }
+        let tool = info[toolKey] ?? ""
+        let summary = info[summaryKey] ?? ""
+        return candidates.first { $0.tool == tool && $0.summary == summary }
     }
 }
 

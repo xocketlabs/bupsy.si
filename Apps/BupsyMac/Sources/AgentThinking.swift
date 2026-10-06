@@ -51,36 +51,8 @@ struct AgentThinking: View {
         return seconds < 60 ? String(format: "%.1fs", seconds) : "\(Int(seconds) / 60)m \(Int(seconds) % 60)s"
     }
 
-    /// The bot's latest action, in words, or "Thinking" between actions.
-    private var status: String {
-        guard let last = thread.entries.last else { return "Thinking" }
-        guard case .tool(let name, let arguments, let result, _) = last.kind, result == nil else { return "Thinking" }
-        let detail = Self.subject(arguments)
-        switch name {
-        case "Bash", "shell": return "Running a command"
-        case "Read": return detail.map { "Reading \($0)" } ?? "Reading"
-        case "Write", "Edit", "MultiEdit", "edit": return detail.map { "Editing \($0)" } ?? "Editing"
-        case "WebSearch", "WebFetch": return "Searching the web"
-        case "Grep", "Glob": return "Searching files"
-        case "Task": return "Working on a sub-task"
-        case "mcp__bupsy__message_bot": return "Messaging a bot"
-        case "mcp__bupsy__ask_person": return "Asking you"
-        default:
-            if name.hasPrefix("mcp__") {
-                let server = name.dropFirst(5).split(separator: "_").first.map(String.init) ?? "an app"
-                return "Using \(server.capitalized)"
-            }
-            return "Working"
-        }
-    }
-
-    /// A file name worth showing, if the call names one.
-    private static func subject(_ json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let path = (object["file_path"] ?? object["path"]) as? String else { return nil }
-        return URL(fileURLWithPath: path).lastPathComponent
-    }
+    /// The bot's latest in-progress step, in words. The same words the top bar badge shows.
+    private var status: String { ChatLiveStatus.text(for: thread.entries) }
 }
 
 /// A 3×3 grid; a bright band sweeps from top-left to bottom-right with a fading trail, rests,

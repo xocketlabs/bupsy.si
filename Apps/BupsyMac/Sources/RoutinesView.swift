@@ -8,6 +8,8 @@ struct RoutinesSheet: View {
     @Environment(\.dismiss) private var dismiss
     let bot: Bot
     @State private var isCreating = false
+    /// The routine opened from a row, shown full size over this sheet.
+    @State private var openRoutineID: String?
 
     init(bot: Bot) {
         self.bot = bot
@@ -15,6 +17,13 @@ struct RoutinesSheet: View {
 
     private var routines: [Routine] {
         model.routines.filter { $0.botID == bot.id.rawValue }
+    }
+
+    /// Looked up live so the detail follows edits, and closes itself if the routine is deleted.
+    private var openRoutine: Binding<Routine?> {
+        Binding(
+            get: { routines.first { $0.id == openRoutineID } },
+            set: { openRoutineID = $0?.id })
     }
 
     var body: some View {
@@ -31,6 +40,8 @@ struct RoutinesSheet: View {
                     VStack(spacing: Theme.Space.snug) {
                         ForEach(routines) { routine in
                             RoutineRow(routine: routine, bot: bot)
+                                .contentShape(Rectangle())
+                                .onTapGesture { openRoutineID = routine.id }
                         }
                     }
                 }
@@ -44,6 +55,13 @@ struct RoutinesSheet: View {
                 .keyboardShortcut(.defaultAction)
         }
         .sheet(isPresented: $isCreating) { NewRoutineSheet(bot: bot) }
+        .background {
+            Color.clear.sheet(item: openRoutine) { routine in
+                RoutineDetailView(routine: routine, bot: bot, onClose: { openRoutineID = nil })
+                    .frame(width: 820, height: 680)
+                    .background(palette.background)
+            }
+        }
     }
 }
 
@@ -106,17 +124,19 @@ struct RoutineRow: View {
         .padding(Theme.Space.step)
         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
         .opacity(routine.enabled ? 1 : 0.6)
-        .help(routine.tier.promise)
+        .help("Open \(routine.name). \(routine.tier.promise)")
     }
 }
 
-/// What the new-routine sheet makes. Folder watches live with the bot's own page.
+/// What the new-routine sheet makes: a job on a schedule, a goal kept true, or a job that runs
+/// when files in a folder change.
 enum RoutineSheetKind: Hashable {
     case routine
     case goal
+    case folderWatch
 }
 
-/// The tabs across the top of the new-routine sheet: a routine or a standing goal.
+/// The tabs across the top of the new-routine sheet.
 struct RoutineKindPicker: View {
     @Binding var selection: RoutineSheetKind
 
@@ -128,6 +148,7 @@ struct RoutineKindPicker: View {
         Picker("", selection: $selection) {
             Text("Routine").tag(RoutineSheetKind.routine)
             Text("Standing goal").tag(RoutineSheetKind.goal)
+            Text("Folder watch").tag(RoutineSheetKind.folderWatch)
         }
         .pickerStyle(.segmented)
         .labelsHidden()
@@ -151,9 +172,11 @@ struct NewRoutineSheet: View {
     @State private var preset = Schedule.presets[0]
     @State private var tier = Routine.Tier.launchAgent
 
-    init(bot: Bot, editing: Routine? = nil) {
+    /// `kind` picks the tab it opens on; an edit is always a routine.
+    init(bot: Bot, editing: Routine? = nil, kind: RoutineSheetKind = .routine) {
         self.bot = bot
         self.editing = editing
+        _kind = State(initialValue: editing == nil ? kind : .routine)
     }
 
     /// The bot the routine will belong to.
@@ -163,8 +186,12 @@ struct NewRoutineSheet: View {
     }
 
     var body: some View {
+        // The other tabs are the existing sheets, each showing the same tab bar and handing the
+        // choice back here, so there is one form per kind of thing rather than two copies.
         if kind == .goal && editing == nil {
-            NewObjectiveSheet(bot: target, onSwitchToRoutine: { kind = .routine })
+            NewObjectiveSheet(bot: target, onSwitchKind: { kind = $0 })
+        } else if kind == .folderWatch && editing == nil {
+            NewFolderWatchSheet(bot: target, onSwitchKind: { kind = $0 })
         } else {
             form
         }

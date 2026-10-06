@@ -46,6 +46,10 @@ final class AppModel {
         didSet { AppHome.defaults.set(appearance.rawValue, forKey: "si.bupsy.appearance") }
     }
 
+    /// A page the model wants the window to show next (set from flows outside the window, such
+    /// as onboarding's "Connect apps first"). The root view moves there and clears it.
+    var pendingDestination: NavRail.Destination?
+
     // Hooks for the debug tour (TourMode); nil in normal use.
     var tourDestination: NavRail.Destination?
     var tourPalette: Bool?
@@ -1052,7 +1056,8 @@ final class AppModel {
                     // The whole point of a gate that waits is that someone finds out it is
                     // waiting. A run blocked at 3am with nothing said is a run that never ran.
                     self.notifier.needsApproval(
-                        bot: bot.name, tool: request.tool, summary: request.summary)
+                        bot: bot.name, tool: request.tool, summary: request.summary,
+                        approvalID: request.id)
                 }
             }
         }
@@ -1199,11 +1204,13 @@ final class AppModel {
     }
 
     @discardableResult
-    func createGroup(name: String, members: [Bot], lead: Bot?) -> ChatGroup? {
+    func createGroup(name: String, members: [Bot], lead: Bot?,
+                     turnLimit: Int = GroupRouting.defaultTurnLimit) -> ChatGroup? {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, members.count >= 2 else { return nil }
         let record = GroupRecord(name: trimmed, leadBotID: (lead ?? members.first)?.id.rawValue,
-                                 sortIndex: groups.count)
+                                 sortIndex: groups.count,
+                                 turnLimit: GroupRouting.effectiveTurnLimit(turnLimit))
         try? store?.save(record)
         try? store?.setMembers(ofGroup: record.id, to: members.map(\.id.rawValue))
         let group = ChatGroup(record: record, members: members.map(\.id.rawValue))
@@ -1215,6 +1222,14 @@ final class AppModel {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
         groups[index].name = trimmed
+        try? store?.save(groups[index].record(sortIndex: index))
+    }
+
+    /// How many bot turns the group takes, with nobody speaking, before it checks with you.
+    /// Applies from the next turn, including to a chain already running.
+    func setTurnLimit(_ limit: Int, for group: ChatGroup) {
+        guard let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[index].turnLimit = GroupRouting.effectiveTurnLimit(limit)
         try? store?.save(groups[index].record(sortIndex: index))
     }
 
@@ -1295,13 +1310,19 @@ final class AppModel {
         }
         let rest = Array(queue.dropFirst())
 
-        guard taken < GroupRouting.maxBotTurnsPerMessage else {
+        // The group's own limit, read fresh so a change made mid-chain applies to the next turn.
+        let limit = groups.first(where: { $0.id == group.id })?.turnLimit ?? group.turnLimit
+        guard !GroupRouting.shouldPause(afterTaking: taken, limit: limit) else {
+            // Pause rather than run on: the bots don't keep each other going on your quota. The
+            // note makes the group read as waiting on you until you say something.
             thread.speaking = nil
-            appendGroupMessage(GroupMessageRecord(
-                groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
-                text: "Stopped after \(GroupRouting.maxBotTurnsPerMessage) replies so the bots "
-                    + "don't keep each other going on your quota. Mention one to carry on."),
-                to: group)
+            // Once is enough: a late turn from a bot that was busy elsewhere can arrive here too.
+            if thread.messages.last?.isPauseNote != true {
+                appendGroupMessage(GroupMessageRecord(
+                    groupID: group.id, author: GroupMessageRecord.systemAuthor, authorName: "bupsy",
+                    text: GroupMessageRecord.pauseNote(after: GroupRouting.effectiveTurnLimit(limit))),
+                    to: group)
+            }
             return
         }
         guard let bot = bots.first(where: { $0.id.rawValue == next.id }) else {

@@ -14,10 +14,9 @@ struct BotPage: View {
 
     @State private var draft = ""
     @State private var showsRoutines = false
-    /// The routine open in the panel's detail view, if any.
+    /// The routine open as a page in place of the conversation, if any.
     @State private var openRoutineID: String?
     @State private var editingRoutine: Routine?
-    @State private var confirmsDelete = false
     @State private var showsObjectives = false
     @State private var showsNewWatch = false
     @State private var showsDetails = false
@@ -29,6 +28,11 @@ struct BotPage: View {
 
     private var thread: Thread { model.thread(for: bot.id) }
     private var routines: [Routine] { model.routines.filter { $0.botID == bot.id.rawValue } }
+    /// Looked up live, so a deleted routine closes its page by itself.
+    private var openRoutine: Routine? {
+        guard let openRoutineID else { return nil }
+        return routines.first { $0.id == openRoutineID }
+    }
     private var objectives: [Objective] { model.objectives.filter { $0.botID == bot.id.rawValue } }
 
     var body: some View {
@@ -36,14 +40,21 @@ struct BotPage: View {
         // the right behind a hairline, so the two read as one object rather than two windows.
         PanelSurface {
             HStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    topbar
-                    conversation
-                    Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
-                             replyingTo: $replyingTo,
-                             onSend: send, onStop: { model.stop(bot.id) })
+                // A routine opened from the panel takes the conversation's place, so its history
+                // and schedule have the room they need. Back returns to the chat as it was.
+                if let routine = openRoutine {
+                    RoutineDetailView(routine: routine, bot: bot, onClose: { openRoutineID = nil })
+                        .frame(maxWidth: .infinity)
+                } else {
+                    VStack(spacing: 0) {
+                        topbar
+                        conversation
+                        Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
+                                 replyingTo: $replyingTo,
+                                 onSend: send, onStop: { model.stop(bot.id) })
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
 
                 if showsDetails {
                     Rectangle().fill(palette.border).frame(width: 1)
@@ -60,7 +71,10 @@ struct BotPage: View {
         .background { Color.clear.sheet(isPresented: $showsObjectives) { NewObjectiveSheet(bot: bot) } }
         .background { Color.clear.sheet(item: $editingRoutine) { NewRoutineSheet(bot: bot, editing: $0) } }
         .background { Color.clear.sheet(item: $editingBot) { BotCreatorSheet(editing: $0) } }
-        .background { Color.clear.sheet(isPresented: $showsNewWatch) { NewFolderWatchSheet(bot: bot) } }
+        // The folder watch form is the new-routine sheet opened on its Folder watch tab.
+        .background { Color.clear.sheet(isPresented: $showsNewWatch) { NewRoutineSheet(bot: bot, kind: .folderWatch) } }
+        // A routine open for one bot must not stay open, unrelated, on the next.
+        .onChange(of: bot.id) { openRoutineID = nil }
         .onChange(of: model.tourDetails, initial: true) { _, new in
             if let new { tab = new; showsDetails = true } else { showsDetails = false }
         }
@@ -104,7 +118,10 @@ struct BotPage: View {
         if model.isWaitingForApproval(bot.id) {
             ThreadStatusBadge(text: "Needs you", tone: palette.primary, dot: true)
         } else if thread.isRunning {
-            ThreadStatusBadge(text: "Working", tone: palette.infoText, dot: true)
+            // What it is doing right now ("Running npm test", "Editing login.ts"), not just
+            // that it is busy. Same words as the line under the thread.
+            ThreadStatusBadge(text: ChatLiveStatus.text(for: thread.entries),
+                              tone: palette.infoText, dot: true)
         } else if let badge = limitBadge {
             ThreadStatusBadge(text: badge, tone: limitIsHigh ? palette.warning : nil)
         }
@@ -130,14 +147,10 @@ struct BotPage: View {
 
                 switch tab {
                 case .details:
-                    if let routine = routines.first(where: { $0.id == openRoutineID }) {
-                        routineDetail(routine)
-                    } else {
-                        settings
-                        goals
-                        routineSection
-                        watchSection
-                    }
+                    settings
+                    goals
+                    routineSection
+                    watchSection
                 case .activity:
                     usage
                     history
@@ -151,8 +164,6 @@ struct BotPage: View {
             .padding(.vertical, Theme.Space.section)
         }
         .frame(width: 340)
-        // A routine open for one bot must not stay open, unrelated, on the next.
-        .onChange(of: bot.id) { openRoutineID = nil }
         // Clipped, because a card wider than the panel should truncate rather than draw over the
         // conversation beside it.
         .clipped()
@@ -848,73 +859,6 @@ struct BotPage: View {
         }
     }
 
-    /// One routine in full: what it tells the bot, when, and what you can do with it.
-    private func routineDetail(_ routine: Routine) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-            Button { openRoutineID = nil } label: {
-                Label("Routines", systemImage: "chevron.left")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-            }
-            .buttonStyle(.plain)
-
-            Text(routine.name)
-                .font(Theme.Typography.heading)
-                .foregroundStyle(palette.foreground)
-
-            VStack(alignment: .leading, spacing: Theme.Space.tight) {
-                Text("Instruction").font(Theme.Typography.badge).foregroundStyle(palette.sidebarMuted)
-                Text(routine.prompt)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(palette.foreground)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            VStack(alignment: .leading, spacing: Theme.Space.tight) {
-                Text("When it runs").font(Theme.Typography.badge).foregroundStyle(palette.sidebarMuted)
-                Label(Schedule.describe(routine.cron), systemImage: "clock")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(palette.foreground)
-                Text(routine.tier.label)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-                if !routine.enabled {
-                    Text("Paused. It will not run until you resume it.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.primary)
-                }
-            }
-
-            HStack(spacing: Theme.Space.snug) {
-                Button(routine.enabled ? "Pause" : "Resume") {
-                    model.setRoutineEnabled(routine, !routine.enabled)
-                }
-                .buttonStyle(QuietButton(compact: true))
-                // Try it now rather than waiting for its slot — the quickest way to see what it does.
-                Button("Run now") { model.send(routine.prompt, to: bot) }
-                    .buttonStyle(QuietButton(compact: true))
-                    .disabled(model.isRunning(bot.id))
-                Button("Edit") { editingRoutine = routine }
-                    .buttonStyle(QuietButton(compact: true))
-                Spacer(minLength: 0)
-                Button(role: .destructive) { confirmsDelete = true } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(palette.mutedForeground)
-                .help("Delete this routine")
-            }
-            .confirmationDialog("Delete “\(routine.name)”?", isPresented: $confirmsDelete) {
-                Button("Delete routine", role: .destructive) {
-                    openRoutineID = nil
-                    model.deleteRoutine(routine)
-                }
-            } message: {
-                Text("It stops running. What it already did stays in the thread.")
-            }
-        }
-    }
-
     /// What a bot has actually done, including while nobody was watching.
     ///
     /// Every run and its events have been stored since the first commit; nothing read them back,
@@ -1330,13 +1274,30 @@ struct NewFolderWatchSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.palette) private var palette
     let bot: Bot
+    /// Set when this is the Folder watch tab of the new-routine sheet: picking another tab hands
+    /// the choice back to it. nil when opened on its own, and then it has no tabs.
+    let onSwitchKind: ((RoutineSheetKind) -> Void)?
     @State private var path = ""
     @State private var name = ""
     @State private var prompt = ""
+    /// Always "Folder watch" here; another tab is handed back and this resets.
+    @State private var kindTab = RoutineSheetKind.folderWatch
+
+    init(bot: Bot, onSwitchKind: ((RoutineSheetKind) -> Void)? = nil) {
+        self.bot = bot
+        self.onSwitchKind = onSwitchKind
+    }
 
     var body: some View {
-        SheetFrame(title: "New folder watch", icon: "folder.badge.gearshape",
-                   subtitle: "\(bot.name) runs when files in this folder change.") {
+        SheetFrame(title: onSwitchKind == nil ? "New folder watch" : "New routine",
+                   icon: onSwitchKind == nil ? "folder.badge.gearshape" : "clock.fill",
+                   subtitle: "\(bot.name) runs when files in this folder change.",
+                   width: onSwitchKind == nil ? 420 : 540,
+                   tone: onSwitchKind == nil ? .primary : .info,
+                   primaryVerb: "create") {
+            if onSwitchKind != nil {
+                RoutineKindPicker(selection: $kindTab)
+            }
             Field(label: "Folder") {
                 HStack(spacing: Theme.Space.snug) {
                     Text(path.isEmpty ? "No folder chosen" : path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
@@ -1358,6 +1319,12 @@ struct NewFolderWatchSheet: View {
                     .textFieldStyle(BupsyFieldStyle())
                     .lineLimit(3...5)
             }
+            if onSwitchKind != nil {
+                Text("Runs while bupsy is open. Changes \(bot.name) makes itself don't set it off again.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         } actions: {
             Button("Cancel") { dismiss() }.buttonStyle(QuietButton())
             Button("Create") {
@@ -1370,6 +1337,12 @@ struct NewFolderWatchSheet: View {
             .buttonStyle(PrimaryButton())
             .keyboardShortcut(.defaultAction)
             .disabled(path.isEmpty || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .onChange(of: kindTab) {
+            guard kindTab != .folderWatch else { return }
+            let picked = kindTab
+            kindTab = .folderWatch
+            onSwitchKind?(picked)
         }
     }
 

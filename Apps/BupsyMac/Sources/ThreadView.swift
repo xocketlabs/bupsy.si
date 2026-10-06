@@ -185,7 +185,7 @@ struct Bubble: View {
             }
 
         case .thinking(let text):
-            botAligned { ThinkingAside(text: text) }
+            botAligned { ThinkingAside(text: text, duration: thinkingDuration) }
 
         // Tool calls are asides, not events. A bot running `ls` is not a message, and giving it
         // the weight of one buries the reply underneath its own working.
@@ -222,7 +222,9 @@ struct Bubble: View {
             case .raw:
                 botAligned {
                     ToolAside(name: name, arguments: arguments, result: result, failed: failed,
-                              workingDirectory: model.workingDirectory(for: bot).path)
+                              workingDirectory: model.workingDirectory(for: bot).path,
+                              startedAt: entry.at,
+                              live: model.thread(for: bot.id).isRunning)
                 }
             }
 
@@ -243,10 +245,26 @@ struct Bubble: View {
             botAligned { LimitsGauge(limits: limits) }
 
         case .failure(let failure):
-            botAligned { FailureNotice(failure: failure, bot: bot) }
+            botAligned { FailureNotice(failure: failure, bot: bot, entryID: entry.id) }
 
         case .finished:
             EmptyView()
+        }
+    }
+
+    /// How long the bot thought before its reasoning arrived, measured from the message that
+    /// started the turn to the moment the reasoning came in. Engines hand reasoning over whole,
+    /// so the gap before it is the thinking time; that start is only known when the reasoning
+    /// opens a turn. Anywhere else (after a tool line, say) the start is not recorded, and no
+    /// duration is shown rather than a guessed one.
+    private var thinkingDuration: String? {
+        let entries = model.thread(for: bot.id).entries
+        guard let index = entries.firstIndex(where: { $0.id == entry.id }), index > 0 else { return nil }
+        switch entries[index - 1].kind {
+        case .userMessage, .messageFrom:
+            return ChatDuration.whole(entry.at.timeIntervalSince(entries[index - 1].at))
+        default:
+            return nil
         }
     }
 
@@ -303,16 +321,27 @@ struct ToolAside: View {
     let failed: Bool
     /// The bot's folder, so paths inside it read short.
     var workingDirectory: String?
+    /// When the call arrived. With `live`, a running line counts up from it.
+    var startedAt: Date?
+    /// Whether the run this line belongs to is still going. A line left without a result by a
+    /// run that ended is not "running for three days", so it shows no time at all.
+    var live: Bool
     @State private var expanded = false
     @State private var hovering = false
+    /// When the result came in, seen while this line was on screen. Results carry no time of
+    /// their own, so a line that arrived already finished (a reopened thread) has none, and
+    /// shows no duration rather than a made-up one.
+    @State private var finishedAt: Date?
 
     init(name: String, arguments: String, result: String?, failed: Bool,
-         workingDirectory: String? = nil) {
+         workingDirectory: String? = nil, startedAt: Date? = nil, live: Bool = false) {
         self.name = name
         self.arguments = arguments
         self.result = result
         self.failed = failed
         self.workingDirectory = workingDirectory
+        self.startedAt = startedAt
+        self.live = live
     }
 
     /// Refused by you (or by nobody answering) rather than broken. Drawn as a decision, not an
@@ -355,6 +384,7 @@ struct ToolAside: View {
                     if failed && !declined {
                         Text("failed").foregroundStyle(palette.destructiveText)
                     }
+                    timing
                     if revealablePath != nil && hovering {
                         Image(systemName: "arrow.up.forward.square")
                             .font(.system(size: Theme.scaled(9)))
@@ -375,6 +405,9 @@ struct ToolAside: View {
             .buttonStyle(.plain)
             .padding(.leading, -6)
             .onHover { hovering = $0 }
+            .onChange(of: running) { wasRunning, isRunningNow in
+                if wasRunning && !isRunningNow && finishedAt == nil { finishedAt = Date() }
+            }
 
             if expanded {
                 VStack(alignment: .leading, spacing: Theme.Space.snug) {
@@ -397,6 +430,26 @@ struct ToolAside: View {
                 .frame(maxWidth: ThreadLayout.cardMaxWidth, alignment: .leading)
                 .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
             }
+        }
+    }
+
+    /// "0.1s" once finished, a ticking "4s" while running, nothing when the time is not known.
+    @ViewBuilder
+    private var timing: some View {
+        if running {
+            if live, let startedAt {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(ChatDuration.ticking(context.date.timeIntervalSince(startedAt)))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                        .monospacedDigit()
+                }
+            }
+        } else if let startedAt, let finishedAt {
+            Text(ChatDuration.label(finishedAt.timeIntervalSince(startedAt)))
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .monospacedDigit()
         }
     }
 
@@ -450,10 +503,15 @@ struct ToolAside: View {
 struct ThinkingAside: View {
     @Environment(\.palette) private var palette
     let text: String
+    /// How long it thought, when that is known ("8s").
+    var duration: String?
     @State private var expanded = false
     @State private var hovering = false
 
-    init(text: String) { self.text = text }
+    init(text: String, duration: String? = nil) {
+        self.text = text
+        self.duration = duration
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
@@ -463,6 +521,11 @@ struct ThinkingAside: View {
                         .font(.system(size: Theme.scaled(11)))
                         .frame(width: 16, height: 16)
                     Text("Thinking")
+                    if let duration {
+                        Text(duration)
+                            .font(Theme.Typography.caption)
+                            .monospacedDigit()
+                    }
                     Image(systemName: "chevron.down")
                         .font(.system(size: Theme.scaled(8), weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 180 : 0))
@@ -499,14 +562,22 @@ struct ThinkingAside: View {
 /// Amber for things that fix themselves or that you fix (limits, sign-in), red for a run that
 /// broke. Never an apology; always the fix.
 struct FailureNotice: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @Environment(\.colorScheme) private var colorScheme
     let failure: EngineFailure
     var bot: Bot?
+    /// The transcript entry this card draws. With a bot, it is what lets the card offer its one
+    /// fix: Retry for a run that broke, Check sign-in for an engine that cannot run.
+    var entryID: UUID?
+    @State private var checking = false
+    /// The engine's answer to the last sign-in check: nil before one, true when it can run now.
+    @State private var signedInNow: Bool?
 
-    init(failure: EngineFailure, bot: Bot? = nil) {
+    init(failure: EngineFailure, bot: Bot? = nil, entryID: UUID? = nil) {
         self.failure = failure
         self.bot = bot
+        self.entryID = entryID
     }
 
     var body: some View {
@@ -531,8 +602,15 @@ struct FailureNotice: View {
                     .foregroundStyle(palette.mutedForeground)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+                if let verdict = signInVerdict {
+                    Text(verdict)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(signedInNow == true ? palette.success : palette.mutedForeground)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 0)
+            action
         }
         .padding(.vertical, Theme.Space.step)
         .padding(.leading, Theme.Space.step)
@@ -548,6 +626,66 @@ struct FailureNotice: View {
             }
         }
         .frame(maxWidth: ThreadLayout.cardMaxWidth, alignment: .leading)
+    }
+
+    /// At most one action, and only one that does exactly what it says.
+    @ViewBuilder
+    private var action: some View {
+        if let bot, let entryID {
+            if needsSignIn && signedInNow != true {
+                Button {
+                    check(bot)
+                } label: {
+                    if checking {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Check sign-in")
+                    }
+                }
+                .buttonStyle(ThreadButtonStyle(kind: .secondary))
+                .disabled(checking)
+                .help("Ask \(bot.engine.displayName) whether it is signed in now")
+            } else if isRetryable || signedInNow == true,
+                      model.retryPrompt(afterFailure: entryID, for: bot) != nil {
+                Button("Retry") { model.retry(afterFailure: entryID, for: bot) }
+                    .buttonStyle(ThreadButtonStyle(kind: .secondary))
+                    .help("Send your last message to \(bot.name) again")
+            }
+        }
+    }
+
+    /// The engine cannot run at all here, so sending again would fail the same way. These get a
+    /// sign-in check instead of a retry.
+    private var needsSignIn: Bool {
+        switch failure.kind {
+        case .notSignedIn, .binaryNotFound: true
+        default: false
+        }
+    }
+
+    /// Failures a second attempt can get past. Not a folder the engine refuses to work in:
+    /// that needs the folder changed, and retrying would only fail again.
+    private var isRetryable: Bool {
+        switch failure.kind {
+        case .launchFailed, .protocolError, .nonZeroExit, .rateLimited, .cancelled, .unknown: true
+        case .notSignedIn, .binaryNotFound, .untrustedDirectory: false
+        }
+    }
+
+    /// What the last check found, in words. Nothing before a check.
+    private var signInVerdict: String? {
+        guard let signedInNow, let bot else { return nil }
+        if signedInNow { return "\(bot.engine.displayName) is signed in now." }
+        let command = bot.engine == .codex ? "codex login" : "claude"
+        return "Still can't run \(bot.engine.displayName). Run \(command) in Terminal and sign in, then check again."
+    }
+
+    private func check(_ bot: Bot) {
+        checking = true
+        Task { @MainActor in
+            signedInNow = await model.recheckSignIn(for: bot)
+            checking = false
+        }
     }
 
     private var isWarning: Bool {

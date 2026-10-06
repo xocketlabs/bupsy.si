@@ -75,6 +75,7 @@ struct GroupRow: View {
     var body: some View {
         let unread = model.isGroupUnread(group)
         let active = model.groupThread(for: group).speaking != nil
+        let waiting = model.groupThread(for: group).isWaitingOnYou
         Button(action: action) {
             HStack(spacing: Theme.Space.step) {
                 Image(systemName: "person.2.fill")
@@ -89,6 +90,10 @@ struct GroupRow: View {
                 Spacer(minLength: 0)
                 if active {
                     Circle().fill(palette.success).frame(width: 6, height: 6)
+                } else if waiting {
+                    // Paused at its turn limit: the one accent for "needs you".
+                    Circle().fill(palette.primary).frame(width: 6, height: 6)
+                        .help("Waiting on you")
                 } else if unread {
                     Circle().fill(palette.info).frame(width: 6, height: 6)
                 }
@@ -220,6 +225,8 @@ struct GroupCard: View {
                         .lineLimit(1)
                     if thread.speaking != nil {
                         TeamPill(text: "Active now", tone: palette.success)
+                    } else if thread.isWaitingOnYou {
+                        TeamPill(text: "Waiting on you", tone: palette.primary)
                     }
                 }
                 Text(thread.preview ?? "No messages yet. Say hi to get them going.")
@@ -230,6 +237,7 @@ struct GroupCard: View {
                 HStack(spacing: Theme.Space.tight) {
                     fact("person.2.fill", members.count == 1 ? "1 bot" : "\(members.count) bots")
                     if let lead { fact("star.fill", "\(lead.name) leads") }
+                    fact("hand.raised.fill", "Checks with you after \(group.turnLimit) turns")
                 }
                 .padding(.top, 2)
             }
@@ -246,6 +254,7 @@ struct GroupCard: View {
             Menu {
                 Button(action: onOpen) { Label("Open chat", systemImage: "bubble.left") }
                 Button(action: onRename) { Label("Rename", systemImage: "pencil") }
+                GroupTurnLimitPicker(group: group)
                 Divider()
                 // The conversation only. Its bots are untouched.
                 Button(role: .destructive) { model.deleteGroup(group) } label: {
@@ -312,6 +321,19 @@ struct GroupPage: View {
                             .padding(.horizontal, Theme.Space.snug)
                             .padding(.vertical, 5)
                             .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                        Menu {
+                            GroupTurnLimitPicker(group: group)
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: Theme.scaled(13), weight: .semibold))
+                                .foregroundStyle(palette.mutedForeground)
+                                .frame(width: 28, height: 28)
+                                .contentShape(.rect)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("Group settings")
                     }
                 }
                 transcript
@@ -577,8 +599,10 @@ struct GroupBubble: View {
             // Notes from bupsy itself: a bot handing work to another, a stop after too many
             // replies. Quiet and indented, so they read as stage directions.
             HStack(spacing: Theme.Space.tight) {
-                Image(systemName: "bubble.left.fill")
+                // A pause at the turn limit is the group waiting on you, so it gets the accent.
+                Image(systemName: message.isPauseNote ? "hand.raised.fill" : "bubble.left.fill")
                     .font(.system(size: Theme.scaled(10)))
+                    .foregroundStyle(message.isPauseNote ? palette.primary : palette.mutedForeground)
                 Text(message.text)
                     .font(Theme.Typography.caption)
                     .fixedSize(horizontal: false, vertical: true)
@@ -632,6 +656,33 @@ struct GroupBubble: View {
     }
 }
 
+// MARK: - Turn limit
+
+/// How many bot turns the group takes before it checks with you, as a menu section. Used in the
+/// group card's menu and the group page's header menu, so both edit the same stored value.
+struct GroupTurnLimitPicker: View {
+    @Environment(AppModel.self) private var model
+    let group: ChatGroup
+
+    init(group: ChatGroup) {
+        self.group = group
+    }
+
+    var body: some View {
+        Picker(selection: Binding(
+            get: { model.groups.first(where: { $0.id == group.id })?.turnLimit ?? group.turnLimit },
+            set: { model.setTurnLimit($0, for: group) }
+        )) {
+            ForEach(GroupRouting.turnLimitChoices, id: \.self) { turns in
+                Text("\(turns) turns").tag(turns)
+            }
+        } label: {
+            Label("Checks with you after", systemImage: "hand.raised")
+        }
+        .pickerStyle(.menu)
+    }
+}
+
 // MARK: - Making a group
 
 struct NewGroupSheet: View {
@@ -642,6 +693,7 @@ struct NewGroupSheet: View {
     @State private var name = ""
     @State private var chosen: [BotID] = []
     @State private var lead: BotID?
+    @State private var turnLimit = GroupRouting.defaultTurnLimit
 
     init(onCreated: @escaping (ChatGroup) -> Void = { _ in }) {
         self.onCreated = onCreated
@@ -691,20 +743,36 @@ struct NewGroupSheet: View {
                 }
             }
 
-            Field(label: "Lead", hint: "Answers anything that doesn't mention a bot by name.") {
-                Picker("", selection: Binding(
-                    get: { effectiveLead },
-                    set: { lead = $0 }
-                )) {
-                    if chosenBots.isEmpty {
-                        Text("Pick members first").tag(BotID?.none)
+            HStack(alignment: .top, spacing: Theme.Space.gutter) {
+                Field(label: "Lead", hint: "Answers anything that doesn't mention a bot by name.") {
+                    Picker("", selection: Binding(
+                        get: { effectiveLead },
+                        set: { lead = $0 }
+                    )) {
+                        if chosenBots.isEmpty {
+                            Text("Pick members first").tag(BotID?.none)
+                        }
+                        ForEach(chosenBots) { bot in
+                            Text(bot.name).tag(BotID?.some(bot.id))
+                        }
                     }
-                    ForEach(chosenBots) { bot in
-                        Text(bot.name).tag(BotID?.some(bot.id))
-                    }
+                    .labelsHidden()
+                    .disabled(chosenBots.isEmpty)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .labelsHidden()
-                .disabled(chosenBots.isEmpty)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Field(label: "Turns before it checks with you",
+                      hint: "When the bots pass work back and forth, they pause here until you reply.") {
+                    Picker("", selection: $turnLimit) {
+                        ForEach(GroupRouting.turnLimitChoices, id: \.self) { turns in
+                            Text("\(turns) turns").tag(turns)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: .infinity)
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -720,7 +788,8 @@ struct NewGroupSheet: View {
                 .buttonStyle(QuietButton())
             Button("Create group") {
                 let leader = effectiveLead.flatMap { id in chosenBots.first { $0.id == id } }
-                if let group = model.createGroup(name: name, members: chosenBots, lead: leader) {
+                if let group = model.createGroup(name: name, members: chosenBots, lead: leader,
+                                                 turnLimit: turnLimit) {
                     onCreated(group)
                 }
                 dismiss()

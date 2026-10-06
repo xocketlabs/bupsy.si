@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import GRDB
 @testable import BupsyKit
 
 @Suite("Group threads")
@@ -56,6 +57,32 @@ struct GroupTests {
         #expect(GroupRouting.maxBotTurnsPerMessage <= 10)
     }
 
+    @Test("every turn-limit choice is within the hard ceiling, and the default is one of them")
+    func turnLimitChoices() {
+        #expect(GroupRouting.turnLimitChoices.contains(GroupRouting.defaultTurnLimit))
+        for choice in GroupRouting.turnLimitChoices {
+            #expect(choice > 0)
+            #expect(choice <= GroupRouting.maxBotTurnsPerMessage)
+            #expect(GroupRouting.effectiveTurnLimit(choice) == choice)
+        }
+    }
+
+    /// A damaged or hand-edited row must never mean "never check with me", or "never answer".
+    @Test("a stored turn limit is kept between one turn and the ceiling")
+    func turnLimitIsClamped() {
+        #expect(GroupRouting.effectiveTurnLimit(0) == 1)
+        #expect(GroupRouting.effectiveTurnLimit(-4) == 1)
+        #expect(GroupRouting.effectiveTurnLimit(500) == GroupRouting.maxBotTurnsPerMessage)
+    }
+
+    @Test("the group pauses once it has taken its limit, not before")
+    func pausesAtLimit() {
+        #expect(!GroupRouting.shouldPause(afterTaking: 0, limit: 3))
+        #expect(!GroupRouting.shouldPause(afterTaking: 2, limit: 3))
+        #expect(GroupRouting.shouldPause(afterTaking: 3, limit: 3))
+        #expect(GroupRouting.shouldPause(afterTaking: 10, limit: 99))
+    }
+
     @Test("a bot is told the group, the others, and what it missed")
     func promptCarriesContext() {
         let prompt = GroupRouting.prompt(group: "Launch", members: [scout, builder], me: builder,
@@ -90,6 +117,36 @@ struct GroupTests {
         try store.save(run)
         try store.append([EventRecord(runID: run.id, seq: 0, type: "text", payload: "{}")])
         #expect(try store.transcript(forBot: "s").isEmpty)
+    }
+
+    @Test("a group's turn limit defaults to five and round-trips")
+    func turnLimitStorage() throws {
+        let store = try Store.inMemory()
+        try store.save(GroupRecord(id: "default", name: "Launch", leadBotID: nil))
+        try store.save(GroupRecord(id: "short", name: "Review", leadBotID: nil, turnLimit: 3))
+
+        let groups = try store.groups()
+        #expect(groups.first(where: { $0.id == "default" })?.turnLimit == GroupRouting.defaultTurnLimit)
+        #expect(groups.first(where: { $0.id == "short" })?.turnLimit == 3)
+
+        var edited = try #require(groups.first(where: { $0.id == "short" }))
+        edited.turnLimit = 10
+        try store.save(edited)
+        #expect(try store.groups().first(where: { $0.id == "short" })?.turnLimit == 10)
+    }
+
+    /// A group made before the setting existed has no value of its own; the migration's column
+    /// default is what it gets.
+    @Test("a group row written without a turn limit gets the default")
+    func turnLimitColumnDefault() throws {
+        let store = try Store.inMemory()
+        try store.database.write { db in
+            try db.execute(sql: """
+                INSERT INTO groups (id, name, createdAt, sortIndex, pinned)
+                VALUES ('old', 'Old group', ?, 0, 0)
+                """, arguments: [Date()])
+        }
+        #expect(try store.groups().first?.turnLimit == GroupRouting.defaultTurnLimit)
     }
 
     /// Deleting a bot must not delete the group it led — only its membership.

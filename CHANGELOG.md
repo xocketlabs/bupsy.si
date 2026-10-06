@@ -21,6 +21,17 @@ PR as the change; the release moves it under a version.
 - New Team page: your bots by section, in columns. Move a bot with its menu or drag it across.
 - New Group chats page, and the sidebar's sections now fold.
 - The menu bar shows each bot's live face, and a bot that needs you can be answered right there.
+- Onboarding now makes your first bot: name, face, trust and section, with a summary before you
+  say hi.
+- Each routine has its own page: turn it on or off, Run now, this week's runs, average time, and
+  its last runs. New routine gains a Folder watch tab.
+- While a bot works, the chat says what it is doing ("Running npm test"), and steps show how long
+  they took. A failed reply can be retried, or its sign-in checked, from the error itself.
+- Group chats pause after 3, 5 or 10 bot turns (your choice per group) and wait for you.
+- A Settings window (Cmd ,) with appearance, each engine's sign-in status and About. Sign in or out
+  of Claude Code and Codex from the You menu; it opens the vendor's own command in Terminal.
+- Keyboard shortcuts sheet (Cmd /). Folded sidebar sections stay folded.
+- Approval notifications have Allow and Deny buttons.
 
 ## 0.1.0 — first public build
 

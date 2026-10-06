@@ -1,4 +1,5 @@
 import BupsyKit
+import Combine
 import SwiftUI
 
 /// The nav rail, laid out like the agndex dashboard sidebar.
@@ -13,6 +14,7 @@ import SwiftUI
 struct NavRail: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
+    @Environment(\.openSettings) private var openSettings
 
     @Binding var destination: Destination
     /// Owned by the app rather than the rail: the palette opens over the conversation, which the
@@ -23,14 +25,15 @@ struct NavRail: View {
     @State private var isAddingGroup = false
     @State private var isSearching = false
     @State private var showsYouMenu = false
+    @State private var showsShortcuts = false
     @State private var query = ""
     @State private var renamingFolder: FolderName?
     @State private var filingBot: Bot?
     @State private var renamingBot: Bot?
     @State private var renamingGroup: ChatGroup?
-    /// Sections folded shut in this session. Not saved: a fold is a moment's tidying, not a
-    /// setting.
-    @State private var collapsed: Set<String> = []
+    /// Sections folded shut, kept across launches. A JSON array of section keys, shared with the
+    /// New section sheet's "Fold it in the sidebar by default". See `SidebarFolds`.
+    @AppStorage(SidebarFolds.key, store: AppHome.defaults) private var foldedJSON = "[]"
     /// The section a bot made from its "+" should land in, and which bots existed before, so the
     /// new one can be told apart when the sheet closes.
     @State private var addingToSection: String?
@@ -98,6 +101,20 @@ struct NavRail: View {
             }
         }
         .sheet(item: $renamingGroup) { RenameGroupSheet(group: $0) }
+        .background {
+            Color.clear.sheet(isPresented: $showsShortcuts) { KeyboardShortcutsSheet() }
+        }
+        // Help > Keyboard shortcuts (Cmd /) lives on the app; the sheet hangs here.
+        .onReceive(NotificationCenter.default.publisher(for: .bupsyShowKeyboardShortcuts)) { _ in
+            showsYouMenu = false
+            showsShortcuts = true
+        }
+    }
+
+    /// The folded set, read from and written back to the saved JSON.
+    private var collapsed: Set<String> {
+        get { SidebarFolds.decode(foldedJSON) }
+        nonmutating set { foldedJSON = SidebarFolds.encode(newValue) }
     }
 
     // MARK: - Header
@@ -357,7 +374,9 @@ struct NavRail: View {
             onToggle: {
                 guard let key else { return }
                 withAnimation(.easeOut(duration: 0.15)) {
-                    if collapsed.contains(key) { collapsed.remove(key) } else { collapsed.insert(key) }
+                    var folded = collapsed
+                    if folded.contains(key) { folded.remove(key) } else { folded.insert(key) }
+                    collapsed = folded
                 }
             },
             onAdd: onAdd,
@@ -454,37 +473,94 @@ struct NavRail: View {
         .buttonStyle(.plain)
         .popover(isPresented: $showsYouMenu, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 2) {
+                youMenuItem("gearshape", "Settings", shortcut: "Cmd ,") { openSettings() }
                 youMenuItem("hand.raised", "Permissions") { destination = .permissions }
                 youMenuItem("display", "Machines") { destination = .machines }
                 youMenuItem("square.grid.2x2", "Apps") { destination = .connectors }
                 youMenuItem("chart.bar", "Usage") { destination = .usage }
-                Rectangle().fill(palette.border).frame(height: 1).padding(.vertical, 4)
-                HStack(spacing: Theme.Space.snug) {
-                    Image(systemName: "circle.lefthalf.filled").frame(width: 16)
-                    Text("Appearance")
-                    Spacer(minLength: 0)
-                    Text(model.appearance.label)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.mutedForeground)
+                appearanceItem
+                youMenuItem("keyboard", "Keyboard shortcuts", shortcut: "Cmd /") {
+                    // After the popover has gone: a sheet asked for while it is still closing
+                    // is dropped.
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(250))
+                        showsShortcuts = true
+                    }
                 }
-                .font(Theme.Typography.body)
-                .foregroundStyle(palette.foreground)
-                .padding(.horizontal, Theme.Space.snug)
-                .padding(.top, 2)
-                Picker("", selection: Binding(get: { model.appearance }, set: { model.appearance = $0 })) {
-                    ForEach(AppModel.Appearance.allCases, id: \.self) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, Theme.Space.snug)
-                .padding(.bottom, 4)
+                accountItems
             }
             .padding(6)
-            .frame(width: 240)
+            .frame(width: 260)
         }
     }
 
-    private func youMenuItem(_ symbol: String, _ title: String, action: @escaping () -> Void) -> some View {
+    /// Appearance as a row with its current value, opening the three choices. The same
+    /// preference as Settings > Appearance; both write `model.appearance`.
+    private var appearanceItem: some View {
+        Menu {
+            ForEach(AppModel.Appearance.allCases, id: \.self) { option in
+                Button {
+                    model.appearance = option
+                } label: {
+                    if option == model.appearance {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: Theme.Space.snug) {
+                Image(systemName: "circle.lefthalf.filled")
+                    .foregroundStyle(palette.mutedForeground)
+                    .frame(width: 16)
+                Text("Appearance")
+                    .foregroundStyle(palette.foreground)
+                Spacer(minLength: 0)
+                Text(model.appearance.label)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: Theme.scaled(9), weight: .semibold))
+                    .foregroundStyle(palette.mutedForeground)
+            }
+            .font(Theme.Typography.body)
+            .padding(.horizontal, Theme.Space.snug)
+            .frame(height: 30)
+            .contentShape(.rect)
+        }
+        .menuStyle(.button)
+        .buttonStyle(MenuRowStyle())
+        .menuIndicator(.hidden)
+    }
+
+    /// Sign out of each engine that is signed in, or sign in to one that is not. Both open the
+    /// engine's own command in Terminal; Bupsy never handles the sign-in itself.
+    @ViewBuilder
+    private var accountItems: some View {
+        let engines = EngineID.supported.filter { model.engineStatus[$0] != nil }
+        if !engines.isEmpty {
+            Rectangle().fill(palette.border).frame(height: 1).padding(.vertical, 4)
+            ForEach(engines, id: \.self) { engine in
+                if model.isSignedIn(engine) {
+                    youMenuItem("rectangle.portrait.and.arrow.right", "Sign out of \(engine.displayName)",
+                                help: "Opens Terminal and runs \(engine.displayName)'s own sign-out command") {
+                        model.openSignOut(for: engine)
+                    }
+                } else {
+                    youMenuItem("person.crop.circle.badge.plus", "Sign in to \(engine.displayName)…",
+                                help: "Opens Terminal and runs \(engine.displayName)'s own sign-in") {
+                        model.openSignIn(for: engine)
+                    }
+                }
+            }
+        }
+    }
+
+    private func youMenuItem(
+        _ symbol: String, _ title: String, shortcut: String? = nil, help: String? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
         Button {
             showsYouMenu = false
             action()
@@ -494,7 +570,13 @@ struct NavRail: View {
                     .foregroundStyle(palette.mutedForeground)
                     .frame(width: 16)
                 Text(title)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
+                if let shortcut {
+                    Text(shortcut)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                }
             }
             .font(Theme.Typography.body)
             .foregroundStyle(palette.foreground)
@@ -503,6 +585,7 @@ struct NavRail: View {
             .contentShape(.rect)
         }
         .buttonStyle(MenuRowStyle())
+        .help(help ?? "")
     }
 
     private var footerLabel: some View {
@@ -850,6 +933,7 @@ struct RenameFolderSheet: View {
 
     private func commit() {
         model.renameFolder(folder, to: name)
+        SidebarFolds.rename(folder, to: name.trimmingCharacters(in: .whitespaces))
         dismiss()
     }
 }
@@ -999,5 +1083,53 @@ struct MenuRowStyle: ButtonStyle {
             .background((hovering || configuration.isPressed) ? palette.foreground.opacity(0.08) : .clear,
                         in: .rect(cornerRadius: 6))
             .onHover { hovering = $0 }
+    }
+}
+
+/// Which sidebar sections are folded, saved across launches.
+///
+/// One JSON-encoded array of section keys under `bupsy.foldedSections`, in the app's own
+/// defaults (`AppHome.defaults`, so a throwaway `BUPSY_HOME` run keeps its own). The sidebar
+/// reads and writes it with `@AppStorage`; the New section sheet adds to it when "Fold it in the
+/// sidebar by default" is on. Pure helpers, no state of their own.
+enum SidebarFolds {
+    static let key = "bupsy.foldedSections"
+
+    static func decode(_ json: String) -> Set<String> {
+        guard let data = json.data(using: .utf8),
+              let keys = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(keys)
+    }
+
+    static func encode(_ keys: Set<String>) -> String {
+        guard let data = try? JSONEncoder().encode(keys.sorted()),
+              let json = String(data: data, encoding: .utf8) else { return "[]" }
+        return json
+    }
+
+    /// Folds one section, from outside the sidebar.
+    static func fold(_ section: String) {
+        let defaults = AppHome.defaults
+        var keys = decode(defaults.string(forKey: key) ?? "[]")
+        keys.insert(section)
+        defaults.set(encode(keys), forKey: key)
+    }
+
+    /// Unfolds one section, from outside the sidebar.
+    static func unfold(_ section: String) {
+        let defaults = AppHome.defaults
+        var keys = decode(defaults.string(forKey: key) ?? "[]")
+        guard keys.remove(section) != nil else { return }
+        defaults.set(encode(keys), forKey: key)
+    }
+
+    /// Carries a fold over when a section is renamed, so renaming does not unfold it.
+    static func rename(_ old: String, to new: String) {
+        guard !new.isEmpty, new != old else { return }
+        let defaults = AppHome.defaults
+        var keys = decode(defaults.string(forKey: key) ?? "[]")
+        guard keys.remove(old) != nil else { return }
+        keys.insert(new)
+        defaults.set(encode(keys), forKey: key)
     }
 }

@@ -1,10 +1,15 @@
+import AppKit
 import BupsyKit
+import Combine
 import SwiftUI
 
 @main
 struct BupsyApp: App {
     @State private var model = AppModel()
     @StateObject private var updater = Updater()
+    /// Allow and Deny on approval banners. Made with the app so it is the notification delegate
+    /// before launch finishes; attached to the model once the window's task runs.
+    @State private var notificationActions = ApprovalNotificationActions()
 
     var body: some Scene {
         WindowGroup {
@@ -17,6 +22,7 @@ struct BupsyApp: App {
                     if CommandLine.arguments.contains("--run-due-routines") {
                         model.runDueRoutines()
                     }
+                    notificationActions.attach(to: model)
                     model.startRoutineTimer()
                     #if DEBUG
                     if TourMode.isOn { Task { await TourMode.run(model: model) } }
@@ -26,6 +32,11 @@ struct BupsyApp: App {
                     model.refreshExecutor()
                     await model.refreshEngineStatus()
                 }
+                // Back from a sign-in or sign-out window in Terminal: ask the engines again, once.
+                .onReceive(NotificationCenter.default.publisher(
+                    for: NSApplication.didBecomeActiveNotification)) { _ in
+                    Task { await model.refreshEngineStatusIfAuthChanged() }
+                }
         }
         .defaultSize(width: 1280, height: 820)
         // Left as the standard window on purpose. `.hiddenTitleBar` is the look this design was
@@ -33,7 +44,22 @@ struct BupsyApp: App {
         // zoom buttons verifiably still reachable — shipping a window someone cannot close is
         // not a trade worth making for a strip of chrome. Worth a deliberate pass, not a guess.
         .windowToolbarStyle(.unified)
-        .commands { UpdaterCommands(updater: updater) }
+        .commands {
+            UpdaterCommands(updater: updater)
+            CommandGroup(after: .help) {
+                Button("Keyboard shortcuts") {
+                    NotificationCenter.default.post(name: .bupsyShowKeyboardShortcuts, object: nil)
+                }
+                .keyboardShortcut("/", modifiers: .command)
+            }
+        }
+
+        // Bupsy > Settings, Cmd comma. The scene provides both the menu item and the shortcut.
+        Settings {
+            SettingsView()
+                .environment(model)
+                .preferredColorScheme(model.appearance.scheme)
+        }
 
         // Present whether or not the window is. A bot that works for ten minutes and then asks a
         // question should be able to reach you without the window coming forward.
@@ -62,6 +88,9 @@ struct RootView: View {
         content
             .withPalette(colorScheme)
             .onChange(of: model.tourDestination) { _, new in if let new { destination = new; if case .bot(let id) = new { model.selectedBotID = id } } }
+            .onChange(of: model.pendingDestination) { _, new in
+                if let new { destination = new; model.pendingDestination = nil }
+            }
             .onChange(of: model.tourPalette) { _, new in
                 if let new { paletteSearchFirst = new; isStartingChat = true } else { isStartingChat = false }
             }
