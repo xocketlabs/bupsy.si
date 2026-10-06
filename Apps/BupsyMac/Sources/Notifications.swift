@@ -7,7 +7,7 @@ import UserNotifications
 /// blocks on a decision at 3am, and nothing says so until you next open the window. An agent you
 /// have to remember to check is not working unattended.
 ///
-/// Deliberately quiet. Nothing is sent while bupsy is the active app — you can already see it —
+/// Deliberately quiet. Nothing is sent while Bupsy is the active app (you can already see it),
 /// and a finished run only notifies when it did something worth reporting.
 @MainActor
 final class Notifier {
@@ -24,15 +24,15 @@ final class Notifier {
     func needsApproval(bot: String, tool: String, summary: String) {
         post(
             id: "approval-\(bot)-\(summary.hashValue)",
-            title: "\(bot) needs your approval",
-            body: summary.isEmpty ? tool : summary,
+            title: "\(bot) needs you",
+            body: summary.isEmpty ? "Wants to use \(tool)" : summary,
             sound: true
         )
     }
 
     func objectiveNeedsYou(bot: String, question: String) {
         post(id: "objective-\(bot)-\(question.hashValue)",
-             title: "\(bot) is stuck", body: question, sound: true)
+             title: "\(bot) needs you", body: question, sound: true)
     }
 
     /// A routine finished. Quiet, because this is information rather than a request.
@@ -40,7 +40,7 @@ final class Notifier {
         post(
             id: "routine-\(bot)-\(routine)",
             title: "\(bot) finished \(routine)",
-            body: summary ?? "Open bupsy to see what it did.",
+            body: summary ?? "Open Bupsy to see what it did.",
             sound: false
         )
     }

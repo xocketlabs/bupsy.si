@@ -5,22 +5,29 @@ import SwiftUI
 // The page shell moved to BotPage. These are the pieces a transcript is made of.
 
 struct DaySeparator: View {
+    @Environment(\.palette) private var palette
     let date: Date
 
     var body: some View {
         Text(Theme.daySeparator(date))
-            .font(Theme.Typography.badge)
-            .foregroundStyle(.tertiary)
+            .font(Theme.Typography.caption)
+            .foregroundStyle(palette.mutedForeground)
             .frame(maxWidth: .infinity)
             .padding(.vertical, Theme.Space.tight)
     }
 }
 
+/// One entry in a transcript.
+///
+/// Yours sit on the right in a grey bubble. A bot's reply has no bubble at all, just its face,
+/// its name and the time, so a long answer reads like a document rather than a stack of balloons.
+/// Everything else the bot does (tool lines, cards) sits under its words, indented past the face.
 struct Bubble: View {
     @Environment(\.palette) private var palette
     @Environment(AppModel.self) private var model
     let entry: TranscriptEntry
     let bot: Bot
+    /// Whether this entry opens with the bot's face, name and time.
     let showsAvatar: Bool
     /// Reply to this message: who said it, and what. nil where replying makes no sense.
     var onReply: ((_ author: String, _ text: String) -> Void)?
@@ -28,12 +35,19 @@ struct Bubble: View {
     @State private var hovering = false
     @State private var copied = false
 
+    init(entry: TranscriptEntry, bot: Bot, showsAvatar: Bool,
+         onReply: ((_ author: String, _ text: String) -> Void)? = nil) {
+        self.entry = entry
+        self.bot = bot
+        self.showsAvatar = showsAvatar
+        self.onReply = onReply
+    }
+
     var body: some View {
         content.onHover { hovering = $0 }
     }
 
-    /// Your message with each real @mention in bold, so who you addressed stands out — on the pink
-    /// bubble a bot's own colour would not read, so weight does the work.
+    /// Your message with each real @mention in bold, so who you addressed stands out.
     private func mentionsHighlighted(_ text: String) -> AttributedString {
         var result = AttributedString()
         for piece in MentionSplitter.split(text, names: model.bots.map(\.name)) {
@@ -48,13 +62,12 @@ struct Bubble: View {
         return result
     }
 
-    /// The reply arrow, shown beside a message while the pointer is over it.
+    /// Reply and copy, shown beside a message while the pointer is over it.
     ///
     /// Hover rather than always visible: on every message it would be furniture, and it is a thing
-    /// you reach for occasionally. Takes up its space even when hidden, so bubbles do not shift
+    /// you reach for occasionally. Takes up its space even when hidden, so messages do not shift
     /// sideways as the pointer moves down a thread.
     private func replyButton(author: String, text: String) -> some View {
-        // Reply and copy, side by side: the two things people reach for on a single message.
         HStack(spacing: 4) {
             hoverAction("arrowshape.turn.up.left", help: "Reply to this message") {
                 onReply?(author, text)
@@ -78,13 +91,12 @@ struct Bubble: View {
                 .font(.system(size: Theme.scaled(11)))
                 .foregroundStyle(palette.mutedForeground)
                 .frame(width: 26, height: 26)
-                .background(palette.card, in: .circle)
-                .contentShape(.circle)
+                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .help(help)
     }
-
 
     @ViewBuilder
     private var content: some View {
@@ -92,90 +104,84 @@ struct Bubble: View {
         case .userMessage(let text):
             let parts = Reply.split(text)
             HStack(alignment: .center, spacing: Theme.Space.tight) {
-                Spacer(minLength: 72)
+                Spacer(minLength: 96)
                 VStack(alignment: .leading, spacing: Theme.Space.tight) {
                     // What this was a reply to, inside the bubble, so the thread reads the way it
                     // was meant: this answer, about that message.
                     if let quote = parts.quote {
                         HStack(alignment: .top, spacing: Theme.Space.tight) {
                             RoundedRectangle(cornerRadius: 1)
-                                .fill(palette.onPrimary.opacity(0.5))
+                                .fill(palette.mutedForeground.opacity(0.5))
                                 .frame(width: 2)
                             VStack(alignment: .leading, spacing: 1) {
                                 if let author = parts.author {
                                     Text(author)
                                         .font(Theme.Typography.badge)
-                                        .opacity(0.85)
+                                        .foregroundStyle(palette.foreground)
                                 }
                                 Text(quote)
                                     .font(Theme.Typography.caption)
+                                    .foregroundStyle(palette.mutedForeground)
                                     .lineLimit(2)
-                                    .opacity(0.8)
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
                     }
                     Text(mentionsHighlighted(parts.body))
                         .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
                         .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, Theme.Space.step)
-                .padding(.vertical, Theme.Space.snug)
-                .background(palette.primary, in: .rect(cornerRadius: Theme.Radius.bubble))
-                .foregroundStyle(palette.onPrimary)
-                // Pinned to the bubble's own left edge. In the row they sat outside the bubble's
-                // 560pt maximum frame, so on a short message they floated mid-thread, far from
-                // the words they act on.
+                .padding(.horizontal, Theme.Space.gutter)
+                .padding(.vertical, 10)
+                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
+                // Pinned to the bubble's own left edge, so on a short message the actions sit by
+                // the words they act on rather than floating mid-thread.
                 .overlay(alignment: .leading) {
                     replyButton(author: "You", text: parts.body)
                         .fixedSize()
                         .alignmentGuide(.leading) { $0[.trailing] + Theme.Space.tight }
                 }
-                .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .trailing)
+                .frame(maxWidth: 600, alignment: .trailing)
             }
 
         case .messageFrom(_, let botName, let text):
-            // Attributed above the bubble rather than inside it, so the attribution cannot be
+            // Attributed above the message rather than inside it, so the attribution cannot be
             // mistaken for part of what was said. Left-aligned like anything this bot was told.
             VStack(alignment: .leading, spacing: Theme.Space.tight) {
-                HStack(spacing: 4) {
+                HStack(spacing: Theme.Space.tight) {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.system(size: Theme.scaled(9)))
+                    if let sender = model.bots.first(where: { $0.name == botName }) {
+                        BotFace(bot: sender, mood: .idle, size: Theme.scaled(14))
+                    }
                     Text("Message from \(botName)")
                         .font(Theme.Typography.caption)
                 }
                 .foregroundStyle(palette.mutedForeground)
-                .padding(.leading, Theme.Size.bubbleAvatar + Theme.Space.tight)
 
-                HStack {
-                    Color.clear.frame(width: Theme.Size.bubbleAvatar, height: 1)
+                HStack(alignment: .center, spacing: Theme.Space.tight) {
                     Text(text)
                         .font(Theme.Typography.body)
-                        .textSelection(.enabled)
-                        .padding(.horizontal, Theme.Space.step)
-                        .padding(.vertical, Theme.Space.snug)
-                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Theme.Radius.bubble)
-                                .strokeBorder(palette.border))
                         .foregroundStyle(palette.foreground)
-                        .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .leading)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Theme.Space.gutter)
+                        .padding(.vertical, 10)
+                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
+                        .frame(maxWidth: 600, alignment: .leading)
                     replyButton(author: botName, text: text)
                     Spacer(minLength: 72)
                 }
             }
+            .padding(.leading, ThreadLayout.gutter)
 
         case .assistantText(let text):
-            botAligned {
-                HStack(alignment: .center, spacing: Theme.Space.tight) {
-                    // Cards sit above the background, which is where this palette's depth comes
-                    // from — a reply looks like an object on a surface rather than text on a page.
-                    FormattedReply(markdown: text)
-                        .padding(.horizontal, Theme.Space.step)
-                        .padding(.vertical, Theme.Space.snug)
-                        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
-                    replyButton(author: bot.name, text: text)
-                }
+            botMessage {
+                FormattedReply(markdown: text)
+            } trailing: {
+                replyButton(author: bot.name, text: text)
             }
 
         case .thinking(let text):
@@ -188,23 +194,22 @@ struct Bubble: View {
             case .hidden:
                 EmptyView()
             case .messaged(let to, let text):
-                // What this bot sent another one, shown as a message with its address on top —
+                // What this bot sent another one, shown as a message with its address on top:
                 // the sender's side of "Message from", not a raw tool call.
-                VStack(alignment: .leading, spacing: Theme.Space.tight) {
-                    HStack(spacing: 4) {
-                        Text("Messaged")
-                        if let recipient = model.bots.first(where: { $0.name.caseInsensitiveCompare(to) == .orderedSame }) {
-                            BotFace(bot: recipient, mood: .idle, size: Theme.scaled(14))
+                botAligned {
+                    VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                        HStack(spacing: 4) {
+                            Text("Messaged")
+                            if let recipient = model.bots.first(where: { $0.name.caseInsensitiveCompare(to) == .orderedSame }) {
+                                BotFace(bot: recipient, mood: .idle, size: Theme.scaled(14))
+                            }
+                            Text(to).fontWeight(.medium)
                         }
-                        Text(to).fontWeight(.medium)
-                    }
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-                    .padding(.leading, Theme.Size.bubbleAvatar + Theme.Space.tight)
-                    botAligned {
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(palette.mutedForeground)
                         FormattedReply(markdown: text)
-                            .padding(.horizontal, Theme.Space.step)
-                            .padding(.vertical, Theme.Space.snug)
+                            .padding(.horizontal, Theme.Space.gutter)
+                            .padding(.vertical, 10)
                             .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
                             .opacity(failed ? 0.5 : 1)
                     }
@@ -222,7 +227,7 @@ struct Bubble: View {
             }
 
         case .approval(let approval):
-            botAligned { ApprovalCard(approval: approval) }
+            botAligned { ApprovalCard(approval: approval, owner: bot) }
 
         case .question(let question):
             botAligned { QuestionCard(question: question, bot: bot) }
@@ -238,124 +243,182 @@ struct Bubble: View {
             botAligned { LimitsGauge(limits: limits) }
 
         case .failure(let failure):
-            botAligned { FailureNotice(failure: failure) }
+            botAligned { FailureNotice(failure: failure, bot: bot) }
 
         case .finished:
             EmptyView()
         }
     }
 
-    @ViewBuilder
-    private func botAligned<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        HStack(alignment: .bottom, spacing: Theme.Space.tight) {
-            // A fixed gutter so bubbles stay aligned whether or not this one shows a face.
+    /// A bot's words: its face, then its name and the time, then what it said. A continuation
+    /// keeps the indent without repeating the header.
+    private func botMessage<Words: View, Trailing: View>(
+        @ViewBuilder _ words: () -> Words,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(alignment: .top, spacing: ThreadLayout.avatarGap) {
             Group {
                 if showsAvatar {
-                    BotFace(bot: bot, mood: .idle, size: Theme.Size.bubbleAvatar)
+                    BotFace(bot: bot, mood: .idle, size: ThreadLayout.avatar)
                 } else {
-                    Color.clear.frame(width: Theme.Size.bubbleAvatar, height: 1)
+                    Color.clear.frame(width: ThreadLayout.avatar, height: 1)
                 }
             }
-            content()
-                .frame(maxWidth: Theme.Size.bubbleMaxWidth, alignment: .leading)
-            Spacer(minLength: 48)
+            VStack(alignment: .leading, spacing: 2) {
+                if showsAvatar {
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
+                        Text(bot.name)
+                            .font(Theme.Typography.body.weight(.medium))
+                            .foregroundStyle(palette.foreground)
+                        Text(Theme.stamp(entry.at))
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                    }
+                }
+                words()
+            }
+            .frame(maxWidth: 720, alignment: .leading)
+            trailing()
+            Spacer(minLength: Theme.Space.section)
         }
     }
 
+    /// Something the bot did rather than said: indented under its words, never given a face.
+    private func botAligned<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, ThreadLayout.gutter)
+    }
 }
 
-/// A compact line rather than a card. Expands when you want the detail.
+/// One thing a bot did, as a quiet line: an icon, the verb in plain words, the target in mono.
+///
+/// Running shows a spinner, failed adds a red word, declined strikes the target through. Click
+/// it for the arguments and output. Tool lines are the bot showing its work, so they stay grey.
 struct ToolAside: View {
+    @Environment(\.palette) private var palette
     let name: String
     let arguments: String
     let result: String?
     let failed: Bool
     /// The bot's folder, so paths inside it read short.
-    var workingDirectory: String? = nil
+    var workingDirectory: String?
     @State private var expanded = false
+    @State private var hovering = false
+
+    init(name: String, arguments: String, result: String?, failed: Bool,
+         workingDirectory: String? = nil) {
+        self.name = name
+        self.arguments = arguments
+        self.result = result
+        self.failed = failed
+        self.workingDirectory = workingDirectory
+    }
 
     /// Refused by you (or by nobody answering) rather than broken. Drawn as a decision, not an
-    /// error: an orange "failed" made a "no" the person chose look like something went wrong.
+    /// error: a red "failed" made a "no" the person chose look like something went wrong.
     private var declined: Bool {
         guard failed, let result = result?.lowercased() else { return false }
         return ["declined", "denied", "nobody answered", "not allowed"].contains { result.contains($0) }
     }
 
+    private var running: Bool { result == nil && !failed }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
             Button {
                 // A path the bot touched is almost always something you want to look at, and
-                // retyping it into Finder is a small, repeated annoyance.
+                // retyping it into Finder is a small, repeated annoyance. Cmd-click reveals it.
                 if let path = revealablePath, NSEvent.modifierFlags.contains(.command) {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
                 } else {
                     expanded.toggle()
                 }
             } label: {
-                HStack(spacing: Theme.Space.tight) {
-                    Image(systemName: icon)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(failed && !declined ? .orange : .secondary)
+                HStack(spacing: Theme.Space.snug) {
+                    Group {
+                        if running {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            Image(systemName: icon)
+                                .font(.system(size: Theme.scaled(11)))
+                        }
+                    }
+                    .frame(width: 16, height: 16)
                     Text(verb)
-                        .foregroundStyle(.secondary)
                     Text(PathShortener.shorten(summary, workingDirectory: workingDirectory))
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .strikethrough(declined)
+                        .font(ThreadLayout.monoFont)
+                        .foregroundStyle(declined ? palette.mutedForeground : palette.foreground)
                         .lineLimit(1)
-                    if revealablePath != nil {
+                        .truncationMode(.middle)
+                    if failed && !declined {
+                        Text("failed").foregroundStyle(palette.destructiveText)
+                    }
+                    if revealablePath != nil && hovering {
                         Image(systemName: "arrow.up.forward.square")
                             .font(.system(size: Theme.scaled(9)))
-                            .foregroundStyle(.tertiary)
+                            .help("Cmd-click to show in Finder")
                     }
-                    if result == nil && !failed {
-                        ProgressView().controlSize(.mini)
-                    }
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: Theme.scaled(8), weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
                 }
-                .font(Theme.Typography.caption)
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.mutedForeground)
+                .padding(.vertical, 4)
+                .padding(.leading, 6)
+                .padding(.trailing, Theme.Space.snug)
+                .background(hovering ? palette.card : .clear, in: .rect(cornerRadius: 6))
+                .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .padding(.leading, -6)
+            .onHover { hovering = $0 }
 
             if expanded {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Theme.Space.snug) {
                     Text(arguments)
-                        .font(.system(.caption2, design: .monospaced))
+                        .font(.system(size: Theme.scaled(10.5), design: .monospaced))
+                        .foregroundStyle(palette.foreground)
                         .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let result {
-                        Divider()
+                        Rectangle().fill(palette.border).frame(height: 1)
                         Text(result)
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: Theme.scaled(10.5), design: .monospaced))
+                            .foregroundStyle(palette.mutedForeground)
                             .textSelection(.enabled)
                             .lineLimit(24)
                     }
                 }
-                .padding(Theme.Space.snug)
-                .background(.quaternary.opacity(0.35), in: .rect(cornerRadius: Theme.Radius.control))
+                .padding(.horizontal, Theme.Space.gutter)
+                .padding(.vertical, Theme.Space.step)
+                .frame(maxWidth: ThreadLayout.cardMaxWidth, alignment: .leading)
+                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
             }
         }
-        .padding(.leading, 2)
     }
 
     private var verb: String {
-        if declined { return "declined" }
-        if failed { return "failed" }
         switch name {
         case "Bash", "shell": return "ran"
         case "Read": return "read"
         case "Write", "Edit", "MultiEdit", "edit": return "edited"
         case "WebFetch", "WebSearch": return "looked up"
+        case "Grep", "Glob": return "searched"
         default: return name.hasPrefix("mcp__") ? "used" : name.lowercased()
         }
     }
 
     private var icon: String {
-        if declined { return "hand.raised.slash" }
-        if failed { return "exclamationmark.triangle" }
+        if declined { return "hand.raised" }
         switch name {
-        case "Bash", "shell": return "chevron.right"
+        case "Bash", "shell": return "terminal"
         case "Read": return "doc.text"
-        case "Write", "Edit", "MultiEdit", "edit": return "pencil"
+        case "Write", "Edit", "MultiEdit", "edit": return "square.and.pencil"
         case "WebFetch", "WebSearch": return "globe"
+        case "Grep", "Glob": return "magnifyingglass"
         default: return "wrench.adjustable"
         }
     }
@@ -370,7 +433,7 @@ struct ToolAside: View {
         return name
     }
 
-    /// A real file this tool call touched, if there is one. ⌘-click reveals it in Finder.
+    /// A real file this tool call touched, if there is one. Cmd-click reveals it in Finder.
     private var revealablePath: String? {
         guard let data = arguments.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -383,46 +446,120 @@ struct ToolAside: View {
     }
 }
 
+/// The bot's reasoning, collapsed to one line. Opening it shows the text in a grey well.
 struct ThinkingAside: View {
+    @Environment(\.palette) private var palette
     let text: String
     @State private var expanded = false
+    @State private var hovering = false
+
+    init(text: String) { self.text = text }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
             Button { expanded.toggle() } label: {
-                Label("Thinking", systemImage: "sparkle")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.tertiary)
+                HStack(spacing: Theme.Space.snug) {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: Theme.scaled(11)))
+                        .frame(width: 16, height: 16)
+                    Text("Thinking")
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: Theme.scaled(8), weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                }
+                .font(Theme.Typography.body)
+                .foregroundStyle(palette.mutedForeground)
+                .padding(.vertical, 4)
+                .padding(.leading, 6)
+                .padding(.trailing, Theme.Space.snug)
+                .background(hovering ? palette.card : .clear, in: .rect(cornerRadius: 6))
+                .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .padding(.leading, -6)
+            .onHover { hovering = $0 }
+
             if expanded {
                 Text(text)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.mutedForeground)
                     .textSelection(.enabled)
-                    .padding(Theme.Space.snug)
-                    .background(.quaternary.opacity(0.3), in: .rect(cornerRadius: Theme.Radius.control))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Theme.Space.gutter)
+                    .padding(.vertical, Theme.Space.step)
+                    .frame(maxWidth: ThreadLayout.cardMaxWidth, alignment: .leading)
+                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
             }
         }
     }
 }
 
+/// When a run fails: the bot's dizzy face, what happened in plain words, and how to fix it.
+///
+/// Amber for things that fix themselves or that you fix (limits, sign-in), red for a run that
+/// broke. Never an apology; always the fix.
 struct FailureNotice: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     let failure: EngineFailure
+    var bot: Bot?
+
+    init(failure: EngineFailure, bot: Bot? = nil) {
+        self.failure = failure
+        self.bot = bot
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Space.tight) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        let isDark = colorScheme == .dark
+        HStack(alignment: .center, spacing: Theme.Space.step) {
+            Group {
+                if let bot {
+                    BotFace(bot: bot, mood: failure.kind == .cancelled ? .idle : .failed, size: 36)
+                } else {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: Theme.scaled(15)))
+                        .foregroundStyle(tone)
+                        .frame(width: 36, height: 36)
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).fontWeight(.medium)
+                Text(title)
+                    .font(.system(size: Theme.scaled(13.5), weight: .medium))
+                    .foregroundStyle(palette.foreground)
                 Text(failure.message)
                     .font(Theme.Typography.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.mutedForeground)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, Theme.Space.step)
+        .padding(.leading, Theme.Space.step)
+        .padding(.trailing, Theme.Space.gutter)
+        .background(isDark ? palette.card : palette.background, in: .rect(cornerRadius: Theme.Radius.base))
+        .padding(2)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: Theme.Radius.bubble)
+                    .fill(isDark ? palette.sidebar : palette.background)
+                RoundedRectangle(cornerRadius: Theme.Radius.bubble)
+                    .fill(tone.opacity(isWarning ? 0.14 : 0.12))
             }
         }
-        .padding(Theme.Space.snug)
-        .background(.orange.opacity(0.1), in: .rect(cornerRadius: Theme.Radius.card))
+        .frame(maxWidth: ThreadLayout.cardMaxWidth, alignment: .leading)
+    }
+
+    private var isWarning: Bool {
+        switch failure.kind {
+        case .notSignedIn, .rateLimited, .binaryNotFound, .untrustedDirectory: true
+        default: false
+        }
+    }
+
+    private var tone: Color {
+        if failure.kind == .cancelled { return palette.mutedForeground }
+        return isWarning ? palette.warning : palette.destructive
     }
 
     private var title: String {
@@ -441,21 +578,22 @@ struct FailureNotice: View {
 }
 
 struct TypingIndicator: View {
-    @Environment(\.palette) private var palette
     let bot: Bot
 
     var body: some View {
         HStack(spacing: Theme.Space.tight) {
-            Color.clear.frame(width: Theme.Size.bubbleAvatar, height: 1)
             ThinkingOrbs(hue: bot.avatarHue, dotSize: 6)
-                .padding(.horizontal, Theme.Space.step)
-                .padding(.vertical, Theme.Space.snug)
-                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
             Spacer(minLength: 0)
         }
+        .padding(.leading, ThreadLayout.gutter)
     }
 }
 
+/// The message box: attach on the left, send on the right, one rounded box.
+///
+/// While the bot runs, the placeholder says your words will wait, send becomes stop, the border
+/// breathes pink, and the bot itself peeks over the top edge so you can see who is busy without
+/// looking up.
 struct Composer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
@@ -467,16 +605,29 @@ struct Composer: View {
     let onSend: () -> Void
     let onStop: () -> Void
 
+    init(draft: Binding<String>, bot: Bot, isRunning: Bool, replyingTo: Binding<ReplyTarget?>,
+         onSend: @escaping () -> Void, onStop: @escaping () -> Void) {
+        self._draft = draft
+        self.bot = bot
+        self.isRunning = isRunning
+        self._replyingTo = replyingTo
+        self.onSend = onSend
+        self.onStop = onStop
+    }
+
+    private let corner: CGFloat = 14
+
     var body: some View {
-        // One column for the reply bar and the field, so on a wide window the bar sits exactly
+        // One column for the reply bar and the box, so on a wide window the bar sits exactly
         // over the box it belongs to instead of stretching past it.
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
             if let target = replyingTo { replyBar(target) }
             field
         }
-        .padding(.horizontal, Theme.Space.section)
-        .padding(.vertical, Theme.Space.step)
-        .frame(maxWidth: Theme.Size.contentMaxWidth)
+        .padding(.horizontal, 32)
+        .padding(.top, Theme.Space.snug)
+        .padding(.bottom, Theme.Space.section)
+        .frame(maxWidth: ThreadLayout.columnMaxWidth)
         .frame(maxWidth: .infinity)
     }
 
@@ -493,16 +644,16 @@ struct Composer: View {
         draft = draft.isEmpty ? paths : draft + "\n" + paths
     }
 
-    /// What you are replying to, pinned above the field until you send or dismiss it.
+    /// What you are replying to, pinned above the box until you send or dismiss it.
     private func replyBar(_ target: ReplyTarget) -> some View {
         HStack(spacing: Theme.Space.snug) {
             Image(systemName: "arrowshape.turn.up.left.fill")
                 .font(.system(size: Theme.scaled(10)))
-                .foregroundStyle(palette.primary)
+                .foregroundStyle(palette.mutedForeground)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Replying to \(target.author)")
                     .font(Theme.Typography.badge)
-                    .foregroundStyle(palette.primary)
+                    .foregroundStyle(palette.foreground)
                 Text(target.text.replacingOccurrences(of: "\n", with: " "))
                     .font(Theme.Typography.caption)
                     .foregroundStyle(palette.mutedForeground)
@@ -522,74 +673,75 @@ struct Composer: View {
         }
         .padding(.horizontal, Theme.Space.step)
         .padding(.vertical, Theme.Space.tight)
-        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 1)
-                .fill(palette.primary)
-                .frame(width: 2)
-                .padding(.vertical, Theme.Space.tight)
-        }
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
     }
 
     private var field: some View {
         HStack(alignment: .bottom, spacing: Theme.Space.snug) {
-            // The visible way in. Dropping files on the field always worked, but nothing said so.
+            // The visible way in. Dropping files on the box always worked, but nothing said so.
             Button(action: pickFiles) {
                 Image(systemName: "plus")
-                    .font(.system(size: Theme.scaled(13), weight: .semibold))
-                    .foregroundStyle(palette.mutedForeground)
-                    .frame(width: 34, height: 34)
-                    .background(palette.card, in: .circle)
-                    .overlay(Circle().strokeBorder(palette.border))
-                    .contentShape(.circle)
+                    .font(.system(size: Theme.scaled(14), weight: .regular))
+                    .foregroundStyle(palette.foreground)
+                    .frame(width: 36, height: 36)
+                    .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .help("Attach files — or drop them on the message box")
-            .padding(.bottom, 5)
+            .help("Attach files, or drop them on the message box")
 
-            TextField(isRunning ? "Add more — \(bot.name) reads it when done" : "Message \(bot.name)",
+            TextField(isRunning ? "Add more. \(bot.name) reads it when done" : "Message \(bot.name)",
                       text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(Theme.Typography.body)
+                .font(ThreadLayout.messageFont)
+                .foregroundStyle(palette.foreground)
                 .lineLimit(1...8)
-                .padding(.horizontal, Theme.Space.gutter)
-                .padding(.vertical, Theme.Space.step)
-                .background(palette.card, in: .rect(cornerRadius: Theme.Radius.base))
-                .overlay {
-                    RoundedRectangle(cornerRadius: Theme.Radius.base)
-                        .strokeBorder(dropping ? palette.primary : palette.border,
-                                      lineWidth: dropping ? 1.5 : 1)
-                }
-                // Paths, not contents. The bot can open the file itself, and pasting a megabyte
-                // into a prompt would spend the user's own quota to tell it something it could
-                // have read.
-                .dropDestination(for: URL.self) { urls, _ in
-                    let paths = model.attach(urls, to: bot)
-                    guard !paths.isEmpty else { return false }
-                    draft = draft.isEmpty ? paths : draft + "\n" + paths
-                    return true
-                } isTargeted: { dropping = $0 }
-                .borderBeam(hue: bot.avatarHue, active: isRunning, cornerRadius: Theme.Radius.base)
+                .padding(.vertical, Theme.Space.snug)
+                .frame(minHeight: 36)
                 .onSubmit(onSend)
 
-            // A circle like the + beside the field, and visible even when there is nothing to
-            // send: its "off" colour used to match the window, so the button simply vanished.
+            // Pink while there is something to send, a pale pink while there is not, and a grey
+            // stop square while the bot runs.
             Button(action: isRunning ? onStop : onSend) {
                 Image(systemName: isRunning ? "stop.fill" : "arrow.up")
-                    .font(.system(size: Theme.scaled(13), weight: .bold))
-                    .foregroundStyle(sendEnabled ? palette.onPrimary : palette.mutedForeground)
-                    .frame(width: 34, height: 34)
-                    .background(sendEnabled ? palette.primary : palette.card, in: .circle)
-                    .overlay(Circle().strokeBorder(sendEnabled ? .clear : palette.border))
-                    .contentShape(.circle)
+                    .font(.system(size: Theme.scaled(isRunning ? 10 : 13), weight: .bold))
+                    .foregroundStyle(isRunning ? palette.foreground : Color.white)
+                    .frame(width: 36, height: 36)
+                    .background(isRunning ? palette.card : palette.primary.opacity(sendEnabled ? 1 : 0.45),
+                                in: .rect(cornerRadius: Theme.Radius.control))
+                    .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .padding(.bottom, 5)
             .disabled(!sendEnabled)
             .keyboardShortcut(.return, modifiers: .command)
+            .help(isRunning ? "Stop \(bot.name)" : "Send")
         }
-
-        .background(palette.background)
+        .padding(Theme.Space.snug)
+        .background(palette.background, in: .rect(cornerRadius: corner))
+        .overlay {
+            RoundedRectangle(cornerRadius: corner)
+                .strokeBorder(dropping ? palette.primary : palette.border,
+                              lineWidth: dropping ? 1.5 : 1)
+        }
+        // Paths, not contents. The bot can open the file itself, and pasting a megabyte into a
+        // prompt would spend the user's own quota to tell it something it could have read.
+        .dropDestination(for: URL.self) { urls, _ in
+            let paths = model.attach(urls, to: bot)
+            guard !paths.isEmpty else { return false }
+            draft = draft.isEmpty ? paths : draft + "\n" + paths
+            return true
+        } isTargeted: { dropping = $0 }
+        .borderBeam(hue: bot.avatarHue, active: isRunning, cornerRadius: corner)
+        // Right of centre, just left of the stop button: the bot holding on to the box it is
+        // busy behind.
+        .overlay(alignment: .topTrailing) {
+            if isRunning {
+                ThreadComposerPeek(bot: bot)
+                    .padding(.trailing, 64)
+                    .offset(y: -30)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.35), value: isRunning)
     }
 
     private var sendEnabled: Bool {
@@ -600,7 +752,7 @@ struct Composer: View {
 /// How a tool call reads in the thread when it is one of bupsy's own, or engine plumbing.
 ///
 /// A line like "used mcp__bupsy__message_bot" told the person nothing they could use. bupsy's tools
-/// have effects people recognise — a message sent, a bot asked for — so they read as those; the
+/// have effects people recognise (a message sent, a bot asked for), so they read as those; the
 /// ones whose effect already shows as a card or a note are not repeated; and the engine's
 /// ToolSearch, which only loads tool definitions, is not shown at all.
 enum BupsyToolLine {

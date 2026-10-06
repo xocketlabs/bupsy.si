@@ -4,7 +4,7 @@ import SwiftUI
 /// The model choices for a bot, used by every menu that offers them.
 ///
 /// Newest-in-family aliases first, exact versions after, then a custom entry for anything the list
-/// does not have yet — a new model should never have to wait for a bupsy update.
+/// does not have yet. A new model should never have to wait for a bupsy update.
 struct ModelMenuItems: View {
     @Environment(AppModel.self) private var model
     let bot: Bot
@@ -53,8 +53,8 @@ struct CustomModelSheet: View {
             width: 440
         ) {
             Field(label: "Model ID",
-                  hint: "If the CLI is older than the model it will say so on the first run — "
-                      + "updating the CLI fixes it.") {
+                  hint: "If the CLI is older than the model, it says so on the first run. "
+                      + "Updating the CLI fixes it.") {
                 TextField("", text: $id, prompt: Text(bot.engine == .codex ? "gpt-5.6" : "claude-opus-5-5"))
                     .textFieldStyle(BupsyFieldStyle())
                     .onSubmit(save)
