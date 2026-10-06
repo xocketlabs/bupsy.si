@@ -3,9 +3,9 @@ import SwiftUI
 
 /// What a bot is doing right now, shown under the thread while it works.
 ///
-/// A 3×3 dot grid crossed by a diagonal wave, a label that says what the bot is actually doing —
-/// "Searching the web", "Editing hello.txt" — with a highlight sweeping across it, and how long
-/// it has been at it. Three static dots said "busy"; this says busy with what, and for how long.
+/// Its own mascot, small and sweating, then a status that breathes ("Searching the web",
+/// "Editing hello.txt") and a timer that counts up. Hidden the moment an approval card appears,
+/// so nobody sees "working" and "needs you" at once.
 struct AgentThinking: View {
     @Environment(\.palette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -13,21 +13,30 @@ struct AgentThinking: View {
     let thread: Thread
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 9) {
-                DotWave(time: reduceMotion ? 0 : t, colour: BotFace.colour(of: bot))
-                ShimmerText(text: status, time: reduceMotion ? nil : t)
-                if let started {
-                    Text(elapsed(since: started, now: timeline.date))
-                        .font(.system(size: Theme.scaled(11), design: .monospaced))
-                        .foregroundStyle(palette.mutedForeground.opacity(0.8))
-                        .monospacedDigit()
+        HStack(spacing: 10) {
+            BotFace(bot: bot, mood: .working, size: 22)
+            TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                // 2.2s in and out, eased, the same breath as the composer's border.
+                let breath = 0.5 - 0.5 * cos((t.truncatingRemainder(dividingBy: 2.2) / 2.2) * 2 * .pi)
+                HStack(spacing: 10) {
+                    Text(status)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.foreground)
+                        .opacity(reduceMotion ? 1 : 0.55 + 0.45 * breath)
+                        .lineLimit(1)
+                    if let started {
+                        Text(elapsed(since: started, now: timeline.date))
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                            .monospacedDigit()
+                    }
                 }
             }
         }
-        .padding(.leading, Theme.Size.bubbleAvatar + Theme.Space.tight)
+        .padding(.leading, ThreadLayout.gutter)
         .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(bot.name) is \(status.lowercased())")
     }

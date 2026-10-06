@@ -1,7 +1,7 @@
 import BupsyKit
 import SwiftUI
 
-/// One place to find and start anything — the + button and ⌘F both open it, like Spotlight.
+/// One place to find and start anything. The + button and Cmd F both open it, like Spotlight.
 ///
 /// Empty, it offers what you can make and the bots and groups you talk to most recently. Typing
 /// narrows those by name and also searches what was said, so "invoice" finds the message about
@@ -33,39 +33,41 @@ struct StartChatPalette: View {
             }
         }
         .frame(width: 640)
-        .background(.regularMaterial, in: .rect(cornerRadius: 18))
-        .background(palette.popover.opacity(0.75), in: .rect(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(palette.border))
-        .shadow(color: .black.opacity(0.28), radius: 40, y: 18)
+        .background(palette.popover, in: .rect(cornerRadius: Theme.Radius.bubble))
+        .clipShape(.rect(cornerRadius: Theme.Radius.bubble))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.bubble).strokeBorder(palette.border))
+        .shadow(color: .black.opacity(0.18), radius: 32, y: 14)
     }
 
     private var needle: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
 
     private var field: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Theme.Space.step) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: Theme.scaled(18), weight: .medium))
+                .font(.system(size: Theme.scaled(14), weight: .medium))
                 .foregroundStyle(palette.mutedForeground)
             PaletteField(
                 text: $query,
-                placeholder: searchFirst ? "Search bots, groups and messages" : "Start a chat, or search…",
-                fontSize: Theme.scaled(20),
+                placeholder: searchFirst ? "Search bots, groups and messages" : "Start a chat, or search...",
+                fontSize: Theme.scaled(15),
                 onSubmit: activate,
                 onMove: move,
                 onCancel: onDismiss)
-                .frame(height: 30)
+                .frame(height: 26)
                 .onChange(of: query) { highlighted = 0 }
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: Theme.scaled(14)))
+                        .font(.system(size: Theme.scaled(13)))
                         .foregroundStyle(palette.mutedForeground)
                 }
                 .buttonStyle(.plain)
+                .help("Clear")
             }
+            Keycap("esc")
         }
-        .padding(.horizontal, 18)
-        .frame(height: 58)
+        .padding(.horizontal, Theme.Space.gutter)
+        .frame(height: 56)
     }
 
     private var list: some View {
@@ -74,13 +76,12 @@ struct StartChatPalette: View {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         if index == 0 || rows[index - 1].section != row.section {
-                            Text(row.section.uppercased())
-                                .font(.system(size: Theme.scaled(10), weight: .semibold))
-                                .tracking(0.6)
+                            Text(row.section)
+                                .font(Theme.Typography.caption)
                                 .foregroundStyle(palette.mutedForeground)
                                 .padding(.horizontal, 10)
-                                .padding(.top, index == 0 ? 2 : 10)
-                                .padding(.bottom, 3)
+                                .padding(.top, index == 0 ? Theme.Space.snug : Theme.Space.step)
+                                .padding(.bottom, 4)
                         }
                         PaletteRow(row: row, needle: needle, highlighted: index == highlighted) {
                             choose(row)
@@ -89,16 +90,19 @@ struct StartChatPalette: View {
                         .onHover { if $0 { highlighted = index } }
                     }
                     if rows.isEmpty {
-                        VStack(spacing: 6) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: Theme.scaled(22)))
-                                .foregroundStyle(palette.mutedForeground.opacity(0.6))
-                            Text("Nothing matches “\(query)”")
-                                .font(Theme.Typography.body)
+                        // A napping grey bot: nothing found is not an error.
+                        HStack(spacing: Theme.Space.step) {
+                            BotFace(hue: 0, mood: .sleeping, size: 48, shape: .bup, colour: 0)
+                                .saturation(0)
+                                .opacity(0.7)
+                                .accessibilityHidden(true)
+                            Text("Nothing matches \"\(query)\"")
+                                .font(.system(size: Theme.scaled(13.5)))
                                 .foregroundStyle(palette.mutedForeground)
+                            Spacer(minLength: 0)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 28)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 20)
                     }
                 }
                 .padding(8)
@@ -113,33 +117,33 @@ struct StartChatPalette: View {
 
     /// Sized to its rows, up to a cap, so a short list leaves no empty panel.
     private var listHeight: CGFloat {
-        guard !rows.isEmpty else { return 110 }
+        guard !rows.isEmpty else { return 104 }
         let sections = Set(rows.map(\.section)).count
-        let height = rows.reduce(0) { $0 + ($1.isMessage ? 52 : 42) } + CGFloat(sections) * 24 + 16
+        let height = rows.reduce(0) { $0 + ($1.isMessage ? 62 : 58) } + CGFloat(sections) * 30 + 16
         return min(height, 420)
     }
 
     private var hints: some View {
-        HStack(spacing: 16) {
-            hint("↑↓", "move")
-            hint("↩", "open")
-            hint("esc", "close")
+        HStack(spacing: Theme.Space.gutter) {
+            HStack(spacing: 4) {
+                Keycap("↑")
+                Keycap("↓")
+                Text("to move")
+            }
+            HStack(spacing: 4) {
+                Keycap("Return")
+                Text("to open")
+            }
+            HStack(spacing: 4) {
+                Keycap("Esc")
+                Text("to close")
+            }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 18)
-        .frame(height: 34)
-    }
-
-    private func hint(_ key: String, _ label: String) -> some View {
-        HStack(spacing: 5) {
-            Text(key)
-                .font(.system(size: Theme.scaled(10), weight: .semibold, design: .rounded))
-                .padding(.horizontal, 5).padding(.vertical, 1)
-                .background(palette.foreground.opacity(0.08), in: .rect(cornerRadius: 4))
-            Text(label)
-        }
-        .font(.system(size: Theme.scaled(11)))
+        .font(Theme.Typography.caption)
         .foregroundStyle(palette.mutedForeground)
+        .padding(.horizontal, Theme.Space.gutter)
+        .padding(.vertical, 10)
     }
 
     private var rows: [PaletteItem] {
@@ -147,8 +151,8 @@ struct StartChatPalette: View {
         var items: [PaletteItem] = []
         let create: [PaletteItem] = [
             PaletteItem(kind: .create, section: "Create", title: "New bot", subtitle: "It asks what it's for"),
-            PaletteItem(kind: .createGroup, section: "Create", title: "New group chat", subtitle: "Several bots in one conversation"),
-            PaletteItem(kind: .createManually, section: "Create", title: "Set up a bot yourself", subtitle: "Name, face and job up front"),
+            PaletteItem(kind: .createGroup, section: "Create", title: "New group chat", subtitle: "Two or more bots, one lead"),
+            PaletteItem(kind: .createManually, section: "Create", title: "Set up a bot yourself", subtitle: "Pick its face, job, engine and trust"),
         ].filter { model.bots.count >= 2 || $0.kind != .createGroup }
 
         let chats: [PaletteItem] = {
@@ -256,30 +260,42 @@ private struct PaletteRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                icon.frame(width: 30, height: 30)
+            HStack(spacing: Theme.Space.step) {
+                icon.frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(marked(row.title))
-                        .font(Theme.Typography.body.weight(.medium))
-                        .foregroundStyle(palette.foreground)
-                        .lineLimit(1)
-                    if !row.subtitle.isEmpty {
-                        Text(marked(snippet(row.subtitle)))
-                            .font(Theme.Typography.caption)
+                    if case .message(_, let at) = row.kind {
+                        // Who said it and when, then the words, with the match marked.
+                        Text("\(row.title), \(Theme.stamp(at))")
+                            .font(Theme.Typography.label)
                             .foregroundStyle(palette.mutedForeground)
-                            .lineLimit(row.isMessage ? 2 : 1)
+                            .lineLimit(1)
+                        Text(marked(snippet(row.subtitle)))
+                            .font(.system(size: Theme.scaled(13.5)))
+                            .foregroundStyle(palette.foreground)
+                            .lineLimit(1)
+                    } else {
+                        Text(marked(row.title))
+                            .font(.system(size: Theme.scaled(13.5), weight: .medium))
+                            .foregroundStyle(palette.foreground)
+                            .lineLimit(1)
+                        if !row.subtitle.isEmpty {
+                            Text(row.subtitle)
+                                .font(Theme.Typography.label)
+                                .foregroundStyle(palette.mutedForeground)
+                                .lineLimit(1)
+                        }
                     }
                 }
                 Spacer(minLength: 0)
                 if highlighted {
-                    Image(systemName: "return")
-                        .font(.system(size: Theme.scaled(10), weight: .semibold))
+                    Text("Return")
+                        .font(Theme.Typography.caption)
                         .foregroundStyle(palette.mutedForeground)
                 }
             }
             .padding(.horizontal, 10)
-            .frame(minHeight: row.isMessage ? 50 : 40)
-            .background(highlighted ? palette.primary.opacity(0.16) : .clear, in: .rect(cornerRadius: 10))
+            .padding(.vertical, Theme.Space.snug)
+            .background(highlighted ? palette.card : .clear, in: .rect(cornerRadius: Theme.Radius.base))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -288,33 +304,45 @@ private struct PaletteRow: View {
     @ViewBuilder private var icon: some View {
         switch row.kind {
         case .bot(let bot), .message(let bot, _):
-            BotFace(bot: bot, mood: .idle, size: 28)
+            BotFace(bot: bot, mood: mood(for: bot), size: 36)
         case .group(let group):
-            StackedFaces(bots: model.bots.filter { group.memberIDs.contains($0.id) }, size: 28)
+            StackedFaces(bots: model.bots.filter { group.memberIDs.contains($0.id) }, size: 30)
         case .create, .createGroup, .createManually:
-            let symbol = row.kind == .create ? "plus" : (row.kind == .createGroup ? "person.2.fill" : "slider.horizontal.3")
+            let symbol = row.kind == .create ? "plus" : (row.kind == .createGroup ? "person.2.fill" : "gearshape.fill")
             Image(systemName: symbol)
-                .font(.system(size: Theme.scaled(12), weight: .semibold))
-                .foregroundStyle(row.kind == .create ? palette.onPrimary : palette.foreground)
-                .frame(width: 28, height: 28)
-                .background(row.kind == .create ? AnyShapeStyle(palette.primary) : AnyShapeStyle(palette.foreground.opacity(0.08)),
-                            in: .rect(cornerRadius: 8))
+                .font(.system(size: Theme.scaled(13), weight: .medium))
+                .foregroundStyle(palette.foreground)
+                .frame(width: 36, height: 36)
+                .background {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: Theme.Radius.base).fill(palette.card)
+                        if row.kind == .create {
+                            // The one thing the palette is mostly opened for gets the accent.
+                            RoundedRectangle(cornerRadius: Theme.Radius.base).fill(palette.primary.opacity(0.16))
+                        }
+                    }
+                }
         }
     }
 
-    /// For a long message, the part around the match — the start of a paragraph rarely is.
+    /// The face matches what the bot is up to, so the list doubles as a glance at the team.
+    private func mood(for bot: Bot) -> BotMood {
+        if model.isWaitingForApproval(bot.id) { return .waitingForYou }
+        return model.thread(for: bot.id).isRunning ? .working : .idle
+    }
+
+    /// For a long message, the part around the match. The start of a paragraph rarely is.
     private func snippet(_ text: String) -> String {
         guard row.isMessage, !needle.isEmpty, let range = text.lowercased().range(of: needle) else { return text }
         let start = text.index(range.lowerBound, offsetBy: -40, limitedBy: text.startIndex) ?? text.startIndex
-        return (start == text.startIndex ? "" : "…") + text[start...]
+        return (start == text.startIndex ? "" : "...") + text[start...]
     }
 
-    /// The matched part in bold.
+    /// The matched part, washed in the accent like a highlighter.
     private func marked(_ text: String) -> AttributedString {
         var result = AttributedString(text)
         guard !needle.isEmpty, let range = result.range(of: needle, options: .caseInsensitive) else { return result }
-        result[range].font = .system(size: Theme.scaled(13), weight: .bold)
-        result[range].foregroundColor = palette.primary
+        result[range].backgroundColor = palette.primary.opacity(0.3)
         return result
     }
 }
@@ -433,6 +461,8 @@ struct CreationSheet: View {
 
 /// A bot proposing its own job. Asked because the job is its standing instructions: a bot must
 /// not quietly rewrite its own orders, even ones the person just described to it.
+///
+/// The bot itself peeks over the sheet, so it is plain whose job this is.
 struct JobChangeSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
@@ -441,38 +471,38 @@ struct JobChangeSheet: View {
     var body: some View {
         SheetFrame(
             title: "Save \(change.bot.name)'s job?",
-            icon: "text.badge.checkmark",
-            subtitle: "It wrote this from your conversation. It becomes the standing instructions "
-                + "for everything \(change.bot.name) does.",
-            width: 460,
-            closable: false
+            subtitle: "\(change.bot.name) does this on its own from now on. You can change it any "
+                + "time in its details.",
+            width: 520,
+            closable: false,
+            bot: change.bot,
+            primaryVerb: "save"
         ) {
-            HStack(spacing: Theme.Space.step) {
-                BotFace(bot: change.bot, mood: .idle, size: 40)
-                Text(change.bot.name).font(Theme.Typography.title).foregroundStyle(palette.foreground)
-                Spacer(minLength: 0)
-            }
-            Field(label: "Its job") {
+            Field(label: "Job") {
                 Text(change.job)
                     .font(Theme.Typography.body)
                     .foregroundStyle(palette.foreground)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Theme.Space.step)
-                    .background(palette.card, in: .rect(cornerRadius: Theme.Radius.control))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(palette.border))
+                    .background(palette.background, in: .rect(cornerRadius: Theme.Radius.base))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.base).strokeBorder(palette.border))
             }
-            if let current = change.bot.personaPrompt {
+            if let current = change.bot.personaPrompt, !current.isEmpty {
                 Text("Replaces: \(current)")
                     .font(Theme.Typography.caption)
                     .foregroundStyle(palette.mutedForeground)
+                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
         } actions: {
-            Button("Keep current") { model.decideJobChange(change, allow: false) }
-                .buttonStyle(QuietButton())
+            Button("Not now") { model.decideJobChange(change, allow: false) }
+                .buttonStyle(ThreadButtonStyle(kind: .ghost))
+                .keyboardShortcut(.cancelAction)
             Button("Save job") { model.decideJobChange(change, allow: true) }
-                .buttonStyle(PrimaryButton())
+                .buttonStyle(ThreadButtonStyle(kind: .primary))
+                .keyboardShortcut(.defaultAction)
         }
     }
 }

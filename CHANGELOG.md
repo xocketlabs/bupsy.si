@@ -15,6 +15,12 @@ PR as the change; the release moves it under a version.
   the top.
 - Sidebar folders are now called sections, so they no longer get mixed up with a bot's work folder.
 - Empty places show a napping bot and one line on what to do next.
+- Every screen restyled to match: onboarding with a scene per step, the bot creator, chats (the
+  working bot peeks over the message box), Waiting on you, search, group chats, routines and goals,
+  Apps, Usage, Permissions and Machines.
+- New Team page: your bots by section, in columns. Move a bot with its menu or drag it across.
+- New Group chats page, and the sidebar's sections now fold.
+- The menu bar shows each bot's live face, and a bot that needs you can be answered right there.
 
 ## 0.1.0 — first public build
 

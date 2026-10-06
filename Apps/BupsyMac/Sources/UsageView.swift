@@ -3,7 +3,7 @@ import SwiftUI
 
 /// What each bot has used: runs, tokens, and what that would cost at API rates.
 ///
-/// The dollar figure is the one that needs care. It is the engine's own `total_cost_usd` — what
+/// The dollar figure is the one that needs care. It is the engine's own `total_cost_usd`: what
 /// the same work would cost on Anthropic's pay-as-you-go API. On a Claude subscription nobody pays
 /// per token, so it is labelled as a value, never as a bill, and the page says so at the top. It is
 /// still worth seeing: it is the clearest measure of which bot is doing the most, and of what the
@@ -16,73 +16,97 @@ struct UsageSheet: View {
     var body: some View {
         let rows = model.usage(since: period.start)
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.section) {
-                SectionHeader(
-                    icon: "chart.bar",
-                    title: "Usage",
-                    badge: nil,
-                    subtitle: "What each bot has used, under your own sign-in."
-                ) {
-                    Picker("", selection: $period) {
-                        ForEach(UsagePeriod.allCases, id: \.self) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 220)
-                }
+        SetupPageScroll {
+            SetupPageHeader(title: "Usage", description: "What your bots spent of your plan") {
+                UsagePeriodPicker(period: $period)
+            }
 
-                if rows.isEmpty {
-                    EmptyRow(text: "Nothing yet \(period.phrase). Usage appears after a bot's first run.") {}
-                } else {
-                    totals(rows)
-                    VStack(spacing: Theme.Space.snug) {
+            if rows.isEmpty {
+                EmptyState(
+                    title: period == .all ? "Nothing yet" : "Nothing \(period.phrase)",
+                    message: "Usage shows up here after a bot's first run.")
+                    .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+            } else {
+                totals(rows)
+
+                VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                    SetupSectionHeader(
+                        icon: "face.smiling",
+                        title: "By bot",
+                        description: "Bars share one scale, so you can compare bots at a glance")
+                    VStack(spacing: Theme.Space.step) {
                         ForEach(rows, id: \.botID) { usage in
                             if let bot = model.bots.first(where: { $0.id.rawValue == usage.botID }) {
                                 UsageRow(bot: bot, usage: usage,
-                                         share: share(of: usage, in: rows))
+                                         share: share(of: usage, in: rows),
+                                         working: model.isRunning(bot.id))
                             }
                         }
                     }
                 }
-
-                Text("The dollar figures are what this usage would cost on Anthropic's API, as "
-                     + "the engine itself reports it. On a Claude subscription you don't pay per "
-                     + "token — this shows scale, not a bill. Codex reports no figure, so its bots "
-                     + "show tokens only.")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 32)
-            .padding(.vertical, 28)
-            .frame(maxWidth: Theme.Size.contentMaxWidth, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
+
+            SetupFootnote(text: "Dollar figures are the API price, shown for scale. You pay your "
+                          + "plan, not this. Codex runs show no dollar figure.")
         }
     }
 
     private func totals(_ rows: [BotUsage]) -> some View {
         let costed = rows.compactMap(\.costUSD)
-        return HStack(spacing: Theme.Space.snug) {
-            StatTile(label: "Runs", value: "\(rows.map(\.runs).reduce(0, +))")
-            StatTile(label: "Tokens sent",
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: Theme.Space.step)],
+                         spacing: Theme.Space.step) {
+            StatTile(icon: "play.fill", label: "Runs", value: "\(rows.map(\.runs).reduce(0, +))")
+            StatTile(icon: "arrow.up", label: "Tokens sent",
                      value: UsageFormat.tokens(rows.map(\.sentTokens).reduce(0, +)))
-            StatTile(label: "Tokens received",
+            StatTile(icon: "arrow.down.to.line", label: "Tokens received",
                      value: UsageFormat.tokens(rows.map(\.receivedTokens).reduce(0, +)))
-            StatTile(label: "API-equivalent",
-                     value: costed.isEmpty ? "—" : UsageFormat.dollars(costed.reduce(0, +)))
+            StatTile(icon: "creditcard.fill", label: "API-equivalent",
+                     value: costed.isEmpty ? "None" : UsageFormat.dollars(costed.reduce(0, +)))
         }
     }
 
-    /// The bar's length: this bot's share of tokens sent.
+    /// The bar's length: this bot's tokens sent, against the busiest bot's.
     ///
-    /// Always tokens, never cost. The first version used cost where it was known and tokens where
-    /// it was not, so one bot's bar was a share of dollars and the next a share of tokens — bars
-    /// that added up to more than 100% and compared nothing. Tokens are the one unit every engine
-    /// reports; the dollar figure stays as the number at the end of the row.
+    /// Always tokens, never cost. An earlier version used cost where it was known and tokens
+    /// where it was not, so one bot's bar measured dollars and the next tokens, and the bars
+    /// compared nothing. Tokens are the one unit every engine reports; the dollar figure stays as
+    /// the number at the end of the row. Scaled to the busiest bot so the top bar runs full and
+    /// every other bar reads against it.
     private func share(of usage: BotUsage, in rows: [BotUsage]) -> Double {
-        let total = Double(rows.map(\.sentTokens).reduce(0, +))
-        return total > 0 ? Double(usage.sentTokens) / total : 0
+        let top = Double(rows.map(\.sentTokens).max() ?? 0)
+        return top > 0 ? Double(usage.sentTokens) / top : 0
+    }
+}
+
+/// 7 days, 30 days, All time: a quiet segmented control that matches the cards beside it.
+private struct UsagePeriodPicker: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
+    @Binding var period: UsagePeriod
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(UsagePeriod.allCases, id: \.self) { option in
+                let selected = option == period
+                Button { period = option } label: {
+                    Text(option.label)
+                        .font(.system(size: Theme.scaled(13)))
+                        .foregroundStyle(selected ? palette.foreground : palette.mutedForeground)
+                        .padding(.horizontal, 14)
+                        .frame(height: 34)
+                        .background(selected ? (colorScheme == .dark ? palette.cardHover : palette.background)
+                                             : Color.clear,
+                                    in: .rect(cornerRadius: Theme.Radius.control))
+                        .shadow(color: selected ? Color.black.opacity(0.08) : Color.clear, radius: 1, y: 1)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.base))
+        .fixedSize()
     }
 }
 
@@ -123,7 +147,7 @@ enum UsageFormat {
         }
     }
 
-    /// Cents below a dollar, whole dollars above a hundred — enough precision to compare bots,
+    /// Cents below a dollar, whole dollars above a hundred, enough precision to compare bots,
     /// not so much that it reads like an invoice.
     static func dollars(_ value: Double) -> String {
         switch value {
@@ -136,80 +160,97 @@ enum UsageFormat {
 
 private struct StatTile: View {
     @Environment(\.palette) private var palette
+    let icon: String
     let label: String
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(palette.mutedForeground)
+        VStack(alignment: .leading, spacing: Theme.Space.step) {
+            HStack(spacing: Theme.Space.snug) {
+                Image(systemName: icon)
+                    .font(.system(size: Theme.scaled(12), weight: .semibold))
+                    .foregroundStyle(palette.foreground)
+                Text(label)
+                    .font(.system(size: Theme.scaled(13)))
+                    .foregroundStyle(palette.mutedForeground)
+                    .lineLimit(1)
+            }
             Text(value)
-                .font(.system(size: Theme.scaled(20), weight: .semibold))
+                .font(.system(size: Theme.scaled(26), weight: .medium))
+                .tracking(-0.5)
                 .foregroundStyle(palette.foreground)
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Space.gutter)
-        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card).strokeBorder(palette.border))
+        .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
     }
 }
 
+/// One bot's share: its face, its name and figure over a bar in its own colour, and the counts.
 private struct UsageRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     let bot: Bot
     let usage: BotUsage
     let share: Double
+    let working: Bool
+    @State private var hovering = false
+
+    init(bot: Bot, usage: BotUsage, share: Double, working: Bool) {
+        self.bot = bot
+        self.usage = usage
+        self.share = share
+        self.working = working
+    }
 
     var body: some View {
         Button {
             model.selectedBotID = bot.id
         } label: {
-            HStack(spacing: Theme.Space.step) {
-                BotFace(bot: bot, mood: .idle, size: Theme.scaled(32))
-                VStack(alignment: .leading, spacing: Theme.Space.tight) {
+            HStack(spacing: Theme.Space.gutter) {
+                BotFace(bot: bot, mood: working ? .working : .idle, size: 40)
+                VStack(alignment: .leading, spacing: 5) {
                     HStack {
                         Text(bot.name)
                             .font(Theme.Typography.body)
-                            .fontWeight(.medium)
                             .foregroundStyle(palette.foreground)
-                        Text(bot.engine.displayName)
-                            .font(Theme.Typography.badge)
-                            .foregroundStyle(palette.mutedForeground)
+                            .lineLimit(1)
                         Spacer(minLength: Theme.Space.snug)
-                        Text(usage.costUSD.map(UsageFormat.dollars) ?? "—")
+                        Text(usage.costUSD.map(UsageFormat.dollars) ?? "Tokens only")
                             .font(Theme.Typography.body)
-                            .fontWeight(.medium)
-                            .foregroundStyle(palette.foreground)
+                            .foregroundStyle(palette.mutedForeground)
                             .monospacedDigit()
                     }
                     // A bar, because "which bot is using the most" is a comparison, and bars
                     // compare at a glance where a column of numbers has to be read.
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(palette.secondary)
+                            Capsule().fill(palette.foreground.opacity(0.08))
                             Capsule()
-                                .fill(BotShape.palette[
-                                    (bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue))
-                                        % BotShape.palette.count])
-                                .frame(width: max(4, geometry.size.width * min(max(share, 0), 1)))
+                                .fill(BotFace.colour(of: bot))
+                                .frame(width: max(6, geometry.size.width * min(max(share, 0), 1)))
                         }
                     }
-                    .frame(height: 5)
-                    Text("\(usage.runs) \(usage.runs == 1 ? "run" : "runs") · "
-                         + "\(UsageFormat.tokens(usage.sentTokens)) sent · "
+                    .frame(height: 6)
+                    Text("\(usage.runs) \(usage.runs == 1 ? "run" : "runs"), "
+                         + "\(UsageFormat.tokens(usage.sentTokens)) sent, "
                          + "\(UsageFormat.tokens(usage.receivedTokens)) received")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(palette.mutedForeground)
                 }
             }
-            .padding(Theme.Space.gutter)
-            .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
+            .padding(.vertical, 14)
+            .padding(.leading, Theme.Space.step)
+            .padding(.trailing, Theme.Space.gutter)
+            .background(hovering ? palette.cardHover : palette.card,
+                        in: .rect(cornerRadius: 14, style: .continuous))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .help("Open \(bot.name)")
+        .onHover { hovering = $0 }
     }
 }

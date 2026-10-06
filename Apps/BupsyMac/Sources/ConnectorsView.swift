@@ -3,60 +3,75 @@ import SwiftUI
 
 /// Apps your bots can use, as MCP servers you run.
 ///
-/// Framed as "your servers", because that is what they are. bupsy did not write a Gmail
-/// integration and does not hold a Gmail token — the server authenticates itself, wherever it
+/// Framed as "your servers", because that is what they are. Bupsy did not write a Gmail
+/// integration and does not hold a Gmail token. The server authenticates itself, wherever it
 /// keeps its own credentials, and we only ever learn whether it is configured.
 struct ConnectorsSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
     @State private var isAdding = false
 
+    private var servers: [MCPServer] { model.connectors.filter { $0.name != Executor.name } }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.section) {
-                SectionHeader(
-                    icon: "puzzlepiece.extension",
-                    title: "Apps",
-                    badge: model.connectors.isEmpty ? nil : "\(model.connectors.count)",
-                    subtitle: "Your MCP servers, run on your machine. bupsy never sees their sign-ins."
-                ) {
-                    Button("Add a server") { isAdding = true }
-                        .buttonStyle(QuietButton())
+        SetupPageScroll {
+            SetupPageHeader(
+                title: "Apps",
+                description: "Connect a tool once and every bot can use it. Bots still ask before they do."
+            ) {
+                Button { isAdding = true } label: {
+                    Label("Add a server", systemImage: "plus")
                 }
+                .buttonStyle(QuietButton())
+            }
 
-                ExecutorCard()
+            ExecutorCard()
 
-                if model.connectors.contains(where: { $0.name != Executor.name }) {
-                    VStack(spacing: Theme.Space.snug) {
-                        ForEach(model.connectors.filter { $0.name != Executor.name }) { server in
+            SetupSectionRule()
+
+            VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                SetupSectionHeader(
+                    icon: "apple.terminal",
+                    title: "Your servers",
+                    badge: servers.isEmpty ? nil : "\(servers.count)",
+                    badgeTone: .info,
+                    description: "MCP servers you added yourself. Bupsy stores names of the keys they "
+                        + "need, never the values.")
+
+                if servers.isEmpty {
+                    EmptyState(
+                        title: "No servers yet",
+                        message: "Add any MCP server by its command, or pick a common one below.",
+                        faceSize: 56
+                    ) {
+                        Button("Add a server") { isAdding = true }
+                            .buttonStyle(QuietButton(compact: true))
+                    }
+                    .background(palette.card, in: .rect(cornerRadius: 14, style: .continuous))
+                } else {
+                    VStack(spacing: Theme.Space.step) {
+                        ForEach(servers) { server in
                             ConnectorRow(server: server)
                         }
                     }
                 }
+            }
 
-                if !unaddedSuggestions.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Space.step) {
-                    Text((model.connectors.isEmpty ? "Common ones" : "Add another").uppercased())
-                        .font(Theme.Typography.badge)
-                        .foregroundStyle(palette.sidebarMuted)
-                        .tracking(0.7)
-                    VStack(spacing: Theme.Space.snug) {
-                        // Filtered rather than disabled in place. A server you have added is
-                        // already listed above, and leaving a greyed-out "Added" copy below it
-                        // showed every connector twice — which reads as a bug, because it is one.
+            if !unaddedSuggestions.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                    SetupSectionHeader(icon: "plus", title: "Common ones")
+                    // Filtered rather than disabled in place. A server you have added is
+                    // already listed above, and leaving a greyed-out "Added" copy below it
+                    // showed every connector twice, which reads as a bug because it is one.
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: Theme.Space.step),
+                                        GridItem(.flexible(), spacing: Theme.Space.step)],
+                              alignment: .leading, spacing: Theme.Space.step) {
                         ForEach(unaddedSuggestions) { suggestion in
                             SuggestionRow(suggestion: suggestion)
                         }
                     }
                 }
-                }
-
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 32)
-            .padding(.vertical, 28)
-            .frame(maxWidth: Theme.Size.contentMaxWidth, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
         }
         .sheet(isPresented: $isAdding) { AddServerSheet() }
         .onAppear { model.refreshExecutor() }
@@ -72,170 +87,144 @@ struct ConnectorsSheet: View {
 
 /// Executor, offered first: one connection that brings every tool the person set up in it.
 ///
-/// Three states, each with one obvious action — install it, connect tools in it, or turn it back
-/// on. Once installed it is on for every bot without a click; its tools still ask first.
+/// Four states, each with one obvious action: install it, wait for the installer, open it, or
+/// turn it back on. Once installed it is on for every bot without a click; its tools still ask
+/// first. A mascot sits in the panel and wears the state: waiting, busy, pleased, asleep.
 struct ExecutorCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
 
-    private var isOn: Bool { model.connectors.contains { $0.name == Executor.name && $0.enabled } }
+    private enum Phase { case checking, missing, installing, on, off }
+
+    private var phase: Phase {
+        switch model.executorInstalled {
+        case nil: return .checking
+        case false?: return model.executorInstalling ? .installing : .missing
+        case true?: return isAdded ? .on : .off
+        }
+    }
+
     private var isAdded: Bool { model.connectors.contains { $0.name == Executor.name } }
 
-    @State private var showsGuide = false
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            card
-            if showsGuide || model.executorInstalled == false {
-                guide
-            }
-        }
-        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
-    }
+        VStack(alignment: .leading, spacing: Theme.Space.section) {
+            SetupSectionHeader(
+                icon: "square.grid.2x2.fill",
+                title: "Executor",
+                badge: badge.text,
+                badgeTone: badge.tone,
+                description: "Gmail, Notion, Linear or any API. The keys stay in Executor, never in Bupsy.")
 
-    /// Three steps, in the order they happen, each with the button that does it.
-    private var guide: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.step) {
-            Rectangle().fill(palette.border).frame(height: 1)
-            step(1, "Install Executor",
-                 model.executorInstalled == true ? "Installed on this Mac."
-                    : "Free and open source. Needs Node.js — the installer says so if it's missing.",
-                 done: model.executorInstalled == true) {
-                if model.executorInstalled != true {
-                    Button("Install") { model.installExecutor() }
-                        .buttonStyle(QuietButton(compact: true))
-                        .disabled(model.executorInstalling)
-                }
-            }
-            step(2, "Connect your tools in Executor",
-                 "Open it, add Gmail, Notion, Linear, GitHub or any API, and sign in to each there. "
-                    + "The keys stay in Executor.",
-                 done: false) {
-                Button("Open Executor") { NSWorkspace.shared.open(Executor.webURL) }
-                    .buttonStyle(QuietButton(compact: true))
-                    .disabled(model.executorInstalled != true)
-            }
-            step(3, "Ask any bot to use them",
-                 "Executor is switched on for every bot. Try \"check my latest emails\" — the bot asks "
-                    + "you before it uses a tool, and you can say Always allow.",
-                 done: false) { EmptyView() }
-            if let server = model.connectors.first(where: { $0.name == Executor.name }) {
-                HStack {
-                    Spacer(minLength: 0)
-                    Button("Turn off for my bots") { model.removeConnector(server) }
-                        .buttonStyle(.plain)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.mutedForeground)
-                }
-            }
-        }
-        .padding(.horizontal, Theme.Space.step)
-        .padding(.bottom, Theme.Space.step)
-    }
-
-    private func step<Action: View>(_ number: Int, _ title: String, _ detail: String, done: Bool,
-                                    @ViewBuilder action: () -> Action) -> some View {
-        HStack(alignment: .top, spacing: Theme.Space.step) {
-            ZStack {
-                Circle().fill(done ? Color.green.opacity(0.2) : palette.primary.opacity(0.15))
-                if done {
-                    Image(systemName: "checkmark").font(.system(size: Theme.scaled(10), weight: .bold)).foregroundStyle(.green)
-                } else {
-                    Text("\(number)").font(.system(size: Theme.scaled(11), weight: .bold)).foregroundStyle(palette.primary)
-                }
-            }
-            .frame(width: 22, height: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Theme.Typography.body.weight(.medium)).foregroundStyle(palette.foreground)
-                Text(detail).font(Theme.Typography.caption).foregroundStyle(palette.mutedForeground)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-            action()
-        }
-    }
-
-    private var card: some View {
-        HStack(spacing: Theme.Space.step) {
-            IconTile(systemName: "point.3.connected.trianglepath.dotted")
-            cardText
-            Spacer(minLength: 0)
-            cardTrailing
-        }
-        .padding(Theme.Space.step)
-    }
-
-    private var cardText: some View {
-        Group {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text("Executor")
-                        .font(Theme.Typography.body)
-                        .foregroundStyle(palette.foreground)
-                    if isOn {
-                        Text("On for every bot")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Color.green)
+            SetupPanel(footer: footer) {
+                HStack(alignment: .center, spacing: 20) {
+                    BotFace(hue: 0, mood: mood, size: 88, shape: .bup, colour: 0)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: Theme.Space.tight) {
+                        Text(title)
+                            .font(.system(size: Theme.scaled(17), weight: .medium))
+                            .tracking(-0.3)
+                            .foregroundStyle(palette.foreground)
+                        Text(detail)
+                            .font(.system(size: Theme.scaled(13)))
+                            .foregroundStyle(palette.mutedForeground)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    actions
                 }
-                Text(detail)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    private var cardTrailing: some View {
-        Group {
-            HStack(spacing: Theme.Space.tight) {
-                action
-                if model.executorInstalled == true {
-                    Button(showsGuide ? "Hide steps" : "How to connect") { showsGuide.toggle() }
-                        .buttonStyle(.plain)
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.mutedForeground)
-                }
-            }
+    private var badge: (text: String, tone: SetupTone) {
+        switch phase {
+        case .checking: return ("Checking", .neutral)
+        case .missing: return ("Not installed", .warning)
+        case .installing: return ("Installing", .info)
+        case .on: return ("On for every bot", .success)
+        case .off: return ("Off", .neutral)
+        }
+    }
+
+    private var mood: BotMood {
+        switch phase {
+        case .checking, .missing: return .idle
+        case .installing: return .working
+        case .on: return .done
+        case .off: return .sleeping
+        }
+    }
+
+    private var title: String {
+        switch phase {
+        case .checking: return "Looking for Executor"
+        case .missing: return "Executor isn\u{2019}t on this Mac yet"
+        case .installing: return "Installing in Terminal..."
+        case .on: return "Executor is on"
+        case .off: return "Installed, but off for your bots"
         }
     }
 
     private var detail: String {
-        switch model.executorInstalled {
-        case nil:
-            return "Checking whether Executor is on this Mac…"
-        case false?:
-            return model.executorInstalling
-                ? "Installing in Terminal. This switches on by itself when it finishes."
-                : "Connect Gmail, Notion, Linear or any API once, and every bot can use them. "
-                    + "Executor keeps the keys — bupsy never sees them. Free and open source."
-        case true?:
-            return isAdded
-                ? "Add tools in Executor and every bot can use them. Each bot still asks before using one."
-                : "Installed, but turned off for your bots."
+        switch phase {
+        case .checking:
+            return "Checking whether Executor is installed on this Mac."
+        case .missing:
+            return "Install it once. It opens Terminal and runs Executor\u{2019}s own installer. "
+                + "Free and open source, and it needs Node.js."
+        case .installing:
+            return "This switches on by itself when it finishes. Bupsy checks for up to 10 minutes."
+        case .on:
+            return "Open it to sign in to Gmail, Notion, Linear and more. Then ask any bot, like "
+                + "\u{201C}check my latest emails\u{201D}."
+        case .off:
+            return "Turn it back on whenever you want bots to use your apps."
         }
     }
 
-    @ViewBuilder private var action: some View {
-        switch model.executorInstalled {
-        case nil:
+    private var footer: String {
+        switch phase {
+        case .checking: return "Takes a moment"
+        case .missing: return "Takes about a minute"
+        case .installing: return "Leave Terminal open"
+        case .on: return "Each bot still asks before it uses a tool, and you can say Always allow."
+        case .off: return "Your connections in Executor are kept"
+        }
+    }
+
+    @ViewBuilder private var actions: some View {
+        switch phase {
+        case .checking:
             ProgressView().controlSize(.small)
-        case false?:
-            if model.executorInstalling {
+        case .missing:
+            Button { model.installExecutor() } label: {
+                Label("Install", systemImage: "arrow.down.to.line")
+            }
+            .buttonStyle(PrimaryButton())
+            .help("Runs Executor's own installer (npm install -g executor) in Terminal")
+        case .installing:
+            HStack(spacing: Theme.Space.snug) {
                 ProgressView().controlSize(.small)
-            } else {
-                Button("Install") { model.installExecutor() }
-                    .buttonStyle(QuietButton(compact: true))
-                    .help("Runs Executor's own installer (npm install -g executor) in Terminal")
+                Button("Done installing") { model.refreshExecutor() }
+                    .buttonStyle(QuietButton())
             }
-        case true?:
-            if isAdded {
-                Button("Open Executor") { NSWorkspace.shared.open(Executor.webURL) }
-                    .buttonStyle(QuietButton(compact: true))
-            } else {
-                Button("Turn on") { model.addExecutor() }
-                    .buttonStyle(QuietButton(compact: true))
+        case .on:
+            HStack(spacing: Theme.Space.snug) {
+                Button { NSWorkspace.shared.open(Executor.webURL) } label: {
+                    Label("Open Executor", systemImage: "arrow.right")
+                }
+                .buttonStyle(PrimaryButton())
+                if let server = model.connectors.first(where: { $0.name == Executor.name }) {
+                    Button("Turn off for my bots") { model.removeConnector(server) }
+                        .buttonStyle(.plain)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(palette.mutedForeground)
+                        .padding(.horizontal, Theme.Space.snug)
+                }
             }
+        case .off:
+            Button("Turn on") { model.addExecutor() }
+                .buttonStyle(PrimaryButton())
         }
     }
 }
@@ -249,88 +238,77 @@ struct ConnectorRow: View {
     private var live: ConnectorState? { model.liveStatus(of: server) }
 
     var body: some View {
-        CardRow {
-            Toggle("", isOn: Binding(
-                get: { server.enabled },
-                set: { model.setConnectorEnabled(server, $0) }
-            ))
-            .labelsHidden().toggleStyle(.switch).controlSize(.small)
-        } content: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(server.name)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(palette.foreground)
-                Text("\(server.command) \(server.args.joined(separator: " "))")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-                    .lineLimit(1)
-
-                // The engine's own verdict wins over our guess: a server can be configured
-                // perfectly and still fail to start, and a tick next to something about to
-                // break a run is worse than no tick at all.
-                if let live, live.status != .connected {
-                    Text(describe(live.status))
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.primary)
-                } else if let live, live.status == .connected {
-                    Text("Connected")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Color.green)
-                } else if !missing.isEmpty {
-                    // Named plainly, because the alternative is a bot failing mid-run with a
-                    // message from someone else's server that nobody can act on.
-                    Text("Set \(missing.joined(separator: " and ")) in your shell, then restart bupsy.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.primary)
+        SetupListRow(title: server.name, meta: meta, monospacedMeta: nil) {
+            IconTile(systemName: "chevron.left.forwardslash.chevron.right")
+        } trailing: {
+            HStack(spacing: Theme.Space.snug) {
+                SetupBadge(text: status.text, tone: status.tone, dot: status.dot)
+                Toggle("", isOn: Binding(
+                    get: { server.enabled },
+                    set: { model.setConnectorEnabled(server, $0) }
+                ))
+                .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                .help(server.enabled ? "Turn off \(server.name)" : "Turn on \(server.name)")
+                SetupIconButton(systemName: "trash", help: "Remove \(server.name)", destructive: true) {
+                    model.removeConnector(server)
                 }
             }
-        } trailing: {
-            Button(role: .destructive) {
-                model.removeConnector(server)
-            } label: {
-                Image(systemName: "trash").font(.system(size: Theme.scaled(12)))
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(palette.mutedForeground)
         }
-        .opacity(server.enabled ? 1 : 0.5)
+        .opacity(server.enabled ? 1 : 0.6)
     }
 
-    private func describe(_ status: ConnectorState.Status) -> String {
-        switch status {
-        case .connected: "Connected"
-        case .failed: "Failed to start — check the command and arguments"
-        case .needsAuth: "Needs you to sign in"
-        case .pending: "Starting…"
-        case .unknown: "Status unknown"
+    private var command: String {
+        ([server.command] + server.args).joined(separator: " ")
+    }
+
+    /// The command, then the one thing to do about it if anything.
+    private var meta: [String] {
+        var parts = [command]
+        if let live, live.status == .failed {
+            parts.append("Check the command and arguments")
+        } else if live == nil || live?.status != .connected, !missing.isEmpty {
+            // Named plainly, because the alternative is a bot failing mid-run with a message
+            // from someone else's server that nobody can act on.
+            parts.append("Set \(missing.joined(separator: " and ")) in your shell, then restart Bupsy")
         }
+        return parts
+    }
+
+    /// The engine's own verdict wins over our guess: a server can be configured perfectly and
+    /// still fail to start, and a tick next to something about to break a run is worse than no
+    /// tick at all.
+    private var status: (text: String, tone: SetupTone, dot: Bool) {
+        if !server.enabled { return ("Off", .neutral, false) }
+        if let live {
+            switch live.status {
+            case .connected: return ("Connected", .success, true)
+            case .failed: return ("Failed to start", .destructive, false)
+            case .needsAuth: return ("Needs you to sign in", .warning, false)
+            case .pending: return ("Starting", .info, false)
+            case .unknown: break
+            }
+        }
+        if !missing.isEmpty { return ("Needs \(missing.joined(separator: ", "))", .warning, false) }
+        return ("Not used yet", .neutral, false)
     }
 }
 
 struct SuggestionRow: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.palette) private var palette
     let suggestion: MCPSuggestions.Suggestion
 
     var body: some View {
-        CardRow {
+        SetupListRow(title: suggestion.title, meta: [suggestion.detail]) {
             IconTile(systemName: icon)
-        } content: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(suggestion.title)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(palette.foreground)
-                Text(suggestion.detail)
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(palette.mutedForeground)
-            }
         } trailing: {
-            Button("Add") { model.addConnector(suggestion.server) }
-                .buttonStyle(QuietButton(compact: true))
+            Button { model.addConnector(suggestion.server) } label: {
+                Label("Add", systemImage: "plus")
+            }
+            .buttonStyle(QuietButton(compact: true))
         }
     }
 
-    /// One glyph per app, so the list can be scanned instead of read — four identical boxes said
+    /// One glyph per app, so the list can be scanned instead of read. Four identical boxes said
     /// nothing about which row was which.
     private var icon: String {
         switch suggestion.id {
@@ -374,7 +352,7 @@ struct AddServerSheet: View {
             }
             Field(
                 label: "Environment variables it needs",
-                hint: "Names only — bupsy never stores the values. Set them in your shell and "
+                hint: "Names only. Bupsy never stores the values. Set them in your shell and "
                     + "they reach the server without passing through us."
             ) {
                 TextField("", text: $envNames, prompt: Text("LINEAR_API_KEY"))
