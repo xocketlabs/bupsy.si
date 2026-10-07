@@ -305,8 +305,31 @@ public struct ClaudeAdapter: EngineAdapter {
             outputTokens: count("output_tokens"),
             cachedInputTokens: cached.isEmpty ? nil : cached.reduce(0, +),
             costUSD: json.double("total_cost_usd"),
-            durationMS: json.int("duration_ms")
+            durationMS: json.int("duration_ms"),
+            context: context(from: json)
         )
+    }
+
+    /// The context window at the end of the run: the last model call's own usage, from
+    /// `usage.iterations`, and the window size from `modelUsage`.
+    ///
+    /// nil when the CLI does not list its calls. The run totals are no substitute: they add up
+    /// every call, so a multi-step run would read as many times its real size.
+    static func context(from json: JSONLine) -> ContextUse? {
+        guard let fields = json.dictionary("usage"),
+              let last = (fields["iterations"] as? [[String: Any]])?.last
+        else { return nil }
+        func count(_ key: String) -> Int { (last[key] as? NSNumber)?.intValue ?? 0 }
+        // Several models can serve one run (a small one for side tasks); the main model's window
+        // is the largest of them.
+        let windows = (json.dictionary("modelUsage") ?? [:]).values.compactMap { entry in
+            ((entry as? [String: Any])?["contextWindow"] as? NSNumber)?.intValue
+        }
+        return ContextUse(
+            cachedTokens: count("cache_read_input_tokens"),
+            newTokens: count("input_tokens") + count("cache_creation_input_tokens"),
+            replyTokens: count("output_tokens"),
+            window: windows.max())
     }
 
     /// Tool results arrive as a string or as content blocks depending on the tool.

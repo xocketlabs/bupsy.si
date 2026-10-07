@@ -94,12 +94,39 @@ public struct Usage: Sendable, Equatable, Codable {
     /// we never compute from this or bill against it. Label it plainly if shown at all.
     public var costUSD: Double?
     public var durationMS: Int?
+    /// What the context window held at the end of the run, when the engine says.
+    ///
+    /// Not derivable from the totals above: those add up every model call in a run, and an agent
+    /// run re-sends its whole context on each call, so twenty tool steps counted the same context
+    /// twenty times. Measured at "3.8M / 200k (1,917%)" on a real bot before this existed.
+    public var context: ContextUse?
+
     public init(inputTokens: Int? = nil, outputTokens: Int? = nil,
                 cachedInputTokens: Int? = nil,
-                costUSD: Double? = nil, durationMS: Int? = nil) {
+                costUSD: Double? = nil, durationMS: Int? = nil, context: ContextUse? = nil) {
         self.inputTokens = inputTokens; self.outputTokens = outputTokens
         self.cachedInputTokens = cachedInputTokens
         self.costUSD = costUSD; self.durationMS = durationMS
+        self.context = context
+    }
+}
+
+/// The last model call of a run: how full its context window was, and how big that window is.
+public struct ContextUse: Sendable, Equatable, Codable {
+    /// Read back from the cache: what earlier turns already put there.
+    public var cachedTokens: Int
+    /// Sent fresh on this call, cache writes included.
+    public var newTokens: Int
+    /// The reply, which the next turn carries forward.
+    public var replyTokens: Int
+    /// The window's size as the engine reports it, or nil when it does not say.
+    public var window: Int?
+
+    public var total: Int { cachedTokens + newTokens + replyTokens }
+
+    public init(cachedTokens: Int, newTokens: Int, replyTokens: Int, window: Int? = nil) {
+        self.cachedTokens = cachedTokens; self.newTokens = newTokens
+        self.replyTokens = replyTokens; self.window = window
     }
 }
 

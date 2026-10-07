@@ -42,7 +42,8 @@ enum TourMode {
                 reset(m)
                 if let bot {
                     let thread = m.thread(for: bot.id)
-                    thread.latestUsage = Usage(inputTokens: 84_000, outputTokens: 2_100, cachedInputTokens: 61_000)
+                    thread.latestUsage = Usage(inputTokens: 84_000, outputTokens: 2_100, cachedInputTokens: 61_000,
+                        context: ContextUse(cachedTokens: 61_000, newTokens: 23_000, replyTokens: 2_100, window: 200_000))
                     thread.latestLimits = RateLimit(windows: [
                         "five_hour": .init(utilization: 0.38, resetsAt: Date().addingTimeInterval(9_960)),
                         "seven_day": .init(utilization: 0.21, resetsAt: Date().addingTimeInterval(4 * 86_400)),
