@@ -148,6 +148,11 @@ public struct CodexAdapter: EngineAdapter {
         if let model = request.model {
             arguments += ["-m", model]
         }
+        if request.useBrowser {
+            // Off leaves Codex's own config alone rather than forcing the feature off, so a
+            // bot's argv only changes when someone asked for the browser.
+            arguments += ["--enable", "browser_use", "--enable", "browser_use_external"]
+        }
         if let cwd = request.workingDirectory {
             arguments += ["-C", cwd.path]
         }

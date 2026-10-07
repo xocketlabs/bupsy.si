@@ -478,6 +478,31 @@ struct BotPage: View {
                         }
                     }
                 }
+                // The person's own browser, through the engine's extension, for bots that run here
+                // instead of on a cloud machine.
+                BotPanelMenuRow(label: "Browser",
+                                value: bot.machineID != nil ? "This Mac only"
+                                    : bot.useBrowser ? "Your Chrome" : "Off") {
+                    Button {
+                        model.setUseBrowser(bot, false)
+                    } label: {
+                        MenuCheckLabel("Off", checked: !bot.useBrowser)
+                    }
+                    Button {
+                        model.setUseBrowser(bot, true)
+                    } label: {
+                        MenuCheckLabel(bot.engine == .claude
+                                       ? "Use your Chrome (Claude in Chrome)"
+                                       : "Use your browser (Codex browser use)",
+                                       checked: bot.useBrowser)
+                    }
+                }
+                .disabled(bot.machineID != nil)
+                .help(bot.machineID != nil
+                      ? "Move \(bot.name) to This Mac to let it use your browser"
+                      : "Lets \(bot.name) open pages and click in your own browser, signed in as you. "
+                        + "Needs the \(bot.engine == .claude ? "Claude in Chrome" : "Codex") extension. "
+                        + "Each step still asks unless you trust it.")
                 BotPanelMenuRow(label: "Section", value: bot.folder ?? "Unassigned") {
                     ForEach(model.allSections, id: \.self) { folder in
                         Button {

@@ -5,6 +5,14 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Your own browser, and replies you can copy**
+- A bot on this Mac can use your own browser: Claude through Claude in Chrome, Codex through its
+  browser use. Off by default; turn it on per bot under Details → Browser. Each step still goes
+  through the approval gate unless you trust the bot.
+- A reply selects as one piece: a drag runs across paragraphs, headings and lists, stopping only
+  at code blocks, so a long answer copies whole. Copied mentions read "@Name".
+- Reply puts the cursor in the message box. Hidden Reply and Copy buttons no longer take clicks.
+
 **Security and reliability fixes from a full audit**
 - Bots can no longer act as one another: each run has its own connector config and a private
   token for messages between bots, so a bot that can write files cannot speak in another's name.
