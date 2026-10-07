@@ -100,7 +100,7 @@ public enum AutonomyPolicy {
     /// until it is, it asks like any other connector tool — the safe way to drift.
     static let bupsyTools: Set<String> = [
         "mcp__bupsy__message_bot", "mcp__bupsy__create_bot", "mcp__bupsy__list_bots",
-        "mcp__bupsy__update_me", "mcp__bupsy__ask_person",
+        "mcp__bupsy__update_me", "mcp__bupsy__ask_person", "mcp__bupsy__move_bots",
     ]
 
     /// Connector tools reach the user's real accounts, so they are never silently safe.

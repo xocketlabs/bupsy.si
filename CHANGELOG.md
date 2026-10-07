@@ -10,6 +10,11 @@ PR as the change; the release moves it under a version.
   summed totals, which counted the context once per step (a real bot read 3.8M / 200k, 1,917%).
 - The window size is the one the engine reports, so Opus 5.5 reads against 1M, not 200k.
 - The bar never runs past its track.
+**Bots can organise the sidebar**
+- Ask a bot to group bots ("put Lead, QA Reviewer and Video Producer in Frontier & Co") and it
+  can: the new `move_bots` tool files bots into a section, making the section if it is new.
+  The bot's chat notes what moved and names any bot it couldn't find.
+- `list_bots` now shows each bot's section.
 
 **Your own browser, and replies you can copy**
 - A bot on this Mac can use your own browser: Claude through Claude in Chrome, Codex through its

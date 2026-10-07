@@ -139,7 +139,7 @@ struct BupsyOwnToolsPolicyTests {
     @Test("are not gated twice — bupsy asks about their effects itself")
     func bupsyToolsSkipTheGate() {
         for tool in ["mcp__bupsy__create_bot", "mcp__bupsy__message_bot", "mcp__bupsy__list_bots",
-                     "mcp__bupsy__update_me", "mcp__bupsy__ask_person"] {
+                     "mcp__bupsy__update_me", "mcp__bupsy__ask_person", "mcp__bupsy__move_bots"] {
             for autonomy in [Autonomy.ask, .allowlist, .trusted] {
                 if case .ask = AutonomyPolicy.decide(tool: tool, autonomy: autonomy) {
                     Issue.record("\(tool) asked under \(autonomy)")

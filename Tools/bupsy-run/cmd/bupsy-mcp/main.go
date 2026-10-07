@@ -1,7 +1,8 @@
 // Command bupsy-mcp is the MCP server that lets bots work with each other.
 //
 // It speaks JSON-RPC over stdio, which is what both engines expect of an MCP server. It can drop
-// a message for another bot, ask for a new bot to be created, and read who is on the roster. The
+// a message for another bot, ask for a new bot to be created, file bots into sidebar sections,
+// and read who is on the roster. The
 // first two only ever drop a request in an outbox directory for bupsy to pick up.
 //
 // **It does not deliver anything itself, and that is deliberate.** Delivery means writing into
@@ -104,7 +105,7 @@ func handle(req request, outbox, sender string) response {
 		}
 
 	case "tools/list":
-		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool(), askPersonTool(), updateMeTool()}}
+		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool(), askPersonTool(), updateMeTool(), moveBotsTool()}}
 
 	case "tools/call":
 		reply.Result = call(req.Params, outbox, sender)
@@ -236,11 +237,42 @@ func updateMeTool() map[string]any {
 	}
 }
 
+// moveBotsTool describes filing bots into a sidebar section.
+//
+// Sections are labels the person sees in the sidebar, nothing more: moving a bot changes no job,
+// no trust and no conversation, and the person can drag it back. So it applies at once, like a
+// bot's own name, and bupsy notes what moved in the asking bot's chat.
+func moveBotsTool() map[string]any {
+	return map[string]any{
+		"name": "move_bots",
+		"description": "Move bupsy bots into a section of the sidebar, making the section if it " +
+			"does not exist yet. Use it when the person asks you to organise or group bots. " +
+			"Use names exactly as list_bots shows them; you can include yourself. An empty " +
+			"section moves the bots out of any section.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"bots": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"minItems":    1,
+					"description": "The names of the bots to move.",
+				},
+				"section": map[string]any{
+					"type":        "string",
+					"description": "The section to put them in, e.g. \"Frontier & Co\". Empty for no section.",
+				},
+			},
+			"required": []any{"bots", "section"},
+		},
+	}
+}
+
 // listBotsTool describes reading the roster.
 func listBotsTool() map[string]any {
 	return map[string]any{
 		"name":        "list_bots",
-		"description": "List the other bupsy bots: each one's name and job. Use it before messaging or creating a bot.",
+		"description": "List the other bupsy bots: each one's name, sidebar section and job. Use it before messaging, creating or moving a bot.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 	}
 }
@@ -255,6 +287,8 @@ type callParams struct {
 		Role     string   `json:"role"`
 		Question string   `json:"question"`
 		Options  []string `json:"options"`
+		Bots     []string `json:"bots"`
+		Section  string   `json:"section"`
 	} `json:"arguments"`
 }
 
@@ -318,6 +352,32 @@ func call(params json.RawMessage, outbox, sender string) map[string]any {
 		}
 		return toolText(reply)
 
+	case "move_bots":
+		var names []string
+		for _, bot := range args.Bots {
+			if bot = strings.TrimSpace(bot); bot != "" {
+				names = append(names, bot)
+			}
+		}
+		section := strings.TrimSpace(args.Section)
+		if len(names) == 0 {
+			return toolError("name at least one bot to move")
+		}
+		if len([]rune(section)) > 40 {
+			return toolError("keep the section name under 40 characters")
+		}
+		if err := drop(outbox, map[string]any{
+			"kind": "move_bots", "from": sender, "bots": names, "section": section,
+		}); err != nil {
+			return toolError("could not move them: " + err.Error())
+		}
+		where := "into " + section
+		if section == "" {
+			where = "out of their sections"
+		}
+		return toolText("Moving " + strings.Join(names, ", ") + " " + where + ". bupsy notes " +
+			"in this chat what moved, and names any bot it could not find.")
+
 	case "ask_person":
 		question := strings.TrimSpace(args.Question)
 		var options []string
@@ -353,19 +413,23 @@ func listBots() map[string]any {
 		return toolError("could not read the roster: " + err.Error())
 	}
 	var bots []struct {
-		Name string `json:"name"`
-		Job  string `json:"job"`
+		Name    string `json:"name"`
+		Job     string `json:"job"`
+		Section string `json:"section"`
 	}
 	if err := json.Unmarshal(data, &bots); err != nil {
 		return toolError("the roster file is not readable")
 	}
 	var lines []string
 	for _, bot := range bots {
-		if bot.Job == "" {
-			lines = append(lines, "- "+bot.Name)
-		} else {
-			lines = append(lines, "- "+bot.Name+": "+bot.Job)
+		line := "- " + bot.Name
+		if bot.Section != "" {
+			line += " [section: " + bot.Section + "]"
 		}
+		if bot.Job != "" {
+			line += ": " + bot.Job
+		}
+		lines = append(lines, line)
 	}
 	if len(lines) == 0 {
 		return toolText("No other bots yet.")

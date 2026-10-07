@@ -26,6 +26,8 @@ final class OutboxWatcher {
         case createBot(from: String, name: String, job: String, role: String?)
         case question(from: String, question: String, options: [String])
         case updateMe(from: String, name: String?, role: String?, job: String?)
+        /// File bots into a sidebar section; nil takes them out of any section.
+        case moveBots(from: String, bots: [String], section: String?)
     }
 
     /// The roster `list_bots` reads, beside the outbox rather than in it, since the outbox is drained
@@ -102,7 +104,11 @@ final class OutboxWatcher {
             func field(_ key: String) -> String? {
                 (payload[key] as? String).flatMap { $0.isEmpty ? nil : $0 }
             }
-            if payload["kind"] as? String == "update_me" {
+            if payload["kind"] as? String == "move_bots" {
+                let names = ((payload["bots"] as? [Any]) ?? []).compactMap { $0 as? String }
+                guard !names.isEmpty else { continue }
+                onRequest(.moveBots(from: from, bots: names, section: field("section")))
+            } else if payload["kind"] as? String == "update_me" {
                 onRequest(.updateMe(from: from, name: field("name"), role: field("role"), job: field("job")))
             } else if payload["kind"] as? String == "question" {
                 // Never dropped: the bot has stopped to wait for an answer, and a question that
