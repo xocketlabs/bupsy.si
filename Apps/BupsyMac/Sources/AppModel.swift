@@ -1414,7 +1414,9 @@ final class AppModel {
                 }
             ) }).flatMap { $0 }.flatMap { $0 }.map { [$0] } ?? [],
             gateSettingsPath: gateSettings,
-            onlyGivenApps: bot.onlyBupsyApps
+            onlyGivenApps: bot.onlyBupsyApps,
+            // The browser is the one on this Mac; a cloud machine has none to reach.
+            useBrowser: bot.useBrowser && bot.machineID == nil
         )
 
         // Hold the Mac awake for the duration, if this bot asks for it. An agent run killed at
@@ -1901,6 +1903,7 @@ final class AppModel {
         copy.avatarColour = bot.avatarColour
         copy.role = bot.role
         copy.onlyBupsyApps = bot.onlyBupsyApps
+        copy.useBrowser = bot.useBrowser
 
         bots.append(copy)
         try? store?.save(copy.record(sortIndex: bots.count - 1))
@@ -2685,6 +2688,12 @@ final class AppModel {
     func setOnlyBupsyApps(_ bot: Bot, _ only: Bool) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         bots[index].onlyBupsyApps = only
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    func setUseBrowser(_ bot: Bot, _ use: Bool) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].useBrowser = use
         try? store?.save(bots[index].record(sortIndex: index))
     }
 

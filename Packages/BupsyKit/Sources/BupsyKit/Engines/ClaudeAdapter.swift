@@ -133,6 +133,11 @@ public struct ClaudeAdapter: EngineAdapter {
         if request.onlyGivenApps {
             arguments.append("--strict-mcp-config")
         }
+        // Claude in Chrome comes in as its own server, so it survives --strict-mcp-config.
+        // Its tools still go through the gate like any other.
+        if request.useBrowser {
+            arguments.append("--chrome")
+        }
         if let settings = request.gateSettingsPath {
             // Command-line settings sit above project and user settings in precedence, and —
             // unlike project `.claude/settings.json` hooks, which do not run in `-p` sessions —

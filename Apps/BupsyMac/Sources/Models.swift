@@ -43,6 +43,8 @@ struct Bot: Identifiable, Hashable, Sendable {
     var role: String?
     /// Kept to apps added in bupsy, without the ones on the person's Claude account.
     var onlyBupsyApps = false
+    /// May drive the person's own browser through the engine's extension. This Mac only.
+    var useBrowser = false
 
     /// The shape this bot actually wears, chosen or derived — for anything that compares faces.
     var effectiveShape: BotShape { avatarShape ?? BotFace.derivedShape(forHue: avatarHue) }
@@ -86,6 +88,7 @@ struct Bot: Identifiable, Hashable, Sendable {
         self.avatarColour = record.avatarColour
         self.role = record.role
         self.onlyBupsyApps = record.onlyBupsyApps
+        self.useBrowser = record.useBrowser
         self.toolAllowlist = Set((try? JSONDecoder().decode([String].self, from: Data(record.toolAllowlist.utf8))) ?? [])
     }
 
@@ -98,7 +101,8 @@ struct Bot: Identifiable, Hashable, Sendable {
             hidden: hidden, lastReadAt: lastReadAt,
             avatarShape: avatarShape?.rawValue, avatarColour: avatarColour, role: role,
             onlyBupsyApps: onlyBupsyApps,
-            toolAllowlist: (try? String(data: JSONEncoder().encode(toolAllowlist.sorted()), encoding: .utf8)) ?? "[]")
+            toolAllowlist: (try? String(data: JSONEncoder().encode(toolAllowlist.sorted()), encoding: .utf8)) ?? "[]",
+            useBrowser: useBrowser)
     }
 }
 

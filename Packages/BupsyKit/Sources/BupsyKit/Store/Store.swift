@@ -348,6 +348,14 @@ public struct Store: Sendable {
             }
         }
 
+        // Whether a bot may drive the person's own browser. Off by default: that browser holds
+        // their signed-in sessions, so it is something to hand a bot on purpose.
+        migrator.registerMigration("v14-use-browser") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "useBrowser", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 

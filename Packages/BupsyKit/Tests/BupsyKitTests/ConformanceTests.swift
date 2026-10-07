@@ -417,3 +417,30 @@ struct OnlyGivenAppsTests {
         #expect(kept.arguments.contains("/x.json"))
     }
 }
+
+@Suite("The person's own browser")
+struct UseBrowserTests {
+    @Test("a bot given the browser runs Claude with --chrome, and only then")
+    func claudeChrome() {
+        let plain = ClaudeAdapter().invocation(for: RunRequest(prompt: "hi"))
+        #expect(!plain.arguments.contains("--chrome"))
+        let browsing = ClaudeAdapter().invocation(for: RunRequest(prompt: "hi", useBrowser: true))
+        #expect(browsing.arguments.contains("--chrome"))
+    }
+
+    @Test("a dashed prompt still goes last, after --chrome")
+    func claudeChromeBeforeDashedPrompt() {
+        let args = ClaudeAdapter().invocation(for: RunRequest(prompt: "- be terse", useBrowser: true)).arguments
+        #expect(args.suffix(2) == ["--", "- be terse"])
+        #expect(args.contains("--chrome"))
+    }
+
+    @Test("a bot given the browser turns on Codex's browser use, and only then")
+    func codexBrowserUse() {
+        let plain = CodexAdapter().invocation(for: RunRequest(prompt: "hi"))
+        #expect(!plain.arguments.contains("--enable"))
+        let args = CodexAdapter().invocation(for: RunRequest(prompt: "hi", useBrowser: true)).arguments
+        #expect(args.contains("browser_use_external"))
+        #expect(args.last == "hi")
+    }
+}

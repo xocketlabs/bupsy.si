@@ -104,6 +104,9 @@ struct Bubble: View {
             }
         }
         .opacity(hovering || focusedAction != nil ? 1 : 0)
+        // Hidden means gone: faded out they still took clicks, so a click beside a message
+        // could copy it or start a reply with nothing on screen to say so.
+        .allowsHitTesting(hovering || focusedAction != nil)
         .accessibilityHidden(true)
     }
 
@@ -873,6 +876,11 @@ struct Composer: View {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
             if let target = replyingTo { replyBar(target) }
             field
+        }
+        // Reply means "I'm about to type": put the cursor in the box rather than leaving the
+        // person to click it after choosing Reply.
+        .onChange(of: replyingTo) { _, target in
+            if target != nil { focused = true }
         }
         .padding(.horizontal, Theme.Space.pageSide)
         .padding(.top, Theme.Space.snug)

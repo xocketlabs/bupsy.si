@@ -16,10 +16,14 @@ public struct RunRequest: Sendable {
     /// Use only the MCP servers in `mcpConfigPaths`, ignoring every other server the engine
     /// would load — above all the apps connected to the person's own engine account.
     public var onlyGivenApps: Bool
+    /// Let the engine drive the person's own browser through its extension: Claude in Chrome for
+    /// Claude, Codex's browser use for Codex. Only meaningful on this Mac, where that browser is.
+    public var useBrowser: Bool
 
     public init(prompt: String, workingDirectory: URL? = nil, resume: ConversationID? = nil,
                 model: String? = nil, autonomy: Autonomy = .ask, mcpConfigPaths: [String] = [],
-                gateSettingsPath: String? = nil, onlyGivenApps: Bool = false) {
+                gateSettingsPath: String? = nil, onlyGivenApps: Bool = false,
+                useBrowser: Bool = false) {
         self.prompt = prompt
         self.workingDirectory = workingDirectory
         self.resume = resume
@@ -28,6 +32,7 @@ public struct RunRequest: Sendable {
         self.mcpConfigPaths = mcpConfigPaths
         self.gateSettingsPath = gateSettingsPath
         self.onlyGivenApps = onlyGivenApps
+        self.useBrowser = useBrowser
     }
 }
 
