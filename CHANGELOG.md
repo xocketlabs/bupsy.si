@@ -10,16 +10,19 @@ PR as the change; the release moves it under a version.
   summed totals, which counted the context once per step (a real bot read 3.8M / 200k, 1,917%).
 - The window size is the one the engine reports, so Opus 5.5 reads against 1M, not 200k.
 - The bar never runs past its track.
+
 **Bots can organise the sidebar**
 - Ask a bot to group bots ("put Lead, QA Reviewer and Video Producer in Frontier & Co") and it
   can: the new `move_bots` tool files bots into a section, making the section if it is new.
   The bot's chat notes what moved and names any bot it couldn't find.
 - `list_bots` now shows each bot's section.
+
 **Chat bubbles**
 - Messages sit in bubbles, so each one reads as its own: yours on the right in a pink tint, a
   bot's on the left in grey beside its face. The first bubble of a run has a small tail and the
   bot's name in its colour; every bubble has its time in the corner.
 - Code blocks inside a bubble stay a clear recess in light mode.
+
 **Run commands from a reply**
 - A command in a bot's reply has a Run button beside Copy. It runs in that bot's folder through
   your login shell, and its output appears under the command, with Stop while it runs.
