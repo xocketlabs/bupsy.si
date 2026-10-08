@@ -5,6 +5,14 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Voice**
+- Talk to a bot: the microphone button in any chat (Option Cmd D) turns what you say into text in
+  the box, as you speak, to read over and send. It stops by itself when you stop talking.
+- Hear a reply: each bot reply has a speaker button, and Settings › Voice can read new replies
+  aloud in the chat you have open. Code and tables are named, not spelled out.
+- Free, with no account: your Mac's own speech recognition (on this Mac whenever your language
+  allows) and its system voices, including the higher-quality ones in System Settings.
+
 **Other Macs' bots: waiting on you, and files**
 - A bot on another Mac that needs you now shows in Waiting on you and the menu bar ("Lead needs
   you on Mac mini"), opening its chat.

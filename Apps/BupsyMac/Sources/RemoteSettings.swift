@@ -365,3 +365,50 @@ struct LinkedMacsSection: View {
         }
     }
 }
+
+/// Settings › Voice: replies read aloud, and where the voice itself is chosen.
+struct VoiceSettingsSection: View {
+    @Environment(\.palette) private var palette
+    @State private var readsReplies = VoiceOutput.readsReplies
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            SettingsGroup(title: "Voice") {
+                VStack(alignment: .leading, spacing: Theme.Space.step) {
+                    Toggle(isOn: Binding(get: { readsReplies }, set: {
+                        readsReplies = $0
+                        VoiceOutput.readsReplies = $0
+                        if !$0 { VoiceOutput.shared.stop() }
+                    })) {
+                        VStack(alignment: .leading, spacing: Theme.Space.hairline) {
+                            Text("Read new replies aloud")
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(palette.foreground)
+                            Text("When a bot finishes in the chat you have open. Any reply can be read with its speaker button.")
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(palette.mutedForeground)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .bupsySwitch()
+                    HStack(spacing: Theme.Space.snug) {
+                        Button("Try the voice") { VoiceOutput.shared.speak("Hi! This is how your bots will sound.") }
+                            .buttonStyle(QuietButton(compact: true))
+                        Button("Choose a voice…") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent")!)
+                        }
+                        .buttonStyle(QuietButton(compact: true))
+                        .help("System Settings › Accessibility › Spoken Content › System voice. The higher-quality voices there are free to download.")
+                    }
+                }
+                .padding(Theme.Space.step)
+            }
+            Text("Talk to a bot with the microphone button in any chat (Option Cmd D). Voice uses your Mac's own speech "
+                 + "recognition and voices: free, no account, and on this Mac whenever your language allows.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Theme.Space.hairline)
+        }
+    }
+}

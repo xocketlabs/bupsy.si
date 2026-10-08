@@ -84,9 +84,11 @@ if [ "$MODE" = signed ]; then
     2>/dev/null | while read -r item; do
       codesign --force --timestamp --options=runtime --sign "$DEVELOPER_ID" "$item" || true
     done
-  codesign --force --deep --timestamp --options=runtime --sign "$DEVELOPER_ID" "$APP"
+  # The entitlements carry the microphone, which the hardened runtime otherwise blocks.
+  codesign --force --deep --timestamp --options=runtime --entitlements "Apps/BupsyMac/Bupsy.entitlements" \
+    --sign "$DEVELOPER_ID" "$APP"
 else
-  codesign --force --deep --sign - "$APP"
+  codesign --force --deep --entitlements "Apps/BupsyMac/Bupsy.entitlements" --sign - "$APP"
 fi
 codesign --verify --deep --strict --verbose=2 "$APP"
 

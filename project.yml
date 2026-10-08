@@ -40,6 +40,10 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        # Talking to a bot instead of typing. macOS shows these when it asks the person.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Bupsy listens only while the microphone button in a chat is on, so you can talk to a bot instead of typing."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "What you say is turned into text for your message, on this Mac whenever your language allows."
+        CODE_SIGN_ENTITLEMENTS: Apps/BupsyMac/Bupsy.entitlements
         # No SUFeedURL yet, on purpose. Distribution is GitHub Releases only for now, and
         # Sparkle polling a feed that does not exist would fail quietly in the background
         # forever — a broken update channel is worse than an honest absence of one. Until a

@@ -116,8 +116,16 @@ struct Bubble: View {
     /// you reach for occasionally. Takes up its space even when hidden, so messages do not shift
     /// sideways as the pointer moves down a thread. VoiceOver gets the same two as actions on the
     /// message itself, so these are hidden from it.
-    private func replyButton(author: String, text: String) -> some View {
-        HStack(spacing: Theme.Space.xs) {
+    private func replyButton(author: String, text: String, readable: Bool = false) -> some View {
+        let reading = VoiceOutput.shared.speaking == entry.id
+        return HStack(spacing: Theme.Space.xs) {
+            // Read aloud in the Mac's own voice. Stays shown while reading, as its Stop.
+            if readable {
+                hoverAction(reading ? "stop.fill" : "speaker.wave.2", label: reading ? "Stop reading" : "Read aloud",
+                            help: reading ? "Stop reading this aloud" : "Read this aloud", tag: 2) {
+                    VoiceOutput.shared.toggle(text, id: entry.id)
+                }
+            }
             if onReply != nil {
                 hoverAction("arrowshape.turn.up.left", label: "Reply", help: "Reply to this message", tag: 0) {
                     onReply?(author, text)
@@ -128,10 +136,10 @@ struct Bubble: View {
                 copy(text)
             }
         }
-        .opacity(hovering || focusedAction != nil ? 1 : 0)
+        .opacity(hovering || focusedAction != nil || reading ? 1 : 0)
         // Hidden means gone: faded out they still took clicks, so a click beside a message
         // could copy it or start a reply with nothing on screen to say so.
-        .allowsHitTesting(hovering || focusedAction != nil)
+        .allowsHitTesting(hovering || focusedAction != nil || reading)
         .accessibilityHidden(true)
     }
 
@@ -301,10 +309,11 @@ struct Bubble: View {
             botMessage(actionText: text) {
                 FormattedReply(markdown: text)
                     // Commands in a reply run in this bot's folder, when that folder is here.
+                    // Not for a bot on another Mac or a cloud machine: its folder is not here.
                     .environment(\.commandDirectory,
-                                 bot.machineID == nil ? model.workingDirectory(for: bot) : nil)
+                                 bot.machineID == nil && bot.remote == nil ? model.workingDirectory(for: bot) : nil)
             } trailing: {
-                replyButton(author: bot.name, text: text)
+                replyButton(author: bot.name, text: text, readable: true)
             }
 
         case .thinking(let text):
@@ -930,6 +939,10 @@ struct Composer: View {
     let isRunning: Bool
     /// Sending attachments to a bot on another Mac, which takes a moment.
     @State private var uploading = false
+    /// Talking instead of typing, with the Mac's own speech recognition.
+    @State private var voice = VoiceInput()
+    /// What was in the box when listening started; what is heard goes after it.
+    @State private var dictationBase = ""
     @Binding var replyingTo: ReplyTarget?
     let onSend: () -> Void
     let onStop: () -> Void
@@ -951,8 +964,18 @@ struct Composer: View {
         // over the box it belongs to instead of stretching past it.
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
             if let target = replyingTo { replyBar(target) }
+            // Why the mic could not listen, until the next try.
+            if case .unavailable(let problem) = voice.state {
+                Label(problem, systemImage: "mic.slash")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             field
         }
+        // Leaving the chat stops listening: a mic left on in a chat you are not looking at is
+        // the one thing a voice feature must never do.
+        .onDisappear { voice.stop() }
         // Reply means "I'm about to type": put the cursor in the box rather than leaving the
         // person to click it after choosing Reply.
         .onChange(of: replyingTo) { _, target in
@@ -1029,6 +1052,35 @@ struct Composer: View {
         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
     }
 
+    /// Starts or stops listening. What is heard goes into the box, after anything already typed,
+    /// to read over and send: never sent by itself, since a misheard word is easy to miss.
+    private func toggleDictation() {
+        if voice.isListening { voice.stop(); return }
+        voice.dismissProblem()
+        dictationBase = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        focused = true
+        Task {
+            await voice.start { heard in
+                draft = dictationBase.isEmpty ? heard : dictationBase + " " + heard
+            }
+        }
+    }
+
+    private var micButton: some View {
+        Button(action: toggleDictation) {
+            Image(systemName: voice.isListening ? "mic.fill" : "mic")
+                .font(.system(size: Theme.scaled(14), weight: .regular))
+                .foregroundStyle(voice.isListening ? palette.primary : palette.foreground)
+                .symbolEffect(.pulse, isActive: voice.isListening && !reduceMotion)
+                .frame(width: Theme.Size.controlMd, height: Theme.Size.controlMd)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut("d", modifiers: [.command, .option])
+        .help(voice.isListening ? "Stop listening (Option Cmd D)" : "Talk instead of typing (Option Cmd D)")
+        .accessibilityLabel(voice.isListening ? "Stop listening" : "Dictate")
+    }
+
     private var field: some View {
         HStack(alignment: .bottom, spacing: Theme.Space.snug) {
             // The visible way in. Dropping files on the box always worked, but nothing said so.
@@ -1043,7 +1095,8 @@ struct Composer: View {
             .help("Attach files, or drop them on the message box")
             .accessibilityLabel("Attach files")
 
-            TextField(uploading ? "Sending files to \(bot.remote?.macName ?? "its Mac")…"
+            TextField(voice.isListening ? "Listening…"
+                      : uploading ? "Sending files to \(bot.remote?.macName ?? "its Mac")…"
                       : isRunning ? "Add more. \(bot.name) reads it when done" : "Message \(bot.name)",
                       text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -1061,6 +1114,8 @@ struct Composer: View {
                     replyingTo = nil
                     return .handled
                 }
+
+            micButton
 
             // A grey stop square while the bot runs, with its own shortcut.
             if isRunning {

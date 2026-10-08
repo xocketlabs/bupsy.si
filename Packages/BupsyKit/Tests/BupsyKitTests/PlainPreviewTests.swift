@@ -19,3 +19,34 @@ struct PlainPreviewTests {
         #expect(preview.count < PlainPreview.enough + 40)
     }
 }
+
+@Suite("Replies read aloud")
+struct SpokenTextTests {
+    @Test("words without marks, code and tables named rather than read")
+    func spoken() {
+        let reply = """
+            ## Done
+            I pushed **the fix** and checked `main`.
+
+            - Tests pass
+            - Docs updated!
+
+            ```sh
+            git push origin main
+            ```
+
+            | a | b |
+            |---|---|
+            | 1 | 2 |
+            | 3 | 4 |
+            """
+        #expect(SpokenText.from(reply) == """
+            Done.
+            I pushed the fix and checked main.
+            Tests pass.
+            Docs updated!
+            There's some code here, on screen.
+            There's a table with 2 rows, on screen.
+            """)
+    }
+}
