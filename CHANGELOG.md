@@ -5,6 +5,17 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Bots can manage bots**
+- A bot can now change another bot's job, role tag or model, start it on a fresh chat, and send
+  it a first message there, with a new `manage_bot` tool. Ask your lead or status bot to "switch
+  Video Producer to Sonnet and give it a fresh chat" and it does it.
+- A fresh chat leaves the old conversation's context behind, so a long chat stops resending its
+  whole history every turn. The earlier messages stay on screen. A bot can also start its own
+  fresh chat with notes on where to pick up.
+- Every change is noted in both bots' chats, naming who made it. A bot set to ask first asks you
+  before changing another bot; one on Auto just does it. A bot that is working gets its fresh
+  chat when it finishes.
+
 **Continue a Claude Code chat**
 - File › Continue a Claude Code Chat (Shift Cmd O), or from New chat: pick one of your recent
   conversations from VS Code or the terminal, and it becomes a bot that works in the same folder

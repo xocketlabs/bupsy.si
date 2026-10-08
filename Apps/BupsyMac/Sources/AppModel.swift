@@ -1333,7 +1333,7 @@ final class AppModel {
     }
 
     /// Called when a bot's run ends: queued messages first, then anything else that waited for it.
-    private func botBecameFree(_ bot: Bot) {
+    func botBecameFree(_ bot: Bot) {
         guard running[bot.id] == nil else { return }
         if let messages = queued.removeValue(forKey: bot.id), let prompt = QueuedMessages.prompt(messages) {
             queuedEntries[bot.id] = nil
@@ -2269,6 +2269,8 @@ final class AppModel {
                 self?.receiveUpdate(from: from, name: name, role: role, job: job)
             case .moveBots(let from, let names, let section):
                 self?.receiveMove(from: from, names: names, section: section)
+            case .manageBot(let from, let change):
+                self?.receiveManage(from: from, change: change)
             }
         }
         watcher.start()
@@ -2435,6 +2437,134 @@ final class AppModel {
         }
     }
 
+    // MARK: - Bots managing bots
+
+    /// Applies what one bot asked to change about another: job, role, model, a fresh chat, and a
+    /// message to start it off.
+    ///
+    /// The approval gate has already decided by the asking bot's trust (manage_bot is not one of
+    /// the tools bupsy waves through), so what arrives here is applied. Each change is noted in
+    /// the changed bot's chat, naming who made it, and summed up in the asker's; anything that
+    /// could not be done (no such bot, a model its engine does not offer) is said in the asker's.
+    func receiveManage(from senderID: String, change: BotChange) {
+        guard let sender = bots.first(where: { $0.id.rawValue == senderID }) else { return }
+        let senderThread = thread(for: sender.id)
+        func refuse(_ message: String) {
+            senderThread.entries.append(TranscriptEntry(kind: .failure(EngineFailure(kind: .unknown, message: message))))
+        }
+        // Exact names only, as for messages: a near miss must not rewrite the wrong bot.
+        guard let target = bots.first(where: {
+            $0.name.caseInsensitiveCompare(change.bot.trimmingCharacters(in: .whitespaces)) == .orderedSame
+        }) else {
+            refuse("No bot named “\(change.bot)” to change.")
+            return
+        }
+        let isSelf = target.id == sender.id
+        let by = isSelf ? "" : " by \(sender.name)"
+        var done: [String] = []
+
+        if let model = change.model {
+            if let option = Self.modelOption(named: model, in: models(for: target)) {
+                if option.id != target.model {
+                    setModel(target, option.id)
+                    done.append("model \(option.label)")
+                }
+            } else {
+                let offered = models(for: target).map { $0.id ?? "default" }.joined(separator: ", ")
+                refuse("\(target.engine.displayName) has no model “\(model)” for \(target.name). It offers: \(offered).")
+            }
+        }
+        if let role = change.role, let current = bots.first(where: { $0.id == target.id }), role != current.role {
+            setRole(current, role)
+            done.append("role \(role)")
+        }
+        if let job = change.job, let current = bots.first(where: { $0.id == target.id }), job != current.personaPrompt {
+            setJob(current, job)
+            done.append("job")
+        }
+        if !done.isEmpty {
+            let list = ListFormatter.localizedString(byJoining: done)
+            thread(for: target.id).entries.append(TranscriptEntry(kind: .note("New \(list)\(by)")))
+            if !isSelf {
+                senderThread.entries.append(TranscriptEntry(kind: .note("Gave \(target.name) a new \(list)")))
+            }
+        }
+
+        guard change.freshChat || change.message != nil else { return }
+        // A fresh chat must not land in the middle of a turn, and a message meant for the fresh
+        // chat must not arrive in the old one: both wait for the bot to finish.
+        let rest: @MainActor () -> Void = { [weak self] in
+            guard let self, let current = self.bots.first(where: { $0.id == target.id }) else { return }
+            if change.freshChat {
+                self.startFreshChat(current, note: "Fresh chat\(by). Earlier messages stay here, but \(current.name) no longer has them in mind.")
+                if !isSelf { senderThread.entries.append(TranscriptEntry(kind: .note("Started a fresh chat for \(current.name)"))) }
+            }
+            if let message = change.message {
+                if isSelf {
+                    self.continueOwnFreshChat(current, notes: message)
+                } else if let from = self.bots.first(where: { $0.id == sender.id }) {
+                    self.deliver(from: from, to: current, text: message)
+                }
+            }
+            // Whatever else was waiting on this bot gets its turn.
+            if self.running[current.id] == nil { self.botBecameFree(current) }
+        }
+        if running[target.id] == nil {
+            rest()
+        } else {
+            waitingForBot[target.id, default: []].append(rest)
+            if !isSelf {
+                senderThread.entries.append(TranscriptEntry(kind: .note(
+                    "\(target.name) is working. Its \(change.freshChat ? "fresh chat" : "message") waits until it finishes.")))
+            }
+        }
+    }
+
+    /// The model a bot named, by id or by label, any capitalisation; "default" is the CLI's own.
+    nonisolated static func modelOption(named name: String, in options: [ModelOption]) -> ModelOption? {
+        let wanted = name.trimmingCharacters(in: .whitespaces)
+        if wanted.caseInsensitiveCompare("default") == .orderedSame { return options.first { $0.id == nil } }
+        return options.first { $0.id?.caseInsensitiveCompare(wanted) == .orderedSame }
+            ?? options.first { $0.label.caseInsensitiveCompare(wanted) == .orderedSame }
+    }
+
+    /// Starts the bot on a new conversation with its engine.
+    ///
+    /// Its history stays in the chat and in the store; only the engine session is left behind, so
+    /// the next run starts with no earlier turns to send. That is what makes it cheaper: a long
+    /// chat resends its whole context every turn. The new conversation record is the newest, so
+    /// it is the one the next run (and a relaunch) picks up.
+    func startFreshChat(_ bot: Bot, note: String) {
+        let fresh = ConversationRecord(botID: bot.id.rawValue, engine: bot.engine.rawValue)
+        try? store?.save(fresh)
+        let thread = thread(for: bot.id)
+        thread.conversationID = nil
+        thread.latestUsage = nil
+        // A copied Claude Code chat waiting to fork has nothing left to fork.
+        forked(bot.id)
+        thread.entries.append(TranscriptEntry(kind: .note(note)))
+    }
+
+    /// A bot that started its own fresh chat picks up from the notes it left itself.
+    ///
+    /// Counted with bot-to-bot hand-offs, so a bot that keeps restarting itself stops after a few
+    /// and waits for the person rather than looping on their subscription.
+    private func continueOwnFreshChat(_ bot: Bot, notes: String) {
+        let key = "\(bot.id.rawValue)>\(bot.id.rawValue)"
+        let recent = (autoRuns[key] ?? []).filter { $0 > Date().addingTimeInterval(-600) }
+        guard !isPaused, running[bot.id] == nil, recent.count < Self.autoRunsPerPair else {
+            thread(for: bot.id).entries.append(TranscriptEntry(kind: .note(
+                "\(bot.name) left itself notes for the fresh chat but restarted a lot, so it's waiting for you:\n\n\(notes)")))
+            return
+        }
+        autoRuns[key] = recent + [Date()]
+        let prompt = "You started this fresh chat yourself to save context. Your notes from the "
+            + "previous chat:\n\n\(notes)\n\nCarry on from there."
+        // Shown as the bot's own message, never as something the person said.
+        _ = startRun(prompt, bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: nil,
+                     from: bot, shown: "Notes from the previous chat:\n\n\(notes)")
+    }
+
     func decideJobChange(_ change: PendingJobChange, allow: Bool) {
         pendingJobChanges.removeAll { $0.id == change.id }
         guard let current = bots.first(where: { $0.id == change.bot.id }) else { return }
@@ -2550,7 +2680,10 @@ final class AppModel {
     /// conversation.
     private func writeRoster(excluding bot: Bot) -> String? {
         let entries = bots.filter { $0.id != bot.id && !$0.hidden }.map {
-            ["name": $0.name, "job": $0.personaPrompt ?? "", "section": $0.folder ?? ""]
+            ["name": $0.name, "job": $0.personaPrompt ?? "", "section": $0.folder ?? "",
+             // What manage_bot can set: the model now and the ones its engine offers.
+             "model": $0.model ?? "default",
+             "models": models(for: $0).map { $0.id ?? "default" }.joined(separator: ", ")]
         }
         guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return nil }
         let url = OutboxWatcher.rosterFile

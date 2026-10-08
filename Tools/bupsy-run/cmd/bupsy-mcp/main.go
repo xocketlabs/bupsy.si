@@ -105,7 +105,7 @@ func handle(req request, outbox, sender string) response {
 		}
 
 	case "tools/list":
-		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool(), askPersonTool(), updateMeTool(), moveBotsTool()}}
+		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool(), askPersonTool(), updateMeTool(), moveBotsTool(), manageBotTool()}}
 
 	case "tools/call":
 		reply.Result = call(req.Params, outbox, sender)
@@ -268,11 +268,49 @@ func moveBotsTool() map[string]any {
 	}
 }
 
+// manageBotTool describes changing another bot: its job, role tag and model, and starting it on a
+// fresh conversation with a first message there.
+//
+// Unlike update_me and move_bots it is not one of the tools bupsy waves through: changing what
+// another bot does goes through the approval gate like any connector tool, so a bot the person
+// set to ask first asks, and only a bot on "auto" applies it at once. Every change is noted in
+// both chats, so the person sees who changed what.
+func manageBotTool() map[string]any {
+	return map[string]any{
+		"name": "manage_bot",
+		"description": "Change a bupsy bot: its job (standing instructions), role tag or model, " +
+			"and/or start it on a fresh chat. A fresh chat forgets the old conversation's " +
+			"context (its history stays on screen), which saves usage once a chat has grown " +
+			"long; give 'message' to tell it where to pick up. Use names exactly as list_bots " +
+			"shows them; you can name yourself to start your own fresh chat with a hand-off " +
+			"note. A bot that is working gets the fresh chat when it finishes. Only change " +
+			"what the person asked for.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"bot":  map[string]any{"type": "string", "description": "The bot's name, as list_bots shows it."},
+				"job":  map[string]any{"type": "string", "description": "Its new standing instructions. Replaces the old job entirely."},
+				"role": map[string]any{"type": "string", "description": "A one- or two-word tag, e.g. \"Research\"."},
+				"model": map[string]any{
+					"type":        "string",
+					"description": "The model, as list_bots shows the choices, e.g. \"sonnet\" or \"opus\". \"default\" for whatever its CLI is set to.",
+				},
+				"fresh_chat": map[string]any{"type": "boolean", "description": "Start a new conversation, leaving the old context behind."},
+				"message": map[string]any{
+					"type":        "string",
+					"description": "Sent to the bot after the other changes, as the first message of its fresh chat if you asked for one.",
+				},
+			},
+			"required": []any{"bot"},
+		},
+	}
+}
+
 // listBotsTool describes reading the roster.
 func listBotsTool() map[string]any {
 	return map[string]any{
 		"name":        "list_bots",
-		"description": "List the other bupsy bots: each one's name, sidebar section and job. Use it before messaging, creating or moving a bot.",
+		"description": "List the other bupsy bots: each one's name, sidebar section, model and job. Use it before messaging, creating, moving or managing a bot.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 	}
 }
@@ -289,6 +327,10 @@ type callParams struct {
 		Options  []string `json:"options"`
 		Bots     []string `json:"bots"`
 		Section  string   `json:"section"`
+		Bot      string   `json:"bot"`
+		Model    string   `json:"model"`
+		Fresh    bool     `json:"fresh_chat"`
+		Message  string   `json:"message"`
 	} `json:"arguments"`
 }
 
@@ -378,6 +420,26 @@ func call(params json.RawMessage, outbox, sender string) map[string]any {
 		return toolText("Moving " + strings.Join(names, ", ") + " " + where + ". bupsy notes " +
 			"in this chat what moved, and names any bot it could not find.")
 
+	case "manage_bot":
+		bot := strings.TrimSpace(args.Bot)
+		job, role, model := strings.TrimSpace(args.Job), strings.TrimSpace(args.Role), strings.TrimSpace(args.Model)
+		message := strings.TrimSpace(args.Message)
+		if bot == "" {
+			return toolError("name the bot to change")
+		}
+		if job == "" && role == "" && model == "" && !args.Fresh && message == "" {
+			return toolError("give at least one of job, role, model, fresh_chat or message")
+		}
+		if err := drop(outbox, map[string]any{
+			"kind": "manage_bot", "from": sender, "bot": bot, "job": job, "role": role,
+			"model": model, "fresh_chat": args.Fresh, "message": message,
+		}); err != nil {
+			return toolError("could not change it: " + err.Error())
+		}
+		return toolText("Asked bupsy to change " + bot + ". It applies the changes and notes them " +
+			"in both chats, or names what it could not do (an unknown bot or model). If " + bot +
+			" is working, its fresh chat and message wait until it finishes.")
+
 	case "ask_person":
 		question := strings.TrimSpace(args.Question)
 		var options []string
@@ -416,6 +478,8 @@ func listBots() map[string]any {
 		Name    string `json:"name"`
 		Job     string `json:"job"`
 		Section string `json:"section"`
+		Model   string `json:"model"`
+		Models  string `json:"models"`
 	}
 	if err := json.Unmarshal(data, &bots); err != nil {
 		return toolError("the roster file is not readable")
@@ -425,6 +489,13 @@ func listBots() map[string]any {
 		line := "- " + bot.Name
 		if bot.Section != "" {
 			line += " [section: " + bot.Section + "]"
+		}
+		if bot.Model != "" {
+			line += " [model: " + bot.Model
+			if bot.Models != "" {
+				line += "; can use: " + bot.Models
+			}
+			line += "]"
 		}
 		if bot.Job != "" {
 			line += ": " + bot.Job

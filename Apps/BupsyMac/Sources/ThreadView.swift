@@ -1229,7 +1229,8 @@ enum BupsyToolLine: Equatable, Sendable {
     init(tool: String, arguments: [String: Any]) {
         switch tool {
         // The note bupsy writes when it applies the move says what moved, and what did not.
-        case "ToolSearch", "mcp__bupsy__ask_person", "mcp__bupsy__update_me", "mcp__bupsy__move_bots":
+        case "ToolSearch", "mcp__bupsy__ask_person", "mcp__bupsy__update_me", "mcp__bupsy__move_bots",
+             "mcp__bupsy__manage_bot":
             self = .hidden
         case "mcp__bupsy__message_bot":
             self = .messaged(to: arguments["to"] as? String ?? "a bot", text: arguments["text"] as? String ?? "")

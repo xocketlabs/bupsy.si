@@ -11,6 +11,18 @@ import Foundation
 /// A polled directory rather than a socket or a shared database: it needs no dependencies,
 /// survives either side restarting, and works the same on a rented Linux machine as it does here.
 /// The same shape as the approval gate's pending/decisions folders, for the same reasons.
+/// What a bot asked to change about a bot, by the manage_bot tool.
+struct BotChange: Equatable {
+    var bot: String
+    var job: String?
+    var role: String?
+    var model: String?
+    var freshChat = false
+    var message: String?
+
+    var isEmpty: Bool { job == nil && role == nil && model == nil && !freshChat && message == nil }
+}
+
 @MainActor
 final class OutboxWatcher {
     /// Where `bupsy-mcp` drops messages. Passed to it by value in the MCP config.
@@ -28,6 +40,8 @@ final class OutboxWatcher {
         case updateMe(from: String, name: String?, role: String?, job: String?)
         /// File bots into a sidebar section; nil takes them out of any section.
         case moveBots(from: String, bots: [String], section: String?)
+        /// Change another bot (or itself): job, role, model, a fresh chat, a message.
+        case manageBot(from: String, change: BotChange)
     }
 
     /// The roster `list_bots` reads, beside the outbox rather than in it, since the outbox is drained
@@ -104,7 +118,13 @@ final class OutboxWatcher {
             func field(_ key: String) -> String? {
                 (payload[key] as? String).flatMap { $0.isEmpty ? nil : $0 }
             }
-            if payload["kind"] as? String == "move_bots" {
+            if payload["kind"] as? String == "manage_bot" {
+                guard let bot = field("bot") else { continue }
+                let change = BotChange(bot: bot, job: field("job"), role: field("role"), model: field("model"),
+                                       freshChat: payload["fresh_chat"] as? Bool ?? false, message: field("message"))
+                guard !change.isEmpty else { continue }
+                onRequest(.manageBot(from: from, change: change))
+            } else if payload["kind"] as? String == "move_bots" {
                 let names = ((payload["bots"] as? [Any]) ?? []).compactMap { $0 as? String }
                 guard !names.isEmpty else { continue }
                 onRequest(.moveBots(from: from, bots: names, section: field("section")))

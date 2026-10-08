@@ -146,6 +146,16 @@ struct BupsyOwnToolsPolicyTests {
                 }
             }
         }
+        // Changing another bot's job, model or chat is gated by the asking bot's own trust: only
+        // a bot on auto does it unasked.
+        for autonomy in [Autonomy.ask, .allowlist, .trusted] {
+            if case .allow = AutonomyPolicy.decide(tool: "mcp__bupsy__manage_bot", autonomy: autonomy) {
+                Issue.record("manage_bot was let through under \(autonomy)")
+            }
+        }
+        if case .ask = AutonomyPolicy.decide(tool: "mcp__bupsy__manage_bot", autonomy: .auto) {
+            Issue.record("manage_bot asked on auto")
+        }
         // Another server's tools still ask.
         if case .allow = AutonomyPolicy.decide(tool: "mcp__bupsyx__send", autonomy: .trusted) {
             Issue.record("a lookalike server was let through")
