@@ -20,6 +20,18 @@ extension AppModel {
         // Read so a view showing this mood redraws when a "done" face should end.
         _ = moodTick
 
+        // As its own Mac reports it; asleep while that Mac cannot be reached.
+        if let remote = bot.remote {
+            guard remote.online else { return .sleeping }
+            if remote.needsYou { return .waitingForYou }
+            switch remote.mood {
+            case "working": return .working
+            case "failed": return .failed
+            case "done": return .done
+            case "sleeping": return .sleeping
+            default: return remote.running ? .working : .idle
+            }
+        }
         if hasPendingDecision(bot) { return .waitingForYou }
         if isRunning(bot.id) { return .working }
         if lastFailedAt[bot.id] != nil { return .failed }

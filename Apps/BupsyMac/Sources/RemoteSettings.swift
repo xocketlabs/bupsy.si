@@ -235,3 +235,133 @@ struct LidSleepSection: View {
         }
     }
 }
+
+/// Settings › Other Macs: the person's other Bupsy Macs whose bots show here, and linking one.
+struct LinkedMacsSection: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.palette) private var palette
+    @State private var adding = false
+    @State private var peers: [Tailscale.Peer] = []
+    @State private var address = ""
+    @State private var code = ""
+    @State private var working = false
+    @State private var problem: String?
+
+    private var linked: LinkedMacs { model.linked }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            SettingsGroup(title: "Other Macs") {
+                VStack(alignment: .leading, spacing: Theme.Space.step) {
+                    if linked.links.isEmpty && !adding {
+                        Text("Link another Mac running Bupsy to see its bots here, in the same sections, marked with that Mac's icon.")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(linked.links) { link in linkRow(link) }
+                    if adding { addForm } else {
+                        Button("Add a Mac…") { startAdding() }
+                            .buttonStyle(BupsyButtonStyle(kind: .secondary, size: .sm))
+                    }
+                }
+                .padding(Theme.Space.step)
+            }
+            Text("On the other Mac: Settings › Use from other devices, turn it on, then Pair a device to get a code. "
+                 + "Its bots keep running there; this Mac shows them and sends your messages and decisions back.")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Theme.Space.hairline)
+        }
+    }
+
+    private func linkRow(_ link: LinkedMacs.Link) -> some View {
+        let online = linked.online[link.id]
+        return HStack(spacing: Theme.Space.snug) {
+            Image(systemName: link.kind == "laptop" ? "laptopcomputer" : "desktopcomputer")
+                .foregroundStyle(palette.mutedForeground)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(link.name).font(Theme.Typography.body).foregroundStyle(palette.foreground)
+                Text(online == true ? "Connected · \(linked.remoteBots.filter { $0.remote?.macID == link.id }.count) shared bots"
+                     : (linked.problems[link.id] ?? "Connecting…"))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(online == false ? palette.warning : palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: Theme.Space.tight)
+            Button("Remove") { linked.remove(link) }
+                .buttonStyle(QuietButton(compact: true))
+                .help("Stop showing \(link.name)'s bots here")
+        }
+    }
+
+    private var addForm: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            if !peers.isEmpty {
+                Text("Your Macs on Tailscale").font(Theme.Typography.caption).foregroundStyle(palette.mutedForeground)
+                ForEach(peers) { peer in
+                    Button {
+                        address = peer.dnsName
+                    } label: {
+                        HStack(spacing: Theme.Space.tight) {
+                            Image(systemName: address == peer.dnsName ? "largecircle.fill.circle" : "circle")
+                                .foregroundStyle(address == peer.dnsName ? palette.primary : palette.mutedForeground)
+                            Text(peer.name).foregroundStyle(palette.foreground)
+                            if !peer.online { Text("offline").foregroundStyle(palette.mutedForeground) }
+                        }
+                        .font(Theme.Typography.body)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!peer.online)
+                }
+            }
+            TextField("Address, e.g. my-mac-mini.tailnet.ts.net", text: $address)
+                .textFieldStyle(.roundedBorder)
+            TextField("Code shown on that Mac", text: $code)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+            if let problem {
+                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: Theme.Space.snug) {
+                Button(working ? "Linking…" : "Link") { link() }
+                    .buttonStyle(BupsyButtonStyle(kind: .primary, size: .sm))
+                    .disabled(working || address.isEmpty || code.count < 6)
+                Button("Cancel") { adding = false; problem = nil }
+                    .buttonStyle(QuietButton(compact: true))
+            }
+        }
+    }
+
+    private func startAdding() {
+        adding = true
+        problem = nil
+        code = ""
+        Task {
+            // This Mac itself is never offered: Tailscale lists peers, not the Mac asking.
+            peers = await Tailscale.macs()
+            if address.isEmpty, let first = peers.first(where: \.online) { address = first.dnsName }
+        }
+    }
+
+    private func link() {
+        working = true
+        problem = nil
+        Task {
+            do {
+                try await linked.add(address: address, code: code)
+                adding = false
+                address = ""
+                code = ""
+            } catch {
+                problem = error.localizedDescription
+            }
+            working = false
+        }
+    }
+}

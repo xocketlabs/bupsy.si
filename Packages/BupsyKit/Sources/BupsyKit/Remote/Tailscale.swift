@@ -67,6 +67,36 @@ public enum Tailscale {
         }
     }
 
+    /// Another Mac on the person's tailnet, offered when linking Macs.
+    public struct Peer: Equatable, Sendable, Identifiable {
+        public let name: String
+        /// Its Tailscale name, which is what Bupsy's address is built from.
+        public let dnsName: String
+        public let online: Bool
+        public var id: String { dnsName }
+    }
+
+    /// The person's other Macs on their tailnet. Only Macs: Bupsy runs on nothing else yet, and
+    /// Tailscale's own relay nodes, servers and phones would be noise in the list.
+    public static func macs() async -> [Peer] {
+        guard let command = commandPath(),
+              let result = try? await run(command, ["status", "--json"], timeout: 10) else { return [] }
+        return parsePeers(result.output)
+    }
+
+    static func parsePeers(_ json: String) -> [Peer] {
+        guard let data = json.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let peers = object["Peer"] as? [String: [String: Any]] else { return [] }
+        return peers.values.compactMap { peer -> Peer? in
+            guard peer["OS"] as? String == "macOS",
+                  let dns = (peer["DNSName"] as? String).map({ $0.hasSuffix(".") ? String($0.dropLast()) : $0 }),
+                  !dns.isEmpty else { return nil }
+            return Peer(name: peer["HostName"] as? String ?? dns, dnsName: dns, online: peer["Online"] as? Bool ?? false)
+        }
+        .sorted { ($0.online ? 0 : 1, $0.name) < ($1.online ? 0 : 1, $1.name) }
+    }
+
     public enum ServeError: Error, LocalizedError, Equatable {
         case notInstalled
         case failed(String)

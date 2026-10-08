@@ -118,6 +118,13 @@ struct TailscaleAndSleepTests {
         }
     }
 
+    @Test("only Macs with a name are offered for linking, online first")
+    func peers() {
+        let json = #"{"Peer":{"a":{"HostName":"funnel-ingress-node","DNSName":"","OS":"","Online":true},"b":{"HostName":"Mac mini","DNSName":"mini.tail1.ts.net.","OS":"macOS","Online":false},"c":{"HostName":"arya","DNSName":"arya.tail1.ts.net.","OS":"linux","Online":true},"d":{"HostName":"Studio","DNSName":"studio.tail1.ts.net.","OS":"macOS","Online":true}}}"#
+        #expect(Tailscale.parsePeers(json).map(\.name) == ["Studio", "Mac mini"])
+        #expect(Tailscale.parsePeers(json).last?.dnsName == "mini.tail1.ts.net")
+    }
+
     @Test("an HTTPS error keeps Tailscale's own link")
     func explainsHTTPS() {
         let message = Tailscale.explain("Serve is not enabled... HTTPS is not enabled. To enable, visit: https://login.tailscale.com/f/serve?node=abc")
@@ -145,5 +152,107 @@ struct SharedWithDevicesTests {
         let saved = Dictionary(uniqueKeysWithValues: try store.bots().map { ($0.id, $0) })
         #expect(saved["a"]?.sharedWithDevices == true)
         #expect(saved["b"]?.sharedWithDevices == false)
+    }
+}
+
+@Suite("Remote access: one Mac talking to another")
+struct RemoteClientTests {
+    /// A stand-in for another Mac's Bupsy, recording what it was asked.
+    final class Log: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [String] = []
+        func add(_ item: String) { lock.lock(); items.append(item); lock.unlock() }
+        var all: [String] { lock.lock(); defer { lock.unlock() }; return items }
+    }
+
+    private func fakeMac(_ log: Log) async throws -> (LocalHTTPServer, URL) {
+        let server = LocalHTTPServer { request in
+            log.add("\(request.method) \(request.path) cookie=\(request.cookie("bupsy_device") ?? "-") body=\(String(decoding: request.body, as: UTF8.self))")
+            switch (request.method, request.path) {
+            case ("POST", "/api/pair"):
+                guard request.json?["code"] as? String == "ABC234" else {
+                    return .error("That code didn't work.", status: 401)
+                }
+                var response = HTTPResponse.json(["ok": true])
+                response.headers["Set-Cookie"] = "bupsy_device=KEY123; Path=/; HttpOnly; Secure; SameSite=Strict"
+                return response
+            default:
+                guard request.cookie("bupsy_device") == "KEY123" else { return .error("Not paired.", status: 401) }
+            }
+            switch request.path {
+            case "/api/session":
+                return .json(["mac": "Mac mini", "kind": "desktop"])
+            case "/api/bots":
+                return .json(["waiting": 1, "bots": [[
+                    "id": "b1", "name": "Lead", "role": "Lead", "section": "Frontier & Co",
+                    "colour": "#82a820", "mood": "waitingForYou", "running": true, "needsYou": true,
+                    "unread": false, "preview": "Wants to push",
+                    "face": ["shape": "bup", "colour": 3, "hue": 0.25],
+                ]]])
+            case "/api/bots/b1/messages":
+                return .json(["entries": [
+                    ["id": "E1", "kind": "you", "at": "2026-10-08T12:00:00Z", "text": "ship it"],
+                    ["id": "E2", "kind": "approval", "at": "2026-10-08T12:00:05Z",
+                     "approval": ["id": "t1", "tool": "Bash", "summary": "git push", "reason": "asks first", "decided": NSNull()]],
+                ]])
+            default:
+                return .json(["ok": true])
+            }
+        }
+        let port = try await server.start(preferredPort: 0)
+        return (server, URL(string: "http://127.0.0.1:\(port)")!)
+    }
+
+    @Test("pairs, keeps the key, and uses it on every later call")
+    func pairsAndReads() async throws {
+        let log = Log()
+        let (server, address) = try await fakeMac(log)
+        defer { server.stop() }
+
+        let wrong = RemoteClient(address: address, key: nil)
+        await #expect(throws: RemoteClient.Failure.notPaired("That code didn't work.")) {
+            try await wrong.pair(code: "WRONG1", name: "MacBook Pro")
+        }
+        let key = try await wrong.pair(code: "ABC234", name: "MacBook Pro")
+        #expect(key == "KEY123")
+
+        let client = RemoteClient(address: address, key: key)
+        #expect(try await client.sessionInfo() == RemoteSession(mac: "Mac mini", kind: "desktop"))
+        let bots = try await client.bots()
+        #expect(bots.first?.name == "Lead")
+        #expect(bots.first?.face?.colour == 3)
+        #expect(bots.first?.needsYou == true)
+        let entries = try await client.entries(bot: "b1")
+        #expect(entries.map(\.kind) == ["you", "approval"])
+        #expect(entries.last?.approval?.decided == nil)
+
+        try await client.send("hello", to: "b1")
+        try await client.decide("t1", allow: true, bot: "b1")
+        try await client.stop(bot: "b1")
+        let calls = log.all
+        #expect(calls.contains { $0.hasPrefix("POST /api/bots/b1/messages cookie=KEY123") && $0.contains("hello") })
+        #expect(calls.contains { $0.hasPrefix("POST /api/bots/b1/approvals/t1 cookie=KEY123") && $0.contains("true") })
+        #expect(calls.contains { $0.hasPrefix("POST /api/bots/b1/stop cookie=KEY123") })
+    }
+
+    @Test("a removed device and an asleep Mac read differently")
+    func failures() async throws {
+        let log = Log()
+        let (server, address) = try await fakeMac(log)
+        await #expect(throws: RemoteClient.Failure.notPaired("Not paired.")) {
+            try await RemoteClient(address: address, key: "OLD").bots()
+        }
+        server.stop()
+        await #expect(throws: RemoteClient.Failure.unreachable) {
+            try await RemoteClient(address: address, key: "KEY123").bots()
+        }
+    }
+
+    @Test("a typed name becomes Bupsy's HTTPS address")
+    func addresses() {
+        #expect(RemoteClient.normalisedAddress("vanshs-mac-mini.tail1.ts.net")?.absoluteString == "https://vanshs-mac-mini.tail1.ts.net:8443")
+        #expect(RemoteClient.normalisedAddress("https://m.tail1.ts.net:8443/?code=ABC234")?.absoluteString == "https://m.tail1.ts.net:8443")
+        #expect(RemoteClient.normalisedAddress("  ") == nil)
+        #expect(RemoteClient.deviceKey(fromSetCookie: "bupsy_device=K; Path=/; HttpOnly") == "K")
     }
 }
