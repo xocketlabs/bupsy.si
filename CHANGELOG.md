@@ -5,6 +5,14 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Fresh chat**
+- A Fresh chat button at the top of every bot's chat. The bot first writes itself short hand-off
+  notes (shown in the chat), then carries on in a new conversation that starts from those notes,
+  so each message costs far less than resending a long history. Earlier messages stay on screen.
+- In the button's menu, "Fresh chat when a chat gets long" does this by itself for every bot once
+  a chat reaches 60% of its context window, before anything queued is sent. Off until you switch
+  it on.
+
 **Bots can manage bots**
 - A bot can now change another bot's job, role tag or model, start it on a fresh chat, and send
   it a first message there, with a new `manage_bot` tool. Ask your lead or status bot to "switch

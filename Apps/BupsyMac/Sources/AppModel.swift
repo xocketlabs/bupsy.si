@@ -74,6 +74,16 @@ final class AppModel {
     var tourSheet: String?
 
     var needsOnboarding = !AppHome.defaults.bool(forKey: "si.bupsy.onboarded")
+
+    /// Starts a bot on a fresh chat, with its own hand-off notes, once its chat gets long. See
+    /// `AppModel+FreshChat`.
+    var freshensLongChats = AppHome.defaults.bool(forKey: "si.bupsy.freshensLongChats") {
+        didSet { AppHome.defaults.set(freshensLongChats, forKey: "si.bupsy.freshensLongChats") }
+    }
+    /// Bots to move to a fresh chat as soon as they are free.
+    @ObservationIgnored var freshChatDue: Set<BotID> = []
+    /// Bots writing their hand-off notes right now, whose own long chat must not ask for another.
+    var writingHandoff: Set<BotID> = []
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?
     /// Whether the database opened at all, which changes what a storage problem means.
@@ -1306,7 +1316,7 @@ final class AppModel {
     /// The thread rows of those messages, so Edit can take them back out.
     private var queuedEntries: [BotID: [UUID]] = [:]
     /// Work waiting for a bot that was busy elsewhere — a group turn, say. Run in order as it frees.
-    private var waitingForBot: [BotID: [@MainActor () -> Void]] = [:]
+    var waitingForBot: [BotID: [@MainActor () -> Void]] = [:]
 
     func queuedCount(for bot: Bot) -> Int { queued[bot.id]?.count ?? 0 }
 
@@ -1335,6 +1345,10 @@ final class AppModel {
     /// Called when a bot's run ends: queued messages first, then anything else that waited for it.
     func botBecameFree(_ bot: Bot) {
         guard running[bot.id] == nil else { return }
+        // A hand-off that was stopped never finished; nothing is being written any more.
+        writingHandoff.remove(bot.id)
+        // Before anything queued, so what was waiting goes to the fresh chat, not the long one.
+        if freshChatDue.remove(bot.id) != nil, writeHandoff(bot) { return }
         if let messages = queued.removeValue(forKey: bot.id), let prompt = QueuedMessages.prompt(messages) {
             queuedEntries[bot.id] = nil
             let thread = thread(for: bot.id)
@@ -1444,8 +1458,12 @@ final class AppModel {
         // gate that could not be set up fails the run instead.
         let ungated = bot.engine == .claude && gateSettings == nil
 
+        // The first turn of a fresh chat carries the notes the bot left itself at the end of the
+        // last one; not a group's turn, which has its own conversation.
+        let carried = groupID == nil && thread.conversationID == nil
+            ? takeHandoffNotes(bot.id).map { "\(Self.handoffHeading)\n\n\($0)\n\n---\n\n\(prompt)" } : nil
         let request = RunRequest(
-            prompt: bot.personaPrompt.map { "\($0)\n\n\(prompt)" } ?? prompt,
+            prompt: bot.personaPrompt.map { "\($0)\n\n\(carried ?? prompt)" } ?? carried ?? prompt,
             workingDirectory: workingDirectory(for: bot),
             resume: thread.conversationID,
             model: bot.model,
@@ -1526,6 +1544,7 @@ final class AppModel {
                 finished.outputTokens = runUsage?.outputTokens
                 finished.costUSD = runUsage?.costUSD
                 try? store?.save(finished)
+                if !failed, groupID == nil, needsFreshChat(bot, thread: thread) { freshChatDue.insert(bot.id) }
                 if let id = thread.conversationID {
                     try? store?.save(ConversationRecord(
                         id: conversationID, botID: bot.id.rawValue, engine: bot.engine.rawValue,
