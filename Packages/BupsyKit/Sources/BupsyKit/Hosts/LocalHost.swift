@@ -95,6 +95,11 @@ final class ProcessBox: @unchecked Sendable {
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
         process.standardInput = stdinPipe
+        // Bots work in the background, and so does everything they start: the browsers they
+        // drive, the builds they run. Measured with three bots capturing pages, their headless
+        // Chrome took seven cores while the app itself used a tenth of one, and the person's own
+        // apps waited behind it. Utility QoS lets macOS put whatever the person is doing first.
+        process.qualityOfService = .utility
 
         var environment = ProcessInfo.processInfo.environment
         // Engines are better behaved when they know they are not on a terminal.
@@ -174,6 +179,10 @@ final class ProcessBox: @unchecked Sendable {
     /// same lock `onTermination` takes: either Stop comes first and this launches nothing, or
     /// this comes first and Stop sees a running child to stop. Holding the lock across `run()`
     /// costs Stop a few milliseconds at most.
+    /// How far below normal a bot's processes run. Enough that the person's own apps win when
+    /// both want the CPU; a bot with the machine to itself still gets all of it.
+    static let niceness: Int32 = 10
+
     private func launchUnlessCancelled() throws -> Bool {
         try lock.withLock {
             if cancelled {
@@ -188,6 +197,9 @@ final class ProcessBox: @unchecked Sendable {
             // alone instead of signalling a group that is not ours.
             let pid = process.processIdentifier
             ownsGroup = getpgid(pid) == pid
+            // A lower scheduling priority as well, which every process the engine starts after
+            // this inherits. Best effort: a priority that cannot be set leaves the run as it was.
+            _ = setpriority(PRIO_PROCESS, id_t(pid), Self.niceness)
             #endif
             return true
         }

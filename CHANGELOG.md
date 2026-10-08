@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Bots work in the background**
+- Bots, and everything they start (headless browsers, builds, video encodes), now run at
+  background priority, so your own apps stay quick while bots work hard. A bot with the Mac to
+  itself still gets all of it. Measured: three bots' headless Chrome took about seven cores while
+  the app itself used a tenth of one.
+
 **Use Bupsy from your phone or another Mac**
 - Settings › Use from other devices: one switch shares Bupsy with your own devices over Tailscale.
   Open the address on your phone (add it to the Home Screen and it opens like an app) or another
