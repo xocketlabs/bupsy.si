@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Send now**
+- A message sent while a bot is busy still waits, and now says what you can do about it:
+  **Send now** stops the bot so it reads your message at once (it picks up the same
+  conversation, with what it had done so far), and **Edit** takes it back into the box.
+- Shift Cmd Return in the message box sends straight away while the bot works.
+
 **Context window meter**
 - The meter shows what the context actually holds: the last model call of a run, not the run's
   summed totals, which counted the context once per step (a real bot read 3.8M / 200k, 1,917%).

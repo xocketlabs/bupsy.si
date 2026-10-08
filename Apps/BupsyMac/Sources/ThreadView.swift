@@ -39,6 +39,8 @@ struct Bubble: View {
     var context: ThreadRowContext?
     /// Reply to this message: who said it, and what. nil where replying makes no sense.
     var onReply: ((_ author: String, _ text: String) -> Void)?
+    /// Puts queued messages back in the message box. nil where there is no box to put them in.
+    var onEditQueued: ((String) -> Void)?
 
     @State private var hovering = false
     @State private var copied = false
@@ -48,12 +50,14 @@ struct Bubble: View {
     @State private var toolMemo = ToolCallMemo()
 
     init(entry: TranscriptEntry, bot: Bot, showsAvatar: Bool, context: ThreadRowContext? = nil,
-         onReply: ((_ author: String, _ text: String) -> Void)? = nil) {
+         onReply: ((_ author: String, _ text: String) -> Void)? = nil,
+         onEditQueued: ((String) -> Void)? = nil) {
         self.entry = entry
         self.bot = bot
         self.showsAvatar = showsAvatar
         self.context = context
         self.onReply = onReply
+        self.onEditQueued = onEditQueued
     }
 
     private var row: ThreadRowContext {
@@ -230,11 +234,31 @@ struct Bubble: View {
                 .padding(.trailing, ChatBubbleShape.tailWidth)
                 // Under the last message still waiting for the bot, right-aligned with it: the
                 // message is in, and will be read, just not yet.
+                // While it waits: send it now, stopping the bot to read it, or take it back.
                 if row.showsQueuedNote {
-                    Text("Queued. \(bot.name) reads this when it's done.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(palette.mutedForeground)
-                        .padding(.trailing, Theme.Space.tight)
+                    HStack(spacing: Theme.Space.tight) {
+                        Text("Queued. \(bot.name) reads this when it's done.")
+                            .foregroundStyle(palette.mutedForeground)
+                        if let onEditQueued {
+                            Button("Edit") {
+                                if let text = model.takeBackQueued(bot) { onEditQueued(text) }
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(palette.mutedForeground)
+                            .underline()
+                            .help("Take this back to change it")
+                        }
+                        Button {
+                            model.sendQueuedNow(bot)
+                        } label: {
+                            Label("Send now", systemImage: "arrow.up.circle.fill")
+                                .foregroundStyle(palette.primary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Stop \(bot.name) and send this now")
+                    }
+                    .font(Theme.Typography.caption.weight(.medium))
+                    .padding(.trailing, Theme.Space.tight)
                 }
             }
 
@@ -1045,8 +1069,20 @@ struct Composer: View {
                 .buttonStyle(.plain)
                 .disabled(!sendEnabled)
                 .keyboardShortcut(.return, modifiers: .command)
-                .help(isRunning ? "Send. \(bot.name) reads it when done (Cmd Return)" : "Send (Cmd Return)")
+                .help(isRunning ? "Send. \(bot.name) reads it when done (Cmd Return), "
+                      + "or now, stopping it (Shift Cmd Return)" : "Send (Cmd Return)")
                 .accessibilityLabel(isRunning ? "Send. \(bot.name) reads it when done" : "Send")
+                // Send now: queue it and stop the bot so it reads it at once.
+                .background {
+                    Button("Send now") {
+                        guard isRunning, sendEnabled else { return }
+                        send()
+                        model.sendQueuedNow(bot)
+                    }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .hidden()
+                    .accessibilityHidden(true)
+                }
             }
         }
         .padding(Theme.Space.snug)
