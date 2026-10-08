@@ -160,6 +160,20 @@ enum TourMode {
                 reset(m)
                 if let remote = m.linked.remoteBots.first { m.tourDestination = .bot(remote.id) }
             },
+            // A conversation carried over from Claude Code, when asked for: the newest one, copied.
+            Step(name: "claude-import", appearance: .dark) { m in
+                reset(m)
+                guard ProcessInfo.processInfo.environment["BUPSY_TOUR_CLAUDE_IMPORT"] != nil else { return }
+                let start = Date()
+                let sessions = ClaudeSessions.recent(excluding: (try? m.store?.knownProviderConversationIDs()) ?? [],
+                                                     excludingFolder: ProcessInfo.processInfo.environment["BUPSY_TOUR_BOT_FOLDERS"] ?? AppModel.workspacesDirectory.path)
+                FileHandle.standardError.write("CLAUDE_LIST \(sessions.count) sessions in \(Int(Date().timeIntervalSince(start) * 1000))ms; sources \(Set(sessions.map(\.source.rawValue)))\n".data(using: .utf8)!)
+                guard let session = sessions.first(where: { $0.source == .vscode }) ?? sessions.first,
+                      let bot = m.continueClaudeSession(session, as: .copy) else { return }
+                let thread = m.thread(for: bot.id)
+                FileHandle.standardError.write("CLAUDE_IMPORT bot=\(bot.name) folder=\(bot.workdir ?? "-") private=\(!bot.sharedWithDevices) entries=\(thread.entries.count) conversation=\(thread.conversationID?.rawValue == session.id) fork=\(m.shouldFork(bot.id))\n".data(using: .utf8)!)
+                m.tourDestination = .bot(bot.id)
+            },
             Step(name: "panel-files", appearance: .light) { m in reset(m); m.tourDetails = .files },
             Step(name: "search", appearance: .light) { m in reset(m); m.tourDetails = nil; m.tourPalette = true },
             Step(name: "apps", appearance: .light) { m in reset(m); m.tourDestination = .connectors },

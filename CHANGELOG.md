@@ -5,6 +5,15 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Continue a Claude Code chat**
+- File › Continue a Claude Code Chat (Shift Cmd O), or from New chat: pick one of your recent
+  conversations from VS Code or the terminal, and it becomes a bot that works in the same folder
+  and remembers everything said so far. Copy and continue (the original stays untouched) or Move
+  here. The bot is kept to this Mac by default.
+- Bots no longer inherit the Claude Code session Bupsy was opened from: opened from inside VS
+  Code's Claude, every bot's run had carried that session's id and private channel, and was saved
+  as a VS Code conversation.
+
 **Voice**
 - Talk to a bot: the microphone button in any chat (Option Cmd D) turns what you say into text in
   the box, as you speak, to read over and send. It stops by itself when you stop talking.

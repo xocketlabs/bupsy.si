@@ -435,6 +435,14 @@ public struct Store: Sendable {
         }
     }
 
+    /// Every engine conversation id Bupsy's bots have had, so a list of Claude Code's own
+    /// conversations can leave out the ones Bupsy started.
+    public func knownProviderConversationIDs() throws -> Set<String> {
+        try database.read { db in
+            Set(try String.fetchAll(db, sql: "SELECT providerConversationID FROM conversations WHERE providerConversationID IS NOT NULL"))
+        }
+    }
+
     public func save(_ conversation: ConversationRecord) throws {
         var conversation = conversation
         try database.write { db in try conversation.save(db) }
