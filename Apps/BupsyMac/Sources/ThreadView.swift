@@ -928,6 +928,8 @@ struct Composer: View {
     @Binding var draft: String
     let bot: Bot
     let isRunning: Bool
+    /// Sending attachments to a bot on another Mac, which takes a moment.
+    @State private var uploading = false
     @Binding var replyingTo: ReplyTarget?
     let onSend: () -> Void
     let onStop: () -> Void
@@ -967,11 +969,29 @@ struct Composer: View {
     private func pickFiles() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = true
+        // A folder is only a path, which a bot on another Mac could not open; files are copied.
+        panel.canChooseDirectories = bot.remote == nil
         panel.message = "Choose files for \(bot.name) to look at"
         panel.prompt = "Attach"
         guard panel.runModal() == .OK else { return }
-        let paths = model.attach(panel.urls, to: bot)
+        addAttachments(panel.urls)
+    }
+
+    /// Puts files in the message: their paths for a bot on this Mac, which can open them where
+    /// they are; for a bot on another Mac, copies sent there and the paths they landed at.
+    private func addAttachments(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        if bot.remote != nil {
+            uploading = true
+            Task {
+                let paths = await model.linked.upload(urls, to: bot)
+                uploading = false
+                guard !paths.isEmpty else { return }
+                draft = draft.isEmpty ? paths : draft + "\n" + paths
+            }
+            return
+        }
+        let paths = model.attach(urls, to: bot)
         guard !paths.isEmpty else { return }
         draft = draft.isEmpty ? paths : draft + "\n" + paths
     }
@@ -1023,7 +1043,8 @@ struct Composer: View {
             .help("Attach files, or drop them on the message box")
             .accessibilityLabel("Attach files")
 
-            TextField(isRunning ? "Add more. \(bot.name) reads it when done" : "Message \(bot.name)",
+            TextField(uploading ? "Sending files to \(bot.remote?.macName ?? "its Mac")…"
+                      : isRunning ? "Add more. \(bot.name) reads it when done" : "Message \(bot.name)",
                       text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(ThreadLayout.messageFont)
@@ -1101,9 +1122,8 @@ struct Composer: View {
         // Paths, not contents. The bot can open the file itself, and pasting a megabyte into a
         // prompt would spend the user's own quota to tell it something it could have read.
         .dropDestination(for: URL.self) { urls, _ in
-            let paths = model.attach(urls, to: bot)
-            guard !paths.isEmpty else { return false }
-            draft = draft.isEmpty ? paths : draft + "\n" + paths
+            guard !urls.isEmpty else { return false }
+            addAttachments(urls)
             return true
         } isTargeted: { dropping = $0 }
         // Always applied, shown by `active`: swapping the modifier in and out changed the box's

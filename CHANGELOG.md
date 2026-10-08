@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Other Macs' bots: waiting on you, and files**
+- A bot on another Mac that needs you now shows in Waiting on you and the menu bar ("Lead needs
+  you on Mac mini"), opening its chat.
+- Files attached to a bot on another Mac are copied to that Mac, into the bot's Attachments
+  folder, and the message carries the path there, so the bot can open them. Up to 50 MB each.
+
 **Your other Macs' bots, here**
 - Settings › Other Macs › Add a Mac: pick one of your Macs on Tailscale and type the code it
   shows. Its shared bots then join this Mac's sidebar in the same sections, marked with that

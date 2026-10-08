@@ -61,7 +61,7 @@ final class RemoteAccess {
         // code printed after each pairing. Debug builds only; release builds have no such switch.
         if let port = ProcessInfo.processInfo.environment["BUPSY_REMOTE_TEST_PORT"].flatMap(UInt16.init) {
             Task {
-                let server = LocalHTTPServer { [weak self] request in
+                let server = LocalHTTPServer(bodyLimit: RemoteAccess.bodyLimit) { [weak self] request in
                     guard let self else { return .error("closing", status: 503) }
                     let response = await self.handle(request)
                     if request.path == "/api/pair", response.status == 200 { await self.printTestCode() }
@@ -103,7 +103,7 @@ final class RemoteAccess {
             return
         }
         do {
-            let server = self.server ?? LocalHTTPServer { [weak self] request in
+            let server = self.server ?? LocalHTTPServer(bodyLimit: RemoteAccess.bodyLimit) { [weak self] request in
                 guard let self else { return .error("Bupsy is closing", status: 503) }
                 return await self.handle(request)
             }
@@ -257,11 +257,60 @@ final class RemoteAccess {
             model.answer(question, with: answer, for: bot)
             return .json(["ok": true])
         }
+        if post, action == ["files"] {
+            return receiveFile(request, for: bot, model)
+        }
         if post, action == ["stop"] {
             model.stop(bot.id)
             return .json(["ok": true])
         }
         return .error("Not found", status: 404)
+    }
+
+    /// Bodies are a line of JSON, except a file sent to a bot, which may be a document or a short
+    /// clip. Only that route takes more, and still needs a paired device's key to be kept.
+    nonisolated static func bodyLimit(_ method: String, _ path: String) -> Int {
+        method == "POST" && path.hasSuffix("/files") ? RemoteClient.maxUpload + 64 * 1024 : HTTPParser.maxBodyBytes
+    }
+
+    /// A file another device attached for this bot: saved in the bot's own folder, under
+    /// Attachments, and its path here sent back to go in the message.
+    private func receiveFile(_ request: HTTPRequest, for bot: Bot, _ model: AppModel) -> HTTPResponse {
+        guard bot.machineID == nil else {
+            return .error("\(bot.name) runs on a cloud machine. Put the file there instead.", status: 409)
+        }
+        let folder = model.workingDirectory(for: bot).appendingPathComponent("Attachments", isDirectory: true)
+        let name = Self.safeFileName(request.headers["x-file-name"]?.removingPercentEncoding ?? "")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let destination = Self.unusedURL(for: name, in: folder)
+            try request.body.write(to: destination, options: .atomic)
+            return .json(["path": destination.path])
+        } catch {
+            return .error("Couldn't save \(name) here: \(error.localizedDescription)", status: 500)
+        }
+    }
+
+    /// The last part of a name only, with nothing that could climb out of the folder or hide.
+    static func safeFileName(_ name: String) -> String {
+        let last = (name as NSString).lastPathComponent
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        let trimmed = String(last.drop(while: { $0 == "." }).prefix(120))
+        return trimmed.isEmpty ? "file" : trimmed
+    }
+
+    /// `name`, or `name 2`, `name 3`… when a file by that name is already there.
+    static func unusedURL(for name: String, in folder: URL) -> URL {
+        var candidate = folder.appendingPathComponent(name)
+        let stem = (name as NSString).deletingPathExtension
+        let ext = (name as NSString).pathExtension
+        var counter = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = folder.appendingPathComponent(ext.isEmpty ? "\(stem) \(counter)" : "\(stem) \(counter).\(ext)")
+            counter += 1
+        }
+        return candidate
     }
 
     // MARK: - What the page is sent

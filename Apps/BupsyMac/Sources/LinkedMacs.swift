@@ -181,6 +181,23 @@ final class LinkedMacs {
         act(bot) { client, id in try await client.answer(question.id, with: answer, bot: id) }
     }
 
+    /// Copies files to a bot's own Mac and returns the paths there, one per line as a local
+    /// attachment reads. A file that could not go says why in the chat instead.
+    func upload(_ files: [URL], to bot: Bot) async -> String {
+        guard let ref = bot.remote, let client = client(ref.macID) else { return "" }
+        var paths: [String] = []
+        for file in files {
+            do {
+                paths.append(try await client.upload(file, to: ref.botID))
+            } catch {
+                model?.thread(for: bot.id).entries.append(TranscriptEntry(kind: .failure(EngineFailure(
+                    kind: .unknown, message: "Couldn't send \(file.lastPathComponent) to \(ref.macName): \(error.localizedDescription)"))))
+            }
+        }
+        if paths.count == 1 { return paths[0] }
+        return paths.map { "- \($0)" }.joined(separator: "\n")
+    }
+
     func stop(_ botID: BotID) {
         guard let bot = remoteBots.first(where: { $0.id == botID }) else { return }
         act(bot) { client, id in try await client.stop(bot: id) }

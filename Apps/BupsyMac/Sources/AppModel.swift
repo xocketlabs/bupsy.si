@@ -1022,6 +1022,17 @@ final class AppModel {
             }
         }
 
+        // Bots on the person's other Macs that are waiting on them. Their Mac says so; the details
+        // are in their chat, which this opens.
+        for bot in linked.remoteBots {
+            guard let remote = bot.remote, remote.online, remote.needsYou else { continue }
+            items.append(AttentionItem(
+                id: "remote|\(bot.id.rawValue)", botID: bot.id, botName: bot.name, hue: bot.avatarHue,
+                kind: .remote(remote.macName),
+                title: "\(bot.name) needs you on \(remote.macName)",
+                detail: remote.preview ?? ""))
+        }
+
         for group in groups {
             for bot in members(of: group) {
                 guard let side = groupSideThreads["\(bot.id.rawValue)|\(group.id)"] else { continue }
