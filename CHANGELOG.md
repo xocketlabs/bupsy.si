@@ -5,6 +5,13 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Busy chats stay responsive**
+- The Files panel no longer re-reads a bot's whole tool history on the main thread at every
+  streamed line: it waits for a burst to settle, reads off the main thread, and looks at the
+  recent history only. A long-running bot like Lead froze the window while it worked.
+- Faces beside replies are still, rather than dozens redrawing 30 times a second.
+- A reply's formatted text is built once, not on every redraw of the thread.
+
 **Send now**
 - A message sent while a bot is busy still waits, and now says what you can do about it:
   **Send now** stops the bot so it reads your message at once (it picks up the same

@@ -561,13 +561,17 @@ public struct Store: Sendable {
     ///
     /// A call whose result was an error — including one the approval gate refused — wrote
     /// nothing, so it is left out.
-    public func filesWritten(forBot botID: String, limit: Int = 100) throws -> [WrittenFile] {
+    public func filesWritten(forBot botID: String, limit: Int = 100,
+                             scanLimit: Int = 2_000) throws -> [WrittenFile] {
         let events = try database.read { db in
             try EventRecord
                 .joining(required: EventRecord.belongsTo(RunRecord.self, using: ForeignKey(["runID"]))
                     .filter(Column("botID") == botID))
                 .filter(["toolCall", "toolResult"].contains(Column("type")))
                 .order(Column("at").desc)
+                // The recent ones: a list of 100 files never needs a bot's whole history, and a
+                // long-lived bot's history is thousands of calls, each with its arguments.
+                .limit(scanLimit)
                 .fetchAll(db)
         }
         func object(_ payload: String) -> [String: Any]? {

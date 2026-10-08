@@ -2777,6 +2777,17 @@ final class AppModel {
         (try? store?.filesWritten(forBot: bot.id.rawValue)) ?? []
     }
 
+    /// The same, read and parsed off the main thread, for a panel that refreshes while the bot
+    /// works. Every tool call's arguments are JSON to decode, and a busy bot's run up to many
+    /// megabytes of them: on the main thread that froze the window at each streamed line.
+    func filesWrittenInBackground(by bot: Bot) async -> [WrittenFile] {
+        guard let store else { return [] }
+        let id = bot.id.rawValue
+        return await Task.detached(priority: .utility) {
+            (try? store.filesWritten(forBot: id)) ?? []
+        }.value
+    }
+
     func setJob(_ bot: Bot, _ job: String) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         let trimmed = job.trimmingCharacters(in: .whitespaces)
