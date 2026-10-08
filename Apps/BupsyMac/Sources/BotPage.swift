@@ -217,6 +217,8 @@ struct BotPage: View {
                     .help("\(bot.name) has no job description yet. Add one in Details.")
             }
             statusBadge
+            // Nothing to start fresh from until it has a chat.
+            if thread.conversationID != nil || model.writingHandoff.contains(bot.id) { freshChatButton }
             Button {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { showsDetails.toggle() }
             } label: {
@@ -227,6 +229,27 @@ struct BotPage: View {
             }
             .buttonStyle(ThreadButtonStyle(kind: .secondary, height: Theme.Size.control))
             .help("Settings, goals and routines for \(bot.name)")
+    }
+
+    /// Fresh chat, with the setting that does it by itself tucked in its menu: one control for
+    /// one idea. Click for a fresh chat now; the arrow for "when a chat gets long".
+    private var freshChatButton: some View {
+        @Bindable var model = model
+        return Menu {
+            Button("Fresh chat now") { model.moveToFreshChat(bot) }
+            Divider()
+            Toggle("Fresh chat when a chat gets long", isOn: $model.freshensLongChats)
+            Text("For every bot, at \(Int(AppModel.freshChatThreshold * 100))% of the context window")
+        } label: {
+            Label(model.writingHandoff.contains(bot.id) ? "Writing notes…" : "Fresh chat",
+                  systemImage: "arrow.counterclockwise")
+        } primaryAction: {
+            model.moveToFreshChat(bot)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(model.writingHandoff.contains(bot.id))
+        .help("Start \(bot.name) on a fresh chat. It writes itself notes first, so it picks up where it left off while each message costs far less. Earlier messages stay here.")
     }
 
     private var hasJob: Bool {
