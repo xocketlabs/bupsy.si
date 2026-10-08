@@ -1181,6 +1181,9 @@ final class AppModel {
                 created.conversationID = try store
                     .conversation(forBot: botID.rawValue, engine: engine.rawValue)
                     .flatMap { record in record.providerConversationID.map { ConversationID($0) } }
+                // The meter as it was when the app last saw this conversation, until the next turn.
+                created.latestUsage = rememberedContext(botID, conversation: created.conversationID)
+                    .map { Usage(context: $0) }
             } catch {
                 storageProblem = error.localizedDescription
             }
@@ -1552,7 +1555,10 @@ final class AppModel {
                         groupID: groupID))
                 }
                 lastRunEnded[bot.id] = Date()
-                if groupID == nil { writeChatSnapshot(bot) }
+                if groupID == nil {
+                    writeChatSnapshot(bot)
+                    settleContext(bot, thread: thread)
+                }
                 writeRoster()
                 if ownsSlot { recordRunEnded(bot.id, failed: failed) }
                 Task { @MainActor [weak self] in

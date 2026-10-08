@@ -76,6 +76,52 @@ extension AppModel {
             + "without resending everything before them.")
     }
 
+    // MARK: - The context meter between turns and across restarts
+
+    private static func contextKey(_ bot: BotID) -> String { "si.bupsy.lastContext.\(bot.rawValue)" }
+
+    private struct RememberedContext: Codable {
+        var conversation: String
+        var context: ContextUse
+    }
+
+    /// After a turn: Codex's own figures, which `exec` leaves out, then the meter is remembered
+    /// for the next launch. Only for the conversation it was measured in, so a fresh chat or an
+    /// engine switch never shows the old chat's size.
+    func settleContext(_ bot: Bot, thread: Thread) {
+        guard let conversation = thread.conversationID else { return }
+        if bot.engine == .codex {
+            let id = conversation.rawValue
+            Task { [weak self] in
+                let reading = await Task.detached(priority: .utility) { CodexSessions.latest(conversation: id) }.value
+                guard let self, let reading, thread.conversationID == conversation else { return }
+                if let context = reading.context {
+                    var usage = thread.latestUsage ?? Usage()
+                    usage.context = context
+                    thread.latestUsage = usage
+                }
+                if let limits = reading.limits { thread.latestLimits = limits }
+                self.rememberContext(bot.id, thread: thread)
+            }
+        } else {
+            rememberContext(bot.id, thread: thread)
+        }
+    }
+
+    private func rememberContext(_ bot: BotID, thread: Thread) {
+        guard let conversation = thread.conversationID, let context = thread.latestUsage?.context,
+              let data = try? JSONEncoder().encode(RememberedContext(conversation: conversation.rawValue, context: context))
+        else { return }
+        AppHome.defaults.set(data, forKey: Self.contextKey(bot))
+    }
+
+    func rememberedContext(_ bot: BotID, conversation: ConversationID?) -> ContextUse? {
+        guard let conversation, let data = AppHome.defaults.data(forKey: Self.contextKey(bot)),
+              let remembered = try? JSONDecoder().decode(RememberedContext.self, from: data),
+              remembered.conversation == conversation.rawValue else { return nil }
+        return remembered.context
+    }
+
     /// The notes for a fresh chat's first turn, once: later turns have them in the chat.
     func takeHandoffNotes(_ bot: BotID) -> String? {
         let key = Self.handoffKey(bot)
