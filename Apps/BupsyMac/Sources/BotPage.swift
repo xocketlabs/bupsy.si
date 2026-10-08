@@ -286,7 +286,8 @@ struct BotPage: View {
 
     /// Whether the Activity tab has anything to show: a run, or a limit an engine reported.
     private var hasActivity: Bool {
-        !model.recentRuns(for: bot).isEmpty || !(thread.latestLimits?.windows.isEmpty ?? true)
+        // Yes or no, not the runs themselves: this is read every time the page draws.
+        !(thread.latestLimits?.windows.isEmpty ?? true) || model.hasRuns(bot)
     }
 
     /// Who the bot is: its face, its name and label, and its job in a sentence.
@@ -801,16 +802,36 @@ struct BotPage: View {
                         unseenCount = 0
                         // Fix where this chat's window starts, so it grows at the bottom from
                         // here rather than sliding as messages arrive.
+                        let unread = firstUnreadIndex
                         windowStarts[bot.id] = nil
-                        windowStarts[bot.id] = windowStart(unread: firstUnreadIndex)
-                        try? await Task.sleep(for: .milliseconds(60))
-                        // To the row that holds the divider: a lazy stack can only scroll to its
-                        // own rows' ids, not to a view inside a row it has not built yet.
-                        if let unread = firstUnreadIndex, thread.entries.indices.contains(unread) {
+                        windowStarts[bot.id] = windowStart(unread: unread)
+                        try? await Task.sleep(for: .milliseconds(30))
+                        if let unread, thread.entries.indices.contains(unread) {
                             proxy.scrollTo(thread.entries[unread].id, anchor: .top)
                         } else if let last = thread.entries.last {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
+                        // Then the rest of the window, a step at a time above what is on screen.
+                        // Drawn all at once it held the switch until every row was laid out; in
+                        // steps, the chat appears at once and fills in where nobody is looking.
+                        // Each step pins the view back where it opened, in the same update: on
+                        // its own the scroll view kept its distance from the top, so rows added
+                        // above pushed the latest message out of view and left the chat showing
+                        // old history. Always, not only while "at the bottom": the first step
+                        // itself moved the view up, which read as having scrolled away, and the
+                        // pinning stopped. The whole fill is a few frames, too quick to scroll in.
+                        let target = fullWindowStart(unread: unread)
+                        while let current = windowStarts[bot.id], current > target {
+                            try? await Task.sleep(for: .milliseconds(16))
+                            if Task.isCancelled { return }
+                            windowStarts[bot.id] = max(target, current - Self.fillStep)
+                            pin(unread: unread, proxy: proxy)
+                        }
+                        // Once more after the last step has been laid out: a scroll asked for
+                        // in the same update as new rows is worked out from the layout before
+                        // them, and stopped short of the latest message.
+                        try? await Task.sleep(for: .milliseconds(16))
+                        if !Task.isCancelled { pin(unread: unread, proxy: proxy) }
                     }
                     // Keep the "what it's doing" line in view as it appears and changes.
                     // Only while you are at the end: scrolled up reading, you stay where you are.
@@ -888,18 +909,41 @@ struct BotPage: View {
     /// The first message from the bot that arrived after you last read it, or nil when there is
     /// none, nothing new, or a bot you are opening for the first time, where everything is new
     /// and a line above the first message would say nothing.
-    /// How many entries a chat opens with: the latest exchanges, tool lines included. Every one
-    /// is laid out when the chat opens, so this is what switching to a bot costs; earlier ones
-    /// are a click away.
-    static let windowSize = 80
+    /// Back to where the chat opened: the first unread message at the top, or the latest at the
+    /// bottom.
+    private func pin(unread: Int?, proxy: ScrollViewProxy) {
+        if let unread, thread.entries.indices.contains(unread) {
+            proxy.scrollTo(thread.entries[unread].id, anchor: .top)
+        } else if let last = thread.entries.last {
+            proxy.scrollTo(last.id, anchor: .bottom)
+        }
+    }
 
-    /// The first entry on screen: the last `windowSize`, reaching back to the first unread one
-    /// when that is further up, so opening at "New" always has the divider to land on.
+    /// How many entries a chat holds once open: the latest exchanges, tool lines included.
+    /// Earlier ones are a click away.
+    static let windowSize = 80
+    /// How many it draws first: about a screenful. Everything drawn is laid out before the chat
+    /// appears, so this, not `windowSize`, is what switching to a bot waits for.
+    static let firstPaint = 12
+    /// How many each later step adds above, a frame apart, until the window is full.
+    static let fillStep = 20
+
+    /// The first entry on screen. Before the chat has opened, the last `firstPaint`, reaching
+    /// back to the first unread one when that is further up, so opening at "New" always has the
+    /// divider to land on.
     private func windowStart(unread: Int?) -> Int {
         let count = thread.entries.count
-        var start = windowStarts[bot.id] ?? max(0, count - Self.windowSize)
-        if let unread, unread < start { start = max(0, unread - 10) }
+        var start = windowStarts[bot.id] ?? max(0, count - Self.firstPaint)
+        if windowStarts[bot.id] == nil, let unread, unread < start { start = max(0, unread - 3) }
         return min(start, max(0, count - 1))
+    }
+
+    /// Where the window ends up once filled: the last `windowSize`, or further up to keep some
+    /// context above the first unread entry.
+    private func fullWindowStart(unread: Int?) -> Int {
+        var start = max(0, thread.entries.count - Self.windowSize)
+        if let unread, unread < start { start = max(0, unread - 10) }
+        return start
     }
 
     private var firstUnreadIndex: Int? {

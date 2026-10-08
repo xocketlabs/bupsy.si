@@ -217,8 +217,29 @@ final class Thread {
 
     init(botID: BotID) { self.botID = botID }
 
+    /// The preview as last worked out, and the thread it was worked out from. The sidebar asks
+    /// every bot for its preview each time it redraws, which is every switch.
+    ///
+    /// Keyed on the last entry's text length too: a reply streams in by growing that entry in
+    /// place, without adding one. (An answered question is followed by the answer, which does.)
+    @ObservationIgnored private var previewMemo: (count: Int, last: UUID?, size: Int, value: String?)?
+
     /// One line for the conversation list — what a chat app shows under a name.
     var preview: String? {
+        let count = entries.count, last = entries.last?.id
+        let size: Int = switch entries.last?.kind {
+        case .assistantText(let text), .userMessage(let text): text.utf8.count
+        default: 0
+        }
+        if let memo = previewMemo, memo.count == count, memo.last == last, memo.size == size {
+            return memo.value
+        }
+        let value = computedPreview
+        previewMemo = (count, last, size, value)
+        return value
+    }
+
+    private var computedPreview: String? {
         for entry in entries.reversed() {
             switch entry.kind {
             // A message from another bot is the newest thing in the thread as much as anything

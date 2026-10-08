@@ -201,11 +201,17 @@ private enum RootSheet: Identifiable {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Worked out here from the scheme rather than read from the environment: this view is the
     /// one that publishes the palette (`withPalette` below), so the environment it reads still
     /// holds the dark default, which made the app tint dark pink in light mode.
     private var palette: Palette.Scheme { Palette.scheme(for: colorScheme) }
     @State private var destination: NavRail.Destination?
+    /// What the panel shows: `destination`, one frame behind. A click answers in the sidebar at
+    /// once, and the page, which takes longer to build, follows on the next frame. Built in the
+    /// same frame, nothing on screen moved, not even the highlight, until the whole new chat was
+    /// laid out, and a click that shows nothing for a tenth of a second feels ignored.
+    @State private var panelDestination: NavRail.Destination?
     @State private var isStartingChat = false
     @State private var paletteSearchFirst = false
     @State private var isAddingBot = false
@@ -219,6 +225,9 @@ struct RootView: View {
         content
             .withPalette(colorScheme)
             .onChange(of: model.tourDestination) { _, new in if let new { go(to: new) } }
+            .onChange(of: destination) { _, new in
+                DispatchQueue.main.async { panelDestination = new }
+            }
             .onChange(of: model.pendingDestination) { _, new in
                 if let new { go(to: new); model.pendingDestination = nil }
             }
@@ -471,7 +480,7 @@ struct RootView: View {
 
     @ViewBuilder
     private var panel: some View {
-        switch destination ?? model.bots.first.map({ .bot($0.id) }) {
+        switch (panelDestination ?? destination) ?? model.bots.first.map({ .bot($0.id) }) {
         case .bot(let id):
             if let bot = model.bots.first(where: { $0.id == id }) {
                 // No card here: BotPage draws its own, so its details panel can sit beside the
@@ -481,6 +490,11 @@ struct RootView: View {
                 // next, where it could be sent to the wrong bot.
                 BotPage(bot: bot)
                     .id(bot.id)
+                    // A quick fade in, not a hard cut: the new chat arrives rather than snaps.
+                    // In only, so the old page never lingers over the new one.
+                    .transition(.asymmetric(
+                        insertion: reduceMotion ? .identity : .opacity.animation(.easeOut(duration: 0.14)),
+                        removal: .identity))
             } else if model.bots.isEmpty {
                 // The last bot was just deleted: the empty roster, not "No bot selected".
                 floating { RosterEmpty() }

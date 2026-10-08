@@ -369,35 +369,37 @@ final class ReplyTextView: NSTextView {
 }
 
 /// A table from a reply: a bold header ruled off from the rows, each row ruled apart, cells
-/// wrapping within the bubble's width.
+/// wrapping within equal columns.
 ///
-/// Cells size to their text. Stretched to fill their columns (for a shaded header band), they
-/// made the grid claim more than the width it was offered and pushed the bubble off the window.
+/// Rows of equal-width cells rather than a `Grid`. A grid reported its height for cells laid
+/// out on one line, then wrapped them narrower, so a table with any long cell drew taller than
+/// the room it claimed, and the messages after it slid up underneath. Cells stretched to fill a
+/// grid's columns also pushed the bubble off the window.
 struct ReplyTable: View {
     @Environment(\.palette) private var palette
     let header: [String]
     let rows: [[String]]
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
-            GridRow {
-                ForEach(Array(header.enumerated()), id: \.offset) { _, cell in
-                    self.cell(cell, isHeader: true)
-                }
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            row(header, isHeader: true)
             Rectangle().fill(palette.mutedForeground.opacity(0.5)).frame(height: 1)
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, cells in
                 if index > 0 { Rectangle().fill(palette.border).frame(height: 1) }
-                GridRow {
-                    ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-                        self.cell(cell, isHeader: false)
-                    }
-                }
+                row(cells, isHeader: false)
             }
         }
         .clipShape(.rect(cornerRadius: Theme.Radius.control))
         .overlay {
             RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(palette.border)
+        }
+    }
+
+    private func row(_ cells: [String], isHeader: Bool) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(cells.enumerated()), id: \.offset) { _, text in
+                cell(text, isHeader: isHeader)
+            }
         }
     }
 
@@ -411,7 +413,7 @@ struct ReplyTable: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, Theme.Space.compact)
             .padding(.vertical, Theme.Space.tight)
-            .gridColumnAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
 

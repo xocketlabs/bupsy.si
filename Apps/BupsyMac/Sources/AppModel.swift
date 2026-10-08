@@ -1173,6 +1173,10 @@ final class AppModel {
         ChatLiveStatus.text(for: (activeThread[bot.id] ?? thread(for: bot.id)).entries)
     }
 
+    func hasRuns(_ bot: Bot) -> Bool {
+        (try? store?.hasRuns(forBot: bot.id.rawValue)) ?? false
+    }
+
     func recentRuns(for bot: Bot) -> [RunSummary] {
         (try? store?.recentRuns(forBot: bot.id.rawValue, limit: 20)) ?? []
     }
