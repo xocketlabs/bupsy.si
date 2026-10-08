@@ -54,7 +54,7 @@ struct EntryView: View {
                           speaker: bot.name, speakerColour: Palette.colour(hex: bot.colour))
         case .from(let author, let text):
             // Another bot, in its own colour when it's one of the person's bots.
-            let colour = session.bots.first { $0.name == author }.flatMap { Palette.colour(hex: $0.colour) }
+            let colour = session.bots(on: chat.ref.macID).first { $0.name == author }.flatMap { Palette.colour(hex: $0.colour) }
             MessageBubble(text: text, at: entry.at, mine: false, startsRun: row.startsRun,
                           speaker: author, speakerColour: colour)
         case .tool(let step):

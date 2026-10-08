@@ -9,8 +9,10 @@ import Foundation
 // blanking the whole chat. A newer Mac should never leave an older phone with an empty screen.
 
 /// One bot, as the list and a chat's header show it.
-struct Bot: Decodable, Identifiable, Hashable, Sendable {
-    let id: String
+struct Bot: Identifiable, Hashable, Sendable {
+    /// Which Mac it lives on, and its id there. The JSON carries only the bot's own id; the client
+    /// that fetched it fills in its Mac (see `RemoteClient`), so no bot leaves the edge without one.
+    private(set) var ref: BotRef
     let name: String
     let role: String?
     /// The sidebar section it sits in on the Mac. Nil for pinned bots and bots in no section.
@@ -22,6 +24,34 @@ struct Bot: Decodable, Identifiable, Hashable, Sendable {
     let needsYou: Bool
     let unread: Bool
     let preview: String?
+    /// The face the Mac draws it with. Nil from a Mac on an older Bupsy. The phone keeps to the
+    /// colour and initial for now; this is decoded so drawing faces later needs no server change.
+    let face: Face?
+
+    var id: BotRef { ref }
+
+    init(ref: BotRef, name: String, role: String? = nil, section: String? = nil, colour: String = "",
+         mood: Mood = .idle, running: Bool = false, needsYou: Bool = false, unread: Bool = false,
+         preview: String? = nil, face: Face? = nil) {
+        self.ref = ref
+        self.name = name
+        self.role = role
+        self.section = section
+        self.colour = colour
+        self.mood = mood
+        self.running = running
+        self.needsYou = needsYou
+        self.unread = unread
+        self.preview = preview
+        self.face = face
+    }
+
+    /// The same bot, marked as living on the Mac with this id.
+    func on(_ macID: String) -> Bot {
+        var bot = self
+        bot.ref = BotRef(macID: macID, botID: ref.botID)
+        return bot
+    }
 
     enum Mood: String, Decodable, Sendable {
         case idle, working, waitingForYou, done, sleeping, failed
@@ -31,39 +61,43 @@ struct Bot: Decodable, Identifiable, Hashable, Sendable {
         }
     }
 
+    /// `shape` is a name the Mac knows, `colour` a packed RGB integer, `hue` from 0 to 1.
+    struct Face: Decodable, Hashable, Sendable {
+        let shape: String
+        let colour: Int
+        let hue: Double
+    }
+
     /// A stand-in until the Mac answers, so a chat opened from a notification has a header at once.
-    static func placeholder(_ id: String) -> Bot {
-        Bot(id: id, name: "", role: nil, section: nil, colour: "", mood: .idle,
-            running: false, needsYou: false, unread: false, preview: nil)
+    static func placeholder(_ ref: BotRef) -> Bot {
+        Bot(ref: ref, name: "")
     }
 }
 
-/// The bots under one section heading, in the Mac's sidebar order.
-struct BotSection: Identifiable, Equatable {
-    /// Nil for the bots above every section: pinned ones and those in no section.
-    let title: String?
-    let bots: [Bot]
+extension Bot: Decodable {
+    private enum Keys: String, CodingKey {
+        case id, name, role, section, colour, mood, running, needsYou, unread, preview, face
+    }
 
-    var id: String { title ?? "" }
-
-    /// Keeps the server's order. Bots in no section come first; sections follow in the order
-    /// they first appear, which is the order the Mac's sidebar shows them.
-    static func group(_ bots: [Bot]) -> [BotSection] {
-        var titles: [String?] = [nil]
-        var members: [String?: [Bot]] = [:]
-        for bot in bots {
-            let title = bot.section.flatMap { $0.isEmpty ? nil : $0 }
-            if !titles.contains(title) { titles.append(title) }
-            members[title, default: []].append(bot)
-        }
-        return titles.compactMap { title in
-            members[title].map { BotSection(title: title, bots: $0) }
-        }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        ref = BotRef(macID: "", botID: try container.decode(String.self, forKey: .id))
+        name = try container.decode(String.self, forKey: .name)
+        role = try container.decodeIfPresent(String.self, forKey: .role)
+        section = try container.decodeIfPresent(String.self, forKey: .section)
+        colour = try container.decode(String.self, forKey: .colour)
+        mood = try container.decode(Mood.self, forKey: .mood)
+        running = try container.decode(Bool.self, forKey: .running)
+        needsYou = try container.decode(Bool.self, forKey: .needsYou)
+        unread = try container.decode(Bool.self, forKey: .unread)
+        preview = try container.decodeIfPresent(String.self, forKey: .preview)
+        // A face this app can't read is no reason to lose the bot.
+        face = (try? container.decodeIfPresent(Face.self, forKey: .face)) ?? nil
     }
 }
 
 struct BotList: Decodable, Sendable {
-    let bots: [Bot]
+    var bots: [Bot]
     /// How many bots need the person right now.
     let waiting: Int
 
@@ -79,11 +113,13 @@ struct BotList: Decodable, Sendable {
 struct MacInfo: Decodable, Sendable {
     /// The Mac's own name, as the person set it in System Settings.
     let mac: String
+    /// "laptop" or "desktop". Nil from a Mac on an older Bupsy.
+    let kind: String?
 }
 
 /// A bot and the latest of its conversation, oldest first.
 struct BotThread: Decodable, Sendable {
-    let bot: Bot
+    var bot: Bot
     let entries: [Entry]
 
     private enum Keys: String, CodingKey { case bot, entries }

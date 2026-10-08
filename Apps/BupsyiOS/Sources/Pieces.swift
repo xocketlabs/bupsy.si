@@ -117,14 +117,17 @@ struct Toast: View {
     }
 }
 
-/// Says the Mac can't be reached, without taking the screen away: what's there is still useful.
+/// Says a Mac can't be reached, without taking the screen away: what's there is still useful.
 struct OfflineBanner: View {
     @Environment(\.palette) private var palette
+    var text = "Can't reach your Mac. Retrying…"
 
     var body: some View {
         HStack(spacing: 8) {
             Circle().fill(palette.warning).frame(width: 8, height: 8)
-            Text("Can't reach your Mac. Retrying…")
+            Text(text)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
         }
         .font(.footnote.weight(.medium))
         .foregroundStyle(palette.foreground)

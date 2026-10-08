@@ -1,14 +1,22 @@
 import SwiftUI
 import VisionKit
 
-/// Pairing this iPhone with Bupsy on the person's Mac: scan the code it shows, or type it.
+/// Pairing this iPhone with Bupsy on one of the person's Macs: scan the code it shows, or type it.
+///
+/// The same screen pairs the first Mac, adds another, and pairs again a Mac that removed this
+/// phone. Each adds to the list of Macs; none replaces another.
 struct PairView: View {
     @Environment(AppSession.self) private var session
     @Environment(\.palette) private var palette
-    /// Why we're here, when it isn't the first time: the Mac removed this phone.
+    /// Why we're here, when it isn't the first time: a Mac removed this phone.
     let message: String?
+    /// Set when there's a Mac already, and this pairs another or the same one again. Called once
+    /// it has worked, to close the sheet this is shown in.
+    private let onPaired: (() -> Void)?
+    /// Pairing a known Mac again, rather than a new one.
+    private let again: Bool
 
-    @State private var address = ""
+    @State private var address: String
     @State private var code = ""
     @State private var error: String?
     @State private var pairing = false
@@ -17,12 +25,25 @@ struct PairView: View {
 
     private enum Field { case address, code }
 
+    /// - Parameter address: filled in for a Mac being paired again, whose address is known.
+    init(message: String?, address: String = "", onPaired: (() -> Void)? = nil) {
+        self.message = message
+        self.onPaired = onPaired
+        again = !address.isEmpty
+        _address = State(initialValue: address)
+    }
+
+    private var heading: String {
+        if onPaired == nil { return "Pair this iPhone with Bupsy on your Mac" }
+        return again ? "Make a new code on that Mac to pair it again" : "Pair another Mac with this iPhone"
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
                 Wordmark(size: 36)
-                    .padding(.top, 48)
-                Text("Pair this iPhone with Bupsy on your Mac")
+                    .padding(.top, onPaired == nil ? 48 : 16)
+                Text(heading)
                     .font(.title3)
                     .foregroundStyle(palette.mutedForeground)
                     .multilineTextAlignment(.center)
@@ -100,7 +121,6 @@ struct PairView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(palette.sidebar)
-        .onAppear { if address.isEmpty { address = session.lastAddress } }
         .sheet(isPresented: $scanning) {
             ScanSheet { scanned in
                 scanning = false
@@ -139,6 +159,11 @@ struct PairView: View {
         Task {
             do {
                 try await session.pair(link)
+                onPaired?()
+                // Asked for now, once something works, rather than at first launch: a permission
+                // prompt before the app has done anything is the one people deny. iOS shows it
+                // once; after that this returns at once.
+                await session.alerts.requestPermission()
             } catch {
                 self.error = error.localizedDescription
                 code = ""

@@ -121,14 +121,32 @@ struct RemoteModelsTests {
 
     @Test("sections keep the Mac's order, with unsectioned bots first")
     func sections() throws {
+        let mac = PairedMac(id: "m", name: "Studio", address: URL(string: "https://studio.ts.net:8443")!)
         func bot(_ id: String, _ section: String?) -> Bot {
-            Bot(id: id, name: id, role: nil, section: section, colour: "#000000", mood: .idle,
-                running: false, needsYou: false, unread: false, preview: nil)
+            Bot(ref: BotRef(macID: "m", botID: id), name: id, section: section, colour: "#000000")
         }
-        let groups = BotSection.group([bot("a", "Work"), bot("b", nil), bot("c", "Home"), bot("d", "Work")])
-        #expect(groups.map(\.title) == [nil, "Work", "Home"])
-        #expect(groups.map { $0.bots.map(\.id) } == [["b"], ["a", "d"], ["c"]])
-        #expect(BotSection.group([bot("a", "Work")]).map(\.title) == ["Work"])
+        func groups(_ bots: [Bot]) -> [BotSection] {
+            BotDirectory.sections(macs: [mac], states: ["m": MacState(reached: true, bots: bots)])
+        }
+        let grouped = groups([bot("a", "Work"), bot("b", nil), bot("c", "Home"), bot("d", "Work")])
+        #expect(grouped.map(\.title) == [nil, "Work", "Home"])
+        #expect(grouped.map { $0.bots.map(\.id.botID) } == [["b"], ["a", "d"], ["c"]])
+        #expect(groups([bot("a", "Work")]).map(\.title) == ["Work"])
+    }
+
+    @Test("a bot's face and a Mac's kind decode, and an older Mac without them still works")
+    func faceAndKind() throws {
+        let withFace = bot.replacingOccurrences(of: #""preview":"Can I push?"}"#,
+            with: #""preview":"Can I push?","face":{"shape":"blob","colour":14710216,"hue":0.86}}"#)
+        let face = try #require(try decode(BotList.self, #"{"bots":[\#(withFace)],"waiting":1}"#).bots.first?.face)
+        #expect(face == Bot.Face(shape: "blob", colour: 14_710_216, hue: 0.86))
+        #expect(try decode(BotList.self, #"{"bots":[\#(bot)],"waiting":1}"#).bots.first?.face == nil)
+        // A face from a newer Mac in a shape this app can't read loses the face, not the bot.
+        let oddFace = bot.replacingOccurrences(of: #""preview":"Can I push?"}"#, with: #""preview":"Can I push?","face":"🙂"}"#)
+        #expect(try decode(BotList.self, #"{"bots":[\#(oddFace)],"waiting":1}"#).bots.first?.name == "Lead")
+
+        #expect(try decode(MacInfo.self, #"{"mac":"MacBook Air","kind":"laptop"}"#).kind == "laptop")
+        #expect(try decode(MacInfo.self, #"{"mac":"Mac mini"}"#).kind == nil)
     }
 
     @Test("bubbles from one speaker run together; anything between them starts a new run")

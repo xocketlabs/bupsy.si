@@ -2,10 +2,13 @@ import Observation
 import SwiftUI
 
 /// One open chat: its entries, kept fresh while it's on screen, and what the person does in it.
+///
+/// Every call goes to the bot's own Mac, through `AppSession.client(for:)`, so with several Macs
+/// paired nothing here can reach the wrong one.
 @MainActor
 @Observable
 final class ChatModel {
-    let botID: String
+    let ref: BotRef
     private(set) var entries: [Entry] = []
     /// Whether the first answer has come back, so an empty chat can say so rather than flash.
     private(set) var loaded = false
@@ -19,13 +22,18 @@ final class ChatModel {
     @ObservationIgnored private let session: AppSession
     @ObservationIgnored private var clearProblem: Task<Void, Never>?
 
-    init(botID: String, session: AppSession) {
-        self.botID = botID
+    init(ref: BotRef, session: AppSession) {
+        self.ref = ref
         self.session = session
     }
 
     var bot: Bot {
-        fromThread ?? session.bot(botID) ?? .placeholder(botID)
+        fromThread ?? session.bot(ref) ?? .placeholder(ref)
+    }
+
+    /// The bot's name as the list shows it: "Scout · Mac mini" when another Mac has a Scout too.
+    var shownName: String {
+        session.listed(ref)?.name ?? bot.name
     }
 
     /// Every 1.5 seconds while the chat is on screen and the app is in the foreground.
@@ -37,20 +45,20 @@ final class ChatModel {
     }
 
     func refresh() async {
-        guard let client = session.client else { return }
+        guard let client = session.client(for: ref) else { return }
         do {
-            let thread = try await client.thread(botID)
+            let thread = try await client.thread(ref.botID)
             if thread.bot != fromThread { fromThread = thread.bot }
             // Only on change: a poll that brings nothing new must not move the scroll or redraw.
             if thread.entries != entries { entries = thread.entries }
             loaded = true
         } catch let error as RemoteError {
             switch error {
-            case .unpaired: session.lostPairing()
+            case .unpaired: session.lostPairing(ref.macID)
             case _ where error.isGone:
-                session.path.removeAll { $0 == botID }
+                session.path.removeAll { $0 == ref }
             default:
-                break // The list's poll shows the offline banner; one place says it.
+                break // The list's poll marks the Mac offline; one place says it.
             }
         } catch {
             // Cancelled as the chat closed.
@@ -60,9 +68,9 @@ final class ChatModel {
     /// Sends a message. False if it didn't go, so the text can go back in the box.
     func send(_ text: String) async -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let client = session.client else { return false }
+        guard !trimmed.isEmpty, let client = session.client(for: ref) else { return false }
         do {
-            try await client.send(trimmed, to: botID)
+            try await client.send(trimmed, to: ref.botID)
             await refresh()
             return true
         } catch {
@@ -73,35 +81,37 @@ final class ChatModel {
 
     func decide(_ approval: Approval, allow: Bool) async {
         if allow {
-            switch await OwnerCheck.confirm("Allow \(bot.name.isEmpty ? "your bot" : bot.name) to \(approval.action)") {
+            switch await OwnerCheck.confirm("Allow \(bot.name.isEmpty ? "your bot" : shownName) to \(approval.action)") {
             case .confirmed: break
             case .cancelled: return
             case .unavailable(let message): report(message); return
             }
         }
+        let botID = ref.botID
         await answer(approval.id) { client in
-            try await client.decide(approval.id, allow: allow, for: self.botID)
+            try await client.decide(approval.id, allow: allow, for: botID)
         }
     }
 
     func answer(_ question: Question, with option: String) async {
+        let botID = ref.botID
         await answer(question.id) { client in
-            try await client.answer(question.id, with: option, for: self.botID)
+            try await client.answer(question.id, with: option, for: botID)
         }
     }
 
     func stop() async {
-        guard let client = session.client else { return }
+        guard let client = session.client(for: ref) else { return }
         do {
-            try await client.stop(botID)
-            await session.refreshBots()
+            try await client.stop(ref.botID)
+            await session.refresh(ref.macID)
         } catch {
             report(error)
         }
     }
 
     private func answer(_ id: String, _ call: (RemoteClient) async throws -> Void) async {
-        guard let client = session.client, !answering.contains(id) else { return }
+        guard let client = session.client(for: ref), !answering.contains(id) else { return }
         answering.insert(id)
         defer { answering.remove(id) }
         do {
@@ -112,12 +122,17 @@ final class ChatModel {
             report(error)
         }
         await refresh()
-        await session.refreshBots()
+        await session.refresh(ref.macID)
     }
 
     private func report(_ error: Error) {
         if case RemoteError.unpaired = error {
-            session.lostPairing()
+            session.lostPairing(ref.macID)
+            return
+        }
+        // With several Macs, "your Mac" could be any of them: say which.
+        if case RemoteError.unreachable = error, session.pairedMacs.count > 1, let mac = session.mac(ref.macID) {
+            report("Couldn't reach \(mac.displayName). Check it's awake with Bupsy open, and that Tailscale is on here and there.")
             return
         }
         report(error.localizedDescription)

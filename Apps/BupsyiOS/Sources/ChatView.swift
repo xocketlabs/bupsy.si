@@ -15,9 +15,9 @@ struct ChatView: View {
 
     private static let end = "end"
 
-    init(botID: String, session: AppSession) {
+    init(ref: BotRef, session: AppSession) {
         self.session = session
-        _chat = State(initialValue: ChatModel(botID: botID, session: session))
+        _chat = State(initialValue: ChatModel(ref: ref, session: session))
     }
 
     var body: some View {
@@ -65,7 +65,7 @@ struct ChatView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                composer(for: bot)
+                composer
             }
         }
         .background(palette.background)
@@ -73,7 +73,7 @@ struct ChatView: View {
         .toolbarBackground(palette.background, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                ChatHeader(bot: bot)
+                ChatHeader(bot: bot, name: chat.shownName, mac: macLine)
             }
             if bot.running {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -94,46 +94,71 @@ struct ChatView: View {
             await chat.poll()
         }
         .onAppear {
-            draft = session.drafts[chat.botID] ?? ""
-            session.alerts.clear(chat.botID)
+            draft = session.drafts[chat.ref] ?? ""
+            session.alerts.clear(chat.ref)
         }
         .onChange(of: draft) { _, text in
-            session.drafts[chat.botID] = text.isEmpty ? nil : text
+            session.drafts[chat.ref] = text.isEmpty ? nil : text
         }
     }
 
-    private func composer(for bot: Bot) -> some View {
+    /// Which Mac the bot is on, under its name, when there's more than one Mac to tell apart.
+    private var macLine: String? {
+        guard session.pairedMacs.count > 1, let mac = session.mac(chat.ref.macID) else { return nil }
+        return "On \(mac.displayName)"
+    }
+
+    private var composer: some View {
         VStack(spacing: 8) {
             if let problem = chat.problem {
                 Toast(message: problem)
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField(bot.name.isEmpty ? "Message" : "Message \(bot.name)", text: $draft, axis: .vertical)
-                    .lineLimit(1...6)
-                    .focused($composing)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(palette.border))
-                Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(palette.onPrimary)
-                        .frame(width: 38, height: 38)
-                        .background(palette.primary, in: Circle())
-                }
-                .disabled(!canSend)
-                .opacity(canSend ? 1 : 0.35)
-                .accessibilityLabel("Send")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(alignment: .top) {
-                palette.background
-                    .overlay(alignment: .top) { Rectangle().fill(palette.border).frame(height: 1) }
-                    .ignoresSafeArea(edges: .bottom)
+            if let blocked = session.cannotSend(to: chat.ref) {
+                // Nothing sent into the void: the draft waits here until its Mac is back.
+                Text(blocked)
+                    .font(.footnote)
+                    .foregroundStyle(palette.mutedForeground)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(alignment: .top) { composerBackground }
+            } else {
+                field
             }
         }
+    }
+
+    private var composerBackground: some View {
+        palette.background
+            .overlay(alignment: .top) { Rectangle().fill(palette.border).frame(height: 1) }
+            .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var field: some View {
+        let bot = chat.bot
+        return HStack(alignment: .bottom, spacing: 8) {
+            TextField(bot.name.isEmpty ? "Message" : "Message \(bot.name)", text: $draft, axis: .vertical)
+                .lineLimit(1...6)
+                .focused($composing)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(palette.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(palette.border))
+            Button(action: send) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(palette.onPrimary)
+                    .frame(width: 38, height: 38)
+                    .background(palette.primary, in: Circle())
+            }
+            .disabled(!canSend)
+            .opacity(canSend ? 1 : 0.35)
+            .accessibilityLabel("Send")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(alignment: .top) { composerBackground }
     }
 
     private var canSend: Bool {
@@ -158,12 +183,16 @@ struct ChatView: View {
 private struct ChatHeader: View {
     @Environment(\.palette) private var palette
     let bot: Bot
+    /// "Scout · Mac mini" when another Mac has a Scout too.
+    let name: String
+    /// "On Mac mini", when there's more than one Mac.
+    let mac: String?
 
     var body: some View {
         HStack(spacing: 8) {
             Avatar(bot: bot, size: Theme.Size.headerAvatar)
             VStack(alignment: .leading, spacing: 0) {
-                Text(bot.name)
+                Text(name)
                     .font(.headline)
                     .lineLimit(1)
                 if bot.needsYou {
@@ -172,6 +201,10 @@ private struct ChatHeader: View {
                         .foregroundStyle(palette.primary)
                 } else if bot.running {
                     Text("Working…")
+                        .font(.caption)
+                        .foregroundStyle(palette.mutedForeground)
+                } else if let mac {
+                    Text(mac)
                         .font(.caption)
                         .foregroundStyle(palette.mutedForeground)
                 }
