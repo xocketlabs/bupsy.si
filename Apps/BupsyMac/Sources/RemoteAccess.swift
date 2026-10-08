@@ -224,8 +224,10 @@ final class RemoteAccess {
             return .json(["bots": bots.map { botJSON($0, model) },
                           "waiting": bots.filter { model.needsYou($0) }.count])
         }
+        // A bot kept to this Mac answers exactly as a bot that does not exist: another device
+        // cannot read it, act on it, or even learn that it is there.
         guard parts.count >= 3, parts[0] == "bots",
-              let bot = model.bots.first(where: { $0.id.rawValue == parts[1] })
+              let bot = model.bots.first(where: { $0.id.rawValue == parts[1] && $0.sharedWithDevices && !$0.hidden })
         else { return .error("Not found", status: 404) }
         let action = Array(parts.dropFirst(2))
 
@@ -263,9 +265,10 @@ final class RemoteAccess {
 
     // MARK: - What the page is sent
 
-    /// The sidebar's order: pinned, then bots in no section, then each section in turn.
+    /// The sidebar's order: pinned, then bots in no section, then each section in turn. Only
+    /// bots shared with the person's devices; "This Mac only" ones are left out entirely.
     private func orderedBots(_ model: AppModel) -> [Bot] {
-        let visible = model.bots.filter { !$0.hidden }
+        let visible = model.bots.filter { !$0.hidden && $0.sharedWithDevices }
         var ordered = visible.filter(\.pinned)
         ordered += visible.filter { !$0.pinned && ($0.folder ?? "").isEmpty }
         for section in model.folders {

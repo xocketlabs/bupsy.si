@@ -5,6 +5,11 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**This Mac only**
+- Each bot's Details › Other devices: Shared (the default) or This Mac only. A bot kept to this
+  Mac never appears on your phone or other Macs, and they can't read its chat, message it,
+  approve for it or stop it: to them it does not exist.
+
 **Bots work in the background**
 - Bots, and everything they start (headless browsers, builds, video encodes), now run at
   background priority, so your own apps stay quick while bots work hard. A bot with the Mac to

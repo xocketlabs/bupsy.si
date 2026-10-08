@@ -134,3 +134,16 @@ struct TailscaleAndSleepTests {
         #expect(!LidSleep.allowsSwitch("(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1"))
     }
 }
+
+@Suite("Remote access: This Mac only")
+struct SharedWithDevicesTests {
+    @Test("bots are shared by default, and This Mac only is kept")
+    func storesTheChoice() throws {
+        let store = try Store.inMemory()
+        try store.save(BotRecord(id: "a", name: "Scout", engine: "claude"))
+        try store.save(BotRecord(id: "b", name: "Private", engine: "claude", sharedWithDevices: false))
+        let saved = Dictionary(uniqueKeysWithValues: try store.bots().map { ($0.id, $0) })
+        #expect(saved["a"]?.sharedWithDevices == true)
+        #expect(saved["b"]?.sharedWithDevices == false)
+    }
+}

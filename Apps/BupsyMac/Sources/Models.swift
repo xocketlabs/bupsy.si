@@ -45,6 +45,9 @@ struct Bot: Identifiable, Hashable, Sendable {
     var onlyBupsyApps = false
     /// May drive the person's own browser through the engine's extension. This Mac only.
     var useBrowser = false
+    /// Reachable from the person's other devices. Off is "This Mac only": the bot never leaves
+    /// this Mac, not even as a name in another device's list.
+    var sharedWithDevices = true
 
     /// The shape this bot actually wears, chosen or derived — for anything that compares faces.
     var effectiveShape: BotShape { avatarShape ?? BotFace.derivedShape(forHue: avatarHue) }
@@ -89,6 +92,7 @@ struct Bot: Identifiable, Hashable, Sendable {
         self.role = record.role
         self.onlyBupsyApps = record.onlyBupsyApps
         self.useBrowser = record.useBrowser
+        self.sharedWithDevices = record.sharedWithDevices
         self.toolAllowlist = Set((try? JSONDecoder().decode([String].self, from: Data(record.toolAllowlist.utf8))) ?? [])
     }
 
@@ -102,7 +106,7 @@ struct Bot: Identifiable, Hashable, Sendable {
             avatarShape: avatarShape?.rawValue, avatarColour: avatarColour, role: role,
             onlyBupsyApps: onlyBupsyApps,
             toolAllowlist: (try? String(data: JSONEncoder().encode(toolAllowlist.sorted()), encoding: .utf8)) ?? "[]",
-            useBrowser: useBrowser)
+            useBrowser: useBrowser, sharedWithDevices: sharedWithDevices)
     }
 }
 

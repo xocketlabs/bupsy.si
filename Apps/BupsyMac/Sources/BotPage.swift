@@ -507,6 +507,23 @@ struct BotPage: View {
                       : "Lets \(bot.name) open pages and click in your own browser, signed in as you. "
                         + "Needs the \(bot.engine == .claude ? "Claude in Chrome" : "Codex") extension. "
                         + "Each step still asks unless you trust it.")
+                // Whether the person's phone and other Macs can see and use this bot.
+                BotPanelMenuRow(label: "Other devices",
+                                value: bot.sharedWithDevices ? "Shared" : "This Mac only") {
+                    Button {
+                        model.setSharedWithDevices(bot, true)
+                    } label: {
+                        MenuCheckLabel("Shared with your devices", checked: bot.sharedWithDevices)
+                    }
+                    Button {
+                        model.setSharedWithDevices(bot, false)
+                    } label: {
+                        MenuCheckLabel("This Mac only", checked: !bot.sharedWithDevices)
+                    }
+                }
+                .help(bot.sharedWithDevices
+                      ? "Your phone and other Macs can see \(bot.name) and its chat, when Use from other devices is on"
+                      : "\(bot.name) never appears on your other devices")
                 BotPanelMenuRow(label: "Section", value: bot.folder ?? "Unassigned") {
                     ForEach(model.allSections, id: \.self) { folder in
                         Button {
