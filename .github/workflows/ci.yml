@@ -79,8 +79,13 @@ jobs:
           xcodegen generate
           # Compile errors are also posted as annotations, so they show on the PR's Files tab
           # (and through the API) without anyone having to open the raw log.
+          # Its own build folder beside the checkout, not Xcode's shared DerivedData: on a runner
+          # that is someone's Mac, a Bupsy.app there shows up in Spotlight and Open With next to
+          # the real one, and every run put it back. Beside the checkout so it survives the
+          # checkout's clean and builds stay incremental.
           xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac \
             -configuration Debug -destination 'platform=macOS' \
+            -derivedDataPath "$GITHUB_WORKSPACE/../bupsy-dd" \
             CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | tail -20 || {
             grep -E '^/.*: error: ' build.log | sort -u | head -40 | while IFS= read -r line; do
               file="${line%%:*}"; rest="${line#*:}"; lineno="${rest%%:*}"
@@ -103,6 +108,20 @@ jobs:
             build/Bupsy-*.dmg
             build/Bupsy-*.dmg.sha256
           retention-days: 30
+
+      # Leave no Bupsy.app behind on the runner, built or packaged, and tell macOS they are gone:
+      # this runner is a Mac someone uses, and they should only ever find the Bupsy they installed.
+      - name: Remove built copies of the app
+        if: always()
+        run: |
+          LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+          for app in "$GITHUB_WORKSPACE"/../bupsy-dd/Build/Products/*/Bupsy.app \
+                     "$GITHUB_WORKSPACE"/build/dd/Build/Products/*/Bupsy.app \
+                     "$GITHUB_WORKSPACE"/build/staging/Bupsy.app; do
+            [ -e "$app" ] || continue
+            "$LSR" -u "$app" 2>/dev/null || true
+            rm -rf "$app"
+          done
 
   # The headless core. Runs on Linux because that is the point of it existing — the Swift core's
   # SQLite layer does not link there, and cloud machines do.
