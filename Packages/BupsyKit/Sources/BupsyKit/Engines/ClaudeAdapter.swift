@@ -250,6 +250,12 @@ public struct ClaudeAdapter: EngineAdapter {
 
         case "user":
             guard let message = json.dictionary("message") else { return [.unknown(raw: json.raw)] }
+            // A slash command that runs in the CLI itself reports back as a "user" line in a
+            // wrapper: `/compact` says "Compacted", and a command whose setup failed says why.
+            // It is the only reply such a run has, so it is shown as one.
+            if let text = message["content"] as? String {
+                return Self.localCommandOutput(text).map { [.text($0)] } ?? []
+            }
             return (message["content"] as? [[String: Any]] ?? []).compactMap { block in
                 guard block["type"] as? String == "tool_result" else { return nil }
                 return .toolResult(ToolResult(
@@ -331,6 +337,24 @@ public struct ClaudeAdapter: EngineAdapter {
             newTokens: count("input_tokens") + count("cache_creation_input_tokens"),
             replyTokens: count("output_tokens"),
             window: windows.max())
+    }
+
+    /// What a built-in command printed, from `<local-command-stdout>` or `<local-command-stderr>`.
+    /// Nil for any other text, such as the summary a compacted chat continues from.
+    static func localCommandOutput(_ text: String) -> String? {
+        for tag in ["local-command-stdout", "local-command-stderr"] {
+            let open = "<\(tag)>", close = "</\(tag)>"
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix(open), trimmed.hasSuffix(close) else { continue }
+            // The CLI escapes angle brackets inside the wrapper ("&lt;command&gt;").
+            let inner = trimmed.dropFirst(open.count).dropLast(close.count)
+                .replacingOccurrences(of: "&lt;", with: "<")
+                .replacingOccurrences(of: "&gt;", with: ">")
+                .replacingOccurrences(of: "&amp;", with: "&")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return inner.isEmpty ? nil : inner
+        }
+        return nil
     }
 
     /// Tool results arrive as a string or as content blocks depending on the tool.

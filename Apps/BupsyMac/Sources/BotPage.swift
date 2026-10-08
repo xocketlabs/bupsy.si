@@ -122,6 +122,9 @@ struct BotPage: View {
             showsRoutines = new == "newRoutine"
             if new == "editBot" { editingBot = bot } else { editingBot = nil }
         }
+        .onChange(of: model.tourDraft, initial: true) { _, new in
+            if let new { draft = new }
+        }
     }
 
     /// The page laid out for the width it has: details beside the chat when both fit, and
@@ -150,7 +153,16 @@ struct BotPage: View {
                     } else {
                         Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
                                  replyingTo: $replyingTo,
-                                 onSend: send, onStop: { model.stop(bot.id) })
+                                 onSend: send, onStop: { model.stop(bot.id) },
+                                 onPageCommand: { command in
+                                     switch command {
+                                     case .details:
+                                         openRoutineID = nil
+                                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { showsDetails = true }
+                                     case .routine: showsRoutines = true
+                                     default: break
+                                     }
+                                 })
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -1342,16 +1354,20 @@ struct BotPage: View {
             : "\(Int(seconds / 60))m \(Int(seconds.truncatingRemainder(dividingBy: 60)))s"
     }
 
-    private func send() {
+    /// `expanded` is the prompt a Codex `/prompts:` command stands for; the chat shows the command.
+    private func send(expanded: String?) {
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return }
         // A reply carries its quote to the engine, so "this" means the message you pointed at.
-        let prompt = replyingTo.map {
-            Reply.compose(quoting: $0.text, from: $0.author, message: message)
-        } ?? message
+        // Not for a slash command, which only works at the very start of what is sent.
+        let body = expanded ?? message
+        let prompt = replyingTo.map { target in
+            expanded == nil && SlashInput.looksLikeCommand(message)
+                ? message : Reply.compose(quoting: target.text, from: target.author, message: body)
+        } ?? body
         draft = ""
         replyingTo = nil
-        model.send(prompt, to: bot)
+        model.send(prompt, to: bot, shown: expanded == nil ? nil : message)
     }
 }
 

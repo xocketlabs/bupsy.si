@@ -42,6 +42,10 @@ would be easy to get wrong a second time:
   undocumented `rate_limit_event` (the user's own subscription headroom — every field optional,
   because an undocumented shape can change without notice) plus a trailing unmodelled line, which
   must surface as `unknown` rather than be dropped. A schema change has to be visible.
+- **`claude-local-command`** — a slash command that runs in the CLI itself (`/compact`), captured
+  from a real run. Its only reply is a `user` line wrapped in `<local-command-stdout>`, and a
+  command whose setup fails says why in `<local-command-stderr>`; the result's own text is empty.
+  Both become text, so the chat is not left blank. The compacted chat's summary is not shown.
 - **`codex-session`** — a thread/turn/item stream that shares no structure with Claude's. This is
   what proves the canonical event type is not quietly Claude-shaped.
 - **`codex-no-model-access`** — a turn that fails three different ways in one stream, including a

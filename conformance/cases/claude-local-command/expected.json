@@ -1,0 +1,25 @@
+[
+  {
+    "type": "started",
+    "conversationID": "sess-compact"
+  },
+  {
+    "type": "text",
+    "text": "Compacted",
+    "why": "/compact runs in the CLI and replies only through this wrapped user line; the result's own text is empty. Dropped, the chat showed nothing at all for it."
+  },
+  {
+    "type": "text",
+    "text": "Shell command failed for pattern \"!`git log --no-decorate origin/HEAD...`\": [stderr]\nfatal: ambiguous argument 'origin/HEAD...': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'",
+    "why": "A command whose setup fails (here /security-review in a repository with no remote) says why only through local-command-stderr, with angle brackets escaped, then reports success with an empty result."
+  },
+  {
+    "type": "usage",
+    "inputTokens": 0,
+    "outputTokens": 0
+  },
+  {
+    "type": "done",
+    "conversationID": "sess-compact"
+  }
+]

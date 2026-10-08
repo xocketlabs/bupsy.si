@@ -23,6 +23,7 @@ enum TourMode {
         let group = model.groups.first
         func reset(_ m: AppModel) {
             m.tourPalette = nil; m.tourDetails = nil; m.tourSheet = nil
+            if m.tourDraft != nil { m.tourDraft = "" }
         }
         var steps: [Step] = []
         for look in [AppModel.Appearance.light, .dark] {
@@ -39,6 +40,14 @@ enum TourMode {
             if let group {
                 steps.append(Step(name: "group-\(suffix)", appearance: look) { m in reset(m); m.tourDestination = .group(group.id) })
             }
+            // The slash command menu, open on everything, then filtered and on a bot's models.
+            steps += [
+                Step(name: "slash-\(suffix)", appearance: look) { m in
+                    reset(m); if let bot { m.tourDestination = .bot(bot.id) }; m.tourDraft = "/"
+                },
+                Step(name: "slash-filtered-\(suffix)", appearance: look) { m in reset(m); m.tourDraft = "/re" },
+                Step(name: "slash-model-\(suffix)", appearance: look) { m in reset(m); m.tourDraft = "/model " },
+            ]
         }
         steps += [
             Step(name: "panel-activity", appearance: .light) { m in reset(m); if let bot { m.tourDestination = .bot(bot.id) }; m.tourDetails = .activity },
