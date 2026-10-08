@@ -102,7 +102,10 @@ public enum HTTPParser {
     public static let maxBodyBytes = 1024 * 1024
 
     /// A complete request at the start of `buffer`, or nil when more bytes are needed.
-    public static func parse(_ buffer: Data) throws -> HTTPRequest? {
+    /// `bodyLimit` says how large a body may be for a method and path: most requests are a line
+    /// of JSON, and only a route meant for files should take more.
+    public static func parse(_ buffer: Data,
+                             bodyLimit: (_ method: String, _ path: String) -> Int = { _, _ in maxBodyBytes }) throws -> HTTPRequest? {
         let separator = Data("\r\n\r\n".utf8)
         guard let end = buffer.range(of: separator) else {
             if buffer.count > maxHeaderBytes { throw Failure.tooLarge }
@@ -126,7 +129,8 @@ public enum HTTPParser {
         if headers["transfer-encoding"] != nil { throw Failure.malformed }
         let length = Int(headers["content-length"] ?? "0") ?? -1
         guard length >= 0 else { throw Failure.malformed }
-        guard length <= maxBodyBytes else { throw Failure.tooLarge }
+        let targetPath = String(requestLine[1].split(separator: "?", maxSplits: 1).first ?? "/")
+        guard length <= bodyLimit(String(requestLine[0]), targetPath) else { throw Failure.tooLarge }
 
         let bodyStart = end.upperBound
         guard buffer.distance(from: bodyStart, to: buffer.endIndex) >= length else { return nil }
@@ -159,12 +163,15 @@ public final class LocalHTTPServer: @unchecked Sendable {
     public typealias Handler = @Sendable (HTTPRequest) async -> HTTPResponse
 
     private let handler: Handler
+    private let bodyLimit: @Sendable (String, String) -> Int
     private let queue = DispatchQueue(label: "bupsy.remote-http")
     private var listener: NWListener?
     /// The port actually listened on, once started.
     public private(set) var port: UInt16?
 
-    public init(handler: @escaping Handler) {
+    public init(bodyLimit: @escaping @Sendable (String, String) -> Int = { _, _ in HTTPParser.maxBodyBytes },
+                handler: @escaping Handler) {
+        self.bodyLimit = bodyLimit
         self.handler = handler
     }
 
@@ -225,7 +232,7 @@ public final class LocalHTTPServer: @unchecked Sendable {
             var buffer = buffer
             if let data { buffer.append(data) }
             do {
-                if let request = try HTTPParser.parse(buffer) {
+                if let request = try HTTPParser.parse(buffer, bodyLimit: self.bodyLimit) {
                     Task {
                         let response = await self.handler(request)
                         connection.send(content: response.serialized(), completion: .contentProcessed { _ in

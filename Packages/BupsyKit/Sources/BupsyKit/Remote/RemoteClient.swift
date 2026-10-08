@@ -148,6 +148,37 @@ public struct RemoteClient: Sendable {
         try await post("/api/bots/\(Self.escape(bot))/stop", [:])
     }
 
+    /// The largest file sent to another Mac's bot. Big enough for documents, screenshots and
+    /// short clips; a whole video project belongs in a shared folder instead.
+    public static let maxUpload = 50 * 1024 * 1024
+
+    /// Copies a file to the bot's own Mac and returns where it landed there, which is the path
+    /// to put in a message: a path on this Mac means nothing to a bot on another one.
+    public func upload(_ file: URL, to bot: String) async throws -> String {
+        let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size <= Self.maxUpload else {
+            throw Failure.refused("\(file.lastPathComponent) is over 50 MB. Share a folder for big files instead.")
+        }
+        let data = try Data(contentsOf: file)
+        var request = URLRequest(url: address.appendingPathComponent("api/bots/\(Self.escape(bot))/files"),
+                                 timeoutInterval: 120)
+        request.httpMethod = "POST"
+        request.httpShouldHandleCookies = false
+        if let key { request.setValue("bupsy_device=\(key)", forHTTPHeaderField: "Cookie") }
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.setValue(file.lastPathComponent.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "file",
+                         forHTTPHeaderField: "X-File-Name")
+        request.httpBody = data
+        let (body, response): (Data, URLResponse)
+        do { (body, response) = try await session.data(for: request) } catch { throw Failure.unreachable }
+        guard let http = response as? HTTPURLResponse else { throw Failure.unreachable }
+        guard http.statusCode == 200 else { throw Self.failure(http.statusCode, body) }
+        guard let path = ((try? JSONSerialization.jsonObject(with: body)) as? [String: Any])?["path"] as? String else {
+            throw Failure.refused("That Mac took the file but didn't say where it put it.")
+        }
+        return path
+    }
+
     // MARK: - Plumbing
 
     private func get<T: Decodable>(_ path: String) async throws -> T {

@@ -13,6 +13,9 @@ struct AttentionItem: Identifiable, Hashable {
         case groupApproval(String)
         /// A group that reached its turn limit and is waiting for you to speak. Carries the group id.
         case pausedGroup(String)
+        /// A bot on another of the person's Macs waiting on them. Carries that Mac's name. Settled
+        /// in its chat, which shows the card from its own Mac.
+        case remote(String)
 
         /// Settled right here with Allow and Deny, wherever it was raised.
         var isApproval: Bool {
@@ -200,7 +203,7 @@ struct AttentionRow: View {
 
     // By id, not name: names can change, and before they were unique two bots sharing one sent
     // a decision to whichever came first.
-    private var bot: Bot? { model.bots.first { $0.id == item.botID } }
+    private var bot: Bot? { model.anyBot(item.botID) }
 
     var body: some View {
         // An approval is settled right here, on the same card the thread shows. A stuck goal needs

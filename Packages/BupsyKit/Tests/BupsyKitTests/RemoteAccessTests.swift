@@ -256,3 +256,37 @@ struct RemoteClientTests {
         #expect(RemoteClient.deviceKey(fromSetCookie: "bupsy_device=K; Path=/; HttpOnly") == "K")
     }
 }
+
+@Suite("Remote access: files for a bot on another Mac")
+struct RemoteUploadTests {
+    @Test("only the route meant for files takes a large body")
+    func perRouteLimit() throws {
+        let big = 5 * 1024 * 1024
+        let head = { (path: String) in Data("POST \(path) HTTP/1.1\r\nContent-Length: \(big)\r\n\r\n".utf8) }
+        let limit: (String, String) -> Int = { method, path in
+            method == "POST" && path.hasSuffix("/files") ? 50 * 1024 * 1024 : HTTPParser.maxBodyBytes
+        }
+        #expect(throws: HTTPParser.Failure.tooLarge) { try HTTPParser.parse(head("/api/bots/x/messages"), bodyLimit: limit) }
+        // Allowed, and still waiting for the rest of the body.
+        #expect(try HTTPParser.parse(head("/api/bots/x/files"), bodyLimit: limit) == nil)
+    }
+
+    @Test("a file goes to the bot's Mac and comes back as its path there")
+    func uploads() async throws {
+        let server = LocalHTTPServer(bodyLimit: { _, _ in 10 * 1024 * 1024 }) { request in
+            guard request.path == "/api/bots/b1/files", request.cookie("bupsy_device") == "K" else {
+                return .error("nope", status: 401)
+            }
+            let name = request.headers["x-file-name"]?.removingPercentEncoding ?? "?"
+            return .json(["path": "/Users/mini/bupsy/b1/Attachments/\(name)", "bytes": request.body.count])
+        }
+        let port = try await server.start(preferredPort: 0)
+        defer { server.stop() }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("brief notes.txt")
+        try Data(repeating: 65, count: 2 * 1024 * 1024).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let client = RemoteClient(address: URL(string: "http://127.0.0.1:\(port)")!, key: "K")
+        #expect(try await client.upload(file, to: "b1") == "/Users/mini/bupsy/b1/Attachments/brief notes.txt")
+    }
+}

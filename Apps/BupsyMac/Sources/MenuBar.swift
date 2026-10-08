@@ -195,7 +195,7 @@ struct MenuBarApproval: View {
     @Environment(\.openWindow) private var openWindow
     let item: AttentionItem
 
-    private var bot: Bot? { model.bots.first { $0.id == item.botID } }
+    private var bot: Bot? { model.anyBot(item.botID) }
 
     var body: some View {
         if item.kind.isApproval, let bot, let approval = model.pendingApproval(id: item.id, for: bot.id) {
