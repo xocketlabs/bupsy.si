@@ -394,17 +394,24 @@ struct SectionHeader<Trailing: View>: View {
 /// width and leave room on the left for a word.
 struct SettingsGroup<Content: View>: View {
     @Environment(\.palette) private var palette
+    /// Off in a Settings pane, whose own heading already says what the card is.
+    @Environment(\.settingsGroupShowsTitle) private var showsTitle
     let title: String
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.snug) {
-            Text(title)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(palette.mutedForeground)
-                .padding(.horizontal, 2)
+            if showsTitle {
+                Text(title)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.mutedForeground)
+                    .padding(.horizontal, 2)
+            }
 
+            // As wide as the column it is in, so a card whose rows are short (one switch) lines up
+            // with the full-width cards and notes around it instead of hugging its words.
             VStack(spacing: 0) { content }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card))
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.Radius.card)

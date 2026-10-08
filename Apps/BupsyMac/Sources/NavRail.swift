@@ -14,7 +14,6 @@ import SwiftUI
 struct NavRail: View {
     @Environment(AppModel.self) private var model
     @Environment(\.palette) private var palette
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Binding var destination: Destination
@@ -35,7 +34,7 @@ struct NavRail: View {
     /// The engine the person picked "Sign out" for, until they confirm.
     @State private var signingOut: EngineID?
     /// True after a sign-in or sign-out was started from the You menu, so a failure is shown here
-    /// and not also over the main window when it was started from Settings.
+    /// as an alert, and not also when it was started from Settings › Engines, which says it inline.
     @State private var awaitingAccount = false
     /// Sections folded shut, kept across launches. A JSON array of section keys, shared with the
     /// New section sheet's "Fold it in the sidebar by default". See `SidebarFolds`.
@@ -51,6 +50,8 @@ struct NavRail: View {
         case group(String)
         case team
         case groups
+        /// Settings, on the pane in `AppModel.settingsPane`. See `AppModel.openSettings(_:)`.
+        case settings
     }
 
     /// Every sheet the rail presents.
@@ -171,7 +172,11 @@ struct NavRail: View {
                     get: { model.moveOutcome != nil },
                     set: { if !$0 { model.moveOutcome = nil } }),
                 presenting: model.moveOutcome
-            ) { _ in
+            ) { outcome in
+                // When the fix is a setting, the way there, rather than only its name.
+                if let pane = outcome.settingsPane {
+                    Button("Open \(pane.label)") { model.openSettings(pane) }
+                }
                 Button("OK", role: .cancel) {}
             } message: { outcome in
                 Text(outcome.message)
@@ -642,6 +647,9 @@ struct NavRail: View {
                           selected: destination == .connectors) { destination = .connectors }
             SidebarNavRow(icon: "chart.bar.fill", label: "Usage",
                           selected: destination == .usage) { destination = .usage }
+            // A page here like the rest, not a window of its own over the chats.
+            SidebarNavRow(icon: "gearshape.fill", label: "Settings",
+                          selected: destination == .settings) { destination = .settings }
         }
     }
 
@@ -661,10 +669,11 @@ struct NavRail: View {
         .accessibilityLabel("\(accountName), \(engineSummary)")
         .accessibilityHint("Opens settings, appearance and sign-in")
         // The board's order. Apps is one click away under Setup, so it is not repeated here;
-        // Permissions is, because this menu is the only way to it.
+        // Permissions is, because this menu is the only way to it. Settings stays here as well as
+        // under Setup: it is where the board puts it, and where people look for it.
         .popover(isPresented: $showsYouMenu, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: Theme.Space.hairline) {
-                youMenuItem("gearshape", "Settings", shortcut: "Cmd ,") { openSettings() }
+                youMenuItem("gearshape", "Settings", shortcut: "Cmd ,") { destination = .settings }
                 youMenuItem("display", "Machines") { destination = .machines }
                 youMenuItem("chart.bar", "Usage") { destination = .usage }
                 youMenuItem("hand.raised", "Permissions") { destination = .permissions }

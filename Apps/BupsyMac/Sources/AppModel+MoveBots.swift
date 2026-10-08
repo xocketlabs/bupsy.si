@@ -26,6 +26,8 @@ extension AppModel {
         let id = UUID()
         let title: String
         let message: String
+        /// The Settings pane that fixes it, offered as a button beside OK.
+        var settingsPane: SettingsPane?
     }
 
     struct MoveFailure: LocalizedError {
@@ -112,7 +114,8 @@ extension AppModel {
                 title: "\(what) can't move yet",
                 message: problems.isEmpty
                     ? "\(mac.name) isn't linked any more. Link it again in Settings › Other Macs."
-                    : problems.joined(separator: "\n\n") + (movers.count > 1 ? "\n\nNothing was moved." : ""))
+                    : problems.joined(separator: "\n\n") + (movers.count > 1 ? "\n\nNothing was moved." : ""),
+                settingsPane: problems.isEmpty ? .otherMacs : nil)
             return
         }
 

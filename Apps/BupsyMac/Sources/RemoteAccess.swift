@@ -190,7 +190,7 @@ final class RemoteAccess {
         guard registry.device(forKey: request.cookie(Self.cookie)) != nil else {
             return .error("This device isn't paired with Bupsy.", status: 401)
         }
-        // Refresh the list so the Settings window shows when each device was last seen.
+        // Refresh the list so Settings › Use from other devices shows when each device was last seen.
         devices = registry.devices
         if request.path.hasPrefix("/api/moves/") { return await receiveMove(request) }
         return route(request)

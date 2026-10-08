@@ -5,6 +5,16 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Settings is a page in the window**
+- Settings now opens in the main window, like Machines and Usage, instead of a separate window
+  floating over your chats. It's under Setup in the sidebar, in the You menu, and Bupsy ›
+  Settings… (Cmd ,) still goes there, reopening the window if it was closed.
+- Its sections are listed on the left: Appearance, Engines, Use from other devices, Other Macs,
+  Lid closed, Voice and About. Every setting is the same as before. In a narrow window the list
+  shrinks to icons.
+- "Link it again in Settings › Other Macs", when a bot can't move to a Mac that is no longer
+  linked, now has a button that takes you there.
+
 **Move a bot to another Mac**
 - Right-click a bot (or open Runs on in its details) and choose "Move to Mac mini…" to have it
   run on another of your linked Macs from now on. A section's menu has "Move section to Mac
