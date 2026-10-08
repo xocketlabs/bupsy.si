@@ -53,6 +53,14 @@ extension AppModel {
         navigationRequest = NavigationRequest(destination: destination)
     }
 
+    /// Goes to Settings, on the given pane, or on the one it was last left on. Settings is a page
+    /// in this window, so anything that points the person at a setting ("Link it again in
+    /// Settings › Other Macs") can take them straight to it.
+    func openSettings(_ pane: SettingsPane? = nil) {
+        if let pane { settingsPane = pane }
+        open(.settings)
+    }
+
     /// Opens the start-chat palette, as the rail's plus button does.
     func startChat(searchFirst: Bool = false) {
         startChatRequest = StartChatRequest(searchFirst: searchFirst)
