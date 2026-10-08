@@ -478,8 +478,8 @@ struct NavRail: View {
 
     private func row(for bot: Bot) -> some View {
         BotRow(
-            bot: bot,
-            preview: model.thread(for: bot.id).preview,
+            bot: shownWithMac(bot),
+            preview: bot.remote.map { $0.preview } ?? model.thread(for: bot.id).preview,
             mood: mood(for: bot),
             selected: destination == .bot(bot.id),
             unread: model.isUnread(bot),
@@ -487,12 +487,29 @@ struct NavRail: View {
         )
         // Cmd 1 to 9 are not on the rows: see `numberShortcuts`.
         .contextMenu {
-            BotMenu(bot: bot,
-                    onOpen: { destination = .bot(bot.id) },
-                    onNewFolder: { sheet = .fileBot(bot) },
-                    onRename: { sheet = .editBot(bot) },
-                    onDelete: { deletingBot = bot })
+            // A bot on another Mac is renamed, filed and deleted there; here it only opens.
+            if let remote = bot.remote {
+                Button("Open") { destination = .bot(bot.id) }
+                Text("Runs on \(remote.macName)")
+            } else {
+                BotMenu(bot: bot,
+                        onOpen: { destination = .bot(bot.id) },
+                        onNewFolder: { sheet = .fileBot(bot) },
+                        onRename: { sheet = .editBot(bot) },
+                        onDelete: { deletingBot = bot })
+            }
         }
+    }
+
+    /// A bot from another Mac whose name another bot here also has, named with its Mac too
+    /// ("Scout · Mac mini"), so two Scouts can be told apart without hovering over the icon.
+    private func shownWithMac(_ bot: Bot) -> Bot {
+        guard let remote = bot.remote else { return bot }
+        let others = model.bots.map(\.name) + model.linked.remoteBots.filter { $0.id != bot.id }.map(\.name)
+        guard others.contains(where: { $0.caseInsensitiveCompare(bot.name) == .orderedSame }) else { return bot }
+        var shown = bot
+        shown.name = "\(bot.name) · \(remote.macName)"
+        return shown
     }
 
     /// Opens the creator with its Section field already set to `section`, so what you see in the
@@ -1042,6 +1059,15 @@ struct BotRow: View {
                     .lineLimit(1)
                     .layoutPriority(1)
 
+                // Lives on another Mac: that Mac's kind, quiet, beside the name.
+                if let remote = bot.remote {
+                    Image(systemName: remote.symbol)
+                        .font(.system(size: Theme.scaled(10)))
+                        .foregroundStyle(palette.sidebarMutedForeground)
+                        .opacity(remote.online ? 1 : 0.5)
+                        .accessibilityLabel("On \(remote.macName)")
+                }
+
                 Spacer(minLength: 0)
 
                 // Blue rather than the accent: "there is something new" is a different claim
@@ -1090,6 +1116,13 @@ struct BotRow: View {
     }
 
     private var helpText: String {
+        if let remote = bot.remote {
+            return remote.online ? "Runs on \(remote.macName)" : "\(remote.macName) is offline"
+        }
+        return localHelpText
+    }
+
+    private var localHelpText: String {
         switch mood {
         case .waitingForYou: "\(bot.name) needs you"
         case .working: preview.map { "Working. \($0)" } ?? "\(bot.name) is working"

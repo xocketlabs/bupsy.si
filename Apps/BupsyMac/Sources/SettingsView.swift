@@ -30,6 +30,7 @@ private struct SettingsContent: View {
                 appearance
                 engines
                 RemoteSettingsSection()
+                LinkedMacsSection()
                 LidSleepSection()
                 about
             }

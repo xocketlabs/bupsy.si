@@ -37,6 +37,7 @@ struct BupsyApp: App {
                     #endif
                     model.startOutbox()
                     model.remote.resumeIfEnabled()
+                    model.linked.start()
                     model.startFolderWatches()
                     model.refreshExecutor()
                     await model.refreshEngineStatus()
@@ -413,7 +414,7 @@ struct RootView: View {
         if let id {
             guard destination != .bot(id) else { return }
             go(to: .bot(id))
-        } else if case .bot(let shown) = destination, !model.bots.contains(where: { $0.id == shown }) {
+        } else if case .bot(let shown) = destination, model.anyBot(shown) == nil {
             // The bot on screen is gone and nothing else is selected: the empty roster when no
             // bots are left, "No bot selected" otherwise.
             destination = nil
@@ -483,7 +484,7 @@ struct RootView: View {
     private var panel: some View {
         switch (panelDestination ?? destination) ?? model.bots.first.map({ .bot($0.id) }) {
         case .bot(let id):
-            if let bot = model.bots.first(where: { $0.id == id }) {
+            if let bot = model.anyBot(id) {
                 // No card here: BotPage draws its own, so its details panel can sit beside the
                 // card on the window rather than inside it. See BotPage.body.
                 // Keyed by the bot, so switching bots starts a fresh page: a draft, a reply-to or a

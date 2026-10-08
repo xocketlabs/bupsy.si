@@ -1,6 +1,25 @@
 import BupsyKit
 import Foundation
 
+/// Where a bot from another Mac lives, and how it is doing there.
+struct RemoteRef: Hashable, Sendable {
+    let macID: String
+    var macName: String
+    /// "laptop" or "desktop", for the icon beside its name.
+    var macKind: String
+    /// The bot's id on its own Mac.
+    let botID: String
+    /// Whether its Mac answered the last time it was asked.
+    var online: Bool
+    var mood: String
+    var running: Bool
+    var needsYou: Bool
+    var unread: Bool
+    var preview: String?
+
+    var symbol: String { macKind == "laptop" ? "laptopcomputer" : "desktopcomputer" }
+}
+
 /// A bot as the UI knows it.
 ///
 /// `machineID` is nil for a bot with no machine, which is the default and the common case —
@@ -48,6 +67,10 @@ struct Bot: Identifiable, Hashable, Sendable {
     /// Reachable from the person's other devices. Off is "This Mac only": the bot never leaves
     /// this Mac, not even as a name in another device's list.
     var sharedWithDevices = true
+    /// Set for a bot that lives on another of the person's Macs and is shown here through it.
+    /// Such a bot is never stored in this Mac's roster: it is a live window onto that Mac, which
+    /// runs it, keeps its files and holds its sign-in. Everything done to it goes there.
+    var remote: RemoteRef?
 
     /// The shape this bot actually wears, chosen or derived — for anything that compares faces.
     var effectiveShape: BotShape { avatarShape ?? BotFace.derivedShape(forHue: avatarHue) }
@@ -65,6 +88,23 @@ struct Bot: Identifiable, Hashable, Sendable {
         var hash = 5381
         for byte in name.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
         self.avatarHue = Double(abs(hash) % 360) / 360
+    }
+
+    /// A bot on another Mac, drawn with the face it has there.
+    init(remote summary: RemoteBotSummary, on mac: LinkedMacs.Link, online: Bool) {
+        self.id = LinkedMacs.localID(mac: mac.id, bot: summary.id)
+        self.name = summary.name
+        self.engine = .claude
+        self.role = summary.role
+        self.folder = summary.section
+        var hash = 5381
+        for byte in summary.name.utf8 { hash = ((hash << 5) &+ hash) &+ Int(byte) }
+        self.avatarHue = summary.face?.hue ?? Double(abs(hash) % 360) / 360
+        self.avatarShape = summary.face.flatMap { BotShape(rawValue: $0.shape) }
+        self.avatarColour = summary.face?.colour
+        self.remote = RemoteRef(macID: mac.id, macName: mac.name, macKind: mac.kind, botID: summary.id,
+                                online: online, mood: summary.mood, running: summary.running,
+                                needsYou: summary.needsYou, unread: summary.unread, preview: summary.preview)
     }
 
     /// What the bot can honestly promise about unattended work. PLAN.md §4.
@@ -164,9 +204,17 @@ struct TranscriptEntry: Identifiable, Sendable {
         case finished(Outcome)
     }
 
-    let id = UUID()
+    let id: UUID
     var kind: Kind
-    var at = Date()
+    var at: Date
+
+    /// `id` is given for an entry that mirrors one elsewhere (a bot on another Mac), so the same
+    /// message keeps the same identity across refreshes and its row is not rebuilt each time.
+    init(id: UUID = UUID(), kind: Kind, at: Date = Date()) {
+        self.id = id
+        self.kind = kind
+        self.at = at
+    }
 }
 
 /// A tool call waiting on the user, as the UI holds it.

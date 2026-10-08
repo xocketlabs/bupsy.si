@@ -155,6 +155,11 @@ enum TourMode {
                     }
                 }
             },
+            // A bot from a linked Mac, when one is linked: the sidebar mark and its chat.
+            Step(name: "remote-chat", appearance: .dark) { m in
+                reset(m)
+                if let remote = m.linked.remoteBots.first { m.tourDestination = .bot(remote.id) }
+            },
             Step(name: "panel-files", appearance: .light) { m in reset(m); m.tourDetails = .files },
             Step(name: "search", appearance: .light) { m in reset(m); m.tourDetails = nil; m.tourPalette = true },
             Step(name: "apps", appearance: .light) { m in reset(m); m.tourDestination = .connectors },

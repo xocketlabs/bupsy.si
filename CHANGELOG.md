@@ -5,6 +5,14 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Your other Macs' bots, here**
+- Settings › Other Macs › Add a Mac: pick one of your Macs on Tailscale and type the code it
+  shows. Its shared bots then join this Mac's sidebar in the same sections, marked with that
+  Mac's icon (and its name too, when a bot here has the same name). Open one to read its chat,
+  send, Allow or Deny, answer and Stop: all of it happens on its own Mac, which keeps running
+  it. When that Mac is asleep or off, its bots grey out and sending waits.
+- Bots set to This Mac only never appear on another Mac.
+
 **This Mac only**
 - Each bot's Details › Other devices: Shared (the default) or This Mac only. A bot kept to this
   Mac never appears on your phone or other Macs, and they can't read its chat, message it,

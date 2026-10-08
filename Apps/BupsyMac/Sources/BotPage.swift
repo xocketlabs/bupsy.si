@@ -64,10 +64,14 @@ struct BotPage: View {
 
     /// The details are shown unless a routine page is open: that page needs the room, and the
     /// remembered choice is left as it was, so Back brings the panel back.
-    private var detailsVisible: Bool { showsDetails && openRoutine == nil }
+    private var detailsVisible: Bool { showsDetails && openRoutine == nil && bot.remote == nil }
 
     var body: some View {
         page
+            // A bot on another Mac: its chat is read from there while this page is open.
+            .task(id: bot.id) {
+                if bot.remote != nil { await model.linked.follow(bot.id) }
+            }
             // The page is rebuilt for each bot, so what you typed is kept on the model, per bot:
             // leaving and coming back finds it, and it can never follow you to another bot.
             .onAppear { draft = model.botDrafts[bot.id] ?? "" }
@@ -136,9 +140,18 @@ struct BotPage: View {
                 VStack(spacing: 0) {
                     topbar
                     conversation
-                    Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
-                             replyingTo: $replyingTo,
-                             onSend: send, onStop: { model.stop(bot.id) })
+                    if let remote = bot.remote, !remote.online {
+                        // Nothing sent into the void: the message waits here until its Mac is back.
+                        Text("\(remote.macName) is offline. You can send again when it's awake and on Tailscale.")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(palette.mutedForeground)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Theme.Space.section)
+                    } else {
+                        Composer(draft: $draft, bot: bot, isRunning: thread.isRunning,
+                                 replyingTo: $replyingTo,
+                                 onSend: send, onStop: { model.stop(bot.id) })
+                    }
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -185,6 +198,20 @@ struct BotPage: View {
     /// question you ask occasionally, so it lives one click away rather than above the thread.
     private var topbar: some View {
         Topbar(trail: crumbs) {
+            // A bot on another Mac: where it runs, and nothing that would change it from here,
+            // since its settings live on its own Mac.
+            if let remote = bot.remote {
+                ThreadStatusBadge(text: remote.online ? "Runs on \(remote.macName)" : "\(remote.macName) is offline",
+                                  tone: remote.online ? nil : palette.warning)
+                statusBadge
+            } else {
+                localTopbarItems
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var localTopbarItems: some View {
             if !hasJob {
                 ThreadStatusBadge(text: "No job yet")
                     .help("\(bot.name) has no job description yet. Add one in Details.")
@@ -200,7 +227,6 @@ struct BotPage: View {
             }
             .buttonStyle(ThreadButtonStyle(kind: .secondary, height: Theme.Size.control))
             .help("Settings, goals and routines for \(bot.name)")
-        }
     }
 
     private var hasJob: Bool {

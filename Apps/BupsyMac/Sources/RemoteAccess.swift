@@ -1,6 +1,7 @@
 import AppKit
 import BupsyKit
 import CoreImage.CIFilterBuiltins
+import IOKit.ps
 import SwiftUI
 
 /// Using Bupsy from another device: a phone, another Mac.
@@ -217,7 +218,7 @@ final class RemoteAccess {
         let get = request.method == "GET", post = request.method == "POST"
 
         if get, parts == ["session"] {
-            return .json(["mac": Host.current().localizedName ?? "Your Mac"])
+            return .json(["mac": Host.current().localizedName ?? "Your Mac", "kind": Self.macKind])
         }
         if get, parts == ["bots"] {
             let bots = orderedBots(model)
@@ -289,6 +290,10 @@ final class RemoteAccess {
             "needsYou": model.needsYou(bot),
             "unread": model.isUnread(bot),
             "preview": model.thread(for: bot.id).preview as Any? ?? NSNull(),
+            // The face, so another Bupsy can draw this bot exactly as it looks here.
+            "face": ["shape": bot.effectiveShape.rawValue,
+                     "colour": bot.avatarColour ?? BotFace.derivedColour(forHue: bot.avatarHue),
+                     "hue": bot.avatarHue],
         ]
     }
 
@@ -389,6 +394,19 @@ final class RemoteAccess {
     }
 
     // MARK: - Names
+
+    /// "laptop" or "desktop", for the icon another device shows beside this Mac's bots. Read
+    /// from whether it has a built-in battery: model identifiers no longer say "MacBook".
+    static let macKind: String = {
+        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef]
+        else { return "desktop" }
+        let hasBattery = sources.contains { source in
+            let description = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any]
+            return description?[kIOPSTypeKey] as? String == kIOPSInternalBatteryType
+        }
+        return hasBattery ? "laptop" : "desktop"
+    }()
 
     static func verb(_ tool: String) -> String {
         switch tool {

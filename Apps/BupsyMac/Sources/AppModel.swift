@@ -1165,7 +1165,9 @@ final class AppModel {
         return created
     }
 
-    func isRunning(_ botID: BotID) -> Bool { running[botID] != nil }
+    func isRunning(_ botID: BotID) -> Bool {
+        running[botID] != nil || (linked.ref(botID)?.running ?? false)
+    }
 
     /// What a running bot is doing right now ("Reading 3 files"), read from the thread it is
     /// actually running in, which inside a group is not its own chat.
@@ -1228,6 +1230,8 @@ final class AppModel {
     }
 
     func send(_ prompt: String, to bot: Bot) {
+        // A bot on another Mac is sent to there; that Mac queues and runs it.
+        if bot.remote != nil { linked.send(prompt, to: bot); return }
         send(prompt, to: bot, onFinish: nil)
     }
 
@@ -1657,6 +1661,8 @@ final class AppModel {
 
     /// The user's answer on an approval card.
     func decide(_ approval: PendingApproval, allow: Bool, for bot: Bot, always: Bool = false) {
+        // Decided on the bot's own Mac, by its own gate.
+        if bot.remote != nil { linked.decide(approval, allow: allow, for: bot); return }
         // The banner for this request goes either way: it has been answered, or it can't be.
         notifier.clearApproval(approval.id)
         let thread = self.threadHolding(approvalID: approval.id, for: bot.id)
@@ -1742,6 +1748,7 @@ final class AppModel {
     }
 
     func stop(_ botID: BotID) {
+        if linked.isRemote(botID) { linked.stop(botID); return }
         // Before the slot is cleared, while the thread the run was in is still known.
         expirePendingApprovals(for: botID)
         let current = activeThread[botID] ?? thread(for: botID)
@@ -2214,6 +2221,8 @@ final class AppModel {
 
     /// Using Bupsy from the person's other devices, over Tailscale. See `RemoteAccess`.
     @ObservationIgnored lazy var remote = RemoteAccess(model: self)
+    /// The person's other Macs, whose shared bots show here. See `LinkedMacs`.
+    @ObservationIgnored lazy var linked = LinkedMacs(model: self)
 
     /// Starts listening for messages bots want to send each other.
     func startOutbox() {
@@ -2428,6 +2437,7 @@ final class AppModel {
     /// Sends the person's answer as their next message — what the bot stopped to wait for.
     /// An empty answer dismisses the question without sending anything.
     func answer(_ question: BotQuestion, with answer: String, for bot: Bot) {
+        if bot.remote != nil { linked.answer(question, with: answer, for: bot); return }
         let text = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         thread(for: bot.id).answerQuestion(id: question.id, with: text)
         guard !text.isEmpty else { return }
@@ -2664,6 +2674,8 @@ final class AppModel {
     /// and kept between runs, so anything the bot writes for itself is still there next time.
     func workingDirectory(for bot: Bot) -> URL {
         if let chosen = bot.workdir { return URL(fileURLWithPath: chosen) }
+        // Its folder is on its own Mac. Nothing is made here for it.
+        if bot.remote != nil { return FileManager.default.homeDirectoryForCurrentUser }
         if let known = workspaceFolders[bot.id] { return known }
         let folder = Self.workspacesDirectory.appendingPathComponent(bot.id.rawValue, isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -2848,6 +2860,7 @@ final class AppModel {
         // selection changes, so a reply arriving in the thread already on screen left a dot that
         // nothing could clear — the one thing that clears it had already happened.
         guard selectedBotID != bot.id else { return false }
+        if let remote = bot.remote { return remote.unread }
 
         let thread = thread(for: bot.id)
         // Only the bot's own messages count. Your own last message making the row bold would
@@ -2958,7 +2971,7 @@ final class AppModel {
     /// The sidebar's sections, empty ones included. Pinned and hidden bots do not set the order,
     /// since the sidebar lists them elsewhere.
     var folders: [String] {
-        sectionOrder(for: bots.filter { !$0.pinned && !$0.hidden })
+        sectionOrder(for: bots.filter { !$0.pinned && !$0.hidden } + linked.remoteBots)
     }
 
     /// Every section, for pickers and Move to menus: a section holding only pinned or hidden
@@ -2973,14 +2986,23 @@ final class AppModel {
     }
 
     /// Bots with no folder. Shown first, above the named folders, because filing is optional.
+    /// This Mac's bots, then other Macs' bots in no section.
     var ungroupedBots: [Bot] {
         bots.filter { ($0.folder ?? "").isEmpty && !$0.pinned && !$0.hidden }
+            + linked.remoteBots.filter { ($0.folder ?? "").isEmpty }
     }
 
     /// Excludes pinned bots, which are already listed at the top. Showing a bot in both places
     /// is the bug that makes a pinned list feel broken rather than useful.
+    /// A section's bots: this Mac's, then other Macs' that sit in a section of the same name.
     func bots(in folder: String) -> [Bot] {
         bots.filter { $0.folder == folder && !$0.pinned && !$0.hidden }
+            + linked.remoteBots.filter { $0.folder == folder }
+    }
+
+    /// A bot by id, from this Mac or another.
+    func anyBot(_ id: BotID) -> Bot? {
+        bots.first { $0.id == id } ?? linked.remoteBots.first { $0.id == id }
     }
 
     func setFolder(_ bot: Bot, _ folder: String?) {
