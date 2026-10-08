@@ -148,13 +148,17 @@ struct BupsyOwnToolsPolicyTests {
         }
         // Changing another bot's job, model or chat is gated by the asking bot's own trust: only
         // a bot on auto does it unasked.
-        for autonomy in [Autonomy.ask, .allowlist, .trusted] {
-            if case .allow = AutonomyPolicy.decide(tool: "mcp__bupsy__manage_bot", autonomy: autonomy) {
-                Issue.record("manage_bot was let through under \(autonomy)")
+        // So are scheduling, stopping, reading another bot's chat and notifying the person.
+        for tool in ["mcp__bupsy__manage_bot", "mcp__bupsy__add_routine", "mcp__bupsy__remove_routine",
+                     "mcp__bupsy__stop_bot", "mcp__bupsy__read_chat", "mcp__bupsy__notify_person"] {
+            for autonomy in [Autonomy.ask, .allowlist, .trusted] {
+                if case .allow = AutonomyPolicy.decide(tool: tool, autonomy: autonomy) {
+                    Issue.record("\(tool) was let through under \(autonomy)")
+                }
             }
-        }
-        if case .ask = AutonomyPolicy.decide(tool: "mcp__bupsy__manage_bot", autonomy: .auto) {
-            Issue.record("manage_bot asked on auto")
+            if case .ask = AutonomyPolicy.decide(tool: tool, autonomy: .auto) {
+                Issue.record("\(tool) asked on auto")
+            }
         }
         // Another server's tools still ask.
         if case .allow = AutonomyPolicy.decide(tool: "mcp__bupsyx__send", autonomy: .trusted) {

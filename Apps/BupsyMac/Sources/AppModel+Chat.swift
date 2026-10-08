@@ -203,6 +203,16 @@ enum ChatLiveStatus {
             return "Asking you"
         case "mcp__bupsy__move_bots":
             return "Tidying the sidebar"
+        case "mcp__bupsy__add_routine", "mcp__bupsy__remove_routine":
+            return "Scheduling"
+        case "mcp__bupsy__stop_bot":
+            if let bot = object["bot"] as? String, !bot.isEmpty { return "Stopping \(bot)" }
+            return "Stopping a bot"
+        case "mcp__bupsy__read_chat":
+            if let bot = object["bot"] as? String, !bot.isEmpty { return "Reading \(bot)'s chat" }
+            return "Reading a chat"
+        case "mcp__bupsy__notify_person":
+            return "Notifying you"
         case "mcp__bupsy__manage_bot":
             if let bot = object["bot"] as? String, !bot.isEmpty { return "Changing \(bot)" }
             return "Changing a bot"

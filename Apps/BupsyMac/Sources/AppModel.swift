@@ -1190,6 +1190,9 @@ final class AppModel {
                 created.conversationID = try store
                     .conversation(forBot: botID.rawValue, engine: engine.rawValue)
                     .flatMap { record in record.providerConversationID.map { ConversationID($0) } }
+                // The meter as it was when the app last saw this conversation, until the next turn.
+                created.latestUsage = rememberedContext(botID, conversation: created.conversationID)
+                    .map { Usage(context: $0) }
             } catch {
                 storageProblem = error.localizedDescription
             }
@@ -1497,7 +1500,7 @@ final class AppModel {
                         binary: $0,
                         outbox: OutboxWatcher.directory.path,
                         botID: bot.id.rawValue,
-                        roster: writeRoster(excluding: bot))
+                        roster: writeRoster())
                 }
             ) }).flatMap { $0 }.flatMap { $0 }.map { [$0] } ?? [],
             gateSettingsPath: gateSettings,
@@ -1572,6 +1575,11 @@ final class AppModel {
                         groupID: groupID))
                 }
                 lastRunEnded[bot.id] = Date()
+                if groupID == nil {
+                    writeChatSnapshot(bot)
+                    settleContext(bot, thread: thread)
+                }
+                writeRoster()
                 if ownsSlot { recordRunEnded(bot.id, failed: failed) }
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(for: .seconds(30))
@@ -2310,6 +2318,15 @@ final class AppModel {
                 self?.receiveMove(from: from, names: names, section: section)
             case .manageBot(let from, let change):
                 self?.receiveManage(from: from, change: change)
+            case .addRoutine(let from, let bot, let name, let message, let cron, let whenClosed):
+                self?.receiveRoutine(from: from, botName: bot, name: name, message: message,
+                                     cron: cron, whenClosed: whenClosed)
+            case .removeRoutine(let from, let bot, let name):
+                self?.receiveRoutineRemoval(from: from, botName: bot, name: name)
+            case .stopBot(let from, let bot):
+                self?.receiveStop(from: from, botName: bot)
+            case .notify(let from, let title, let text):
+                self?.receiveNotify(from: from, title: title, text: text)
             }
         }
         watcher.start()
@@ -2502,7 +2519,8 @@ final class AppModel {
         let by = isSelf ? "" : " by \(sender.name)"
         var done: [String] = []
 
-        if let model = change.model {
+        // A model belongs to an engine: with an engine switch, it is set after the switch.
+        if change.engine == nil, let model = change.model {
             if let option = Self.modelOption(named: model, in: models(for: target)) {
                 if option.id != target.model {
                     setModel(target, option.id)
@@ -2529,11 +2547,43 @@ final class AppModel {
             }
         }
 
-        guard change.freshChat || change.message != nil else { return }
+        var engine: EngineID?
+        if let name = change.engine {
+            if let wanted = EngineID(rawValue: name), EngineID.supported.contains(wanted) {
+                if wanted != target.engine { engine = wanted }
+            } else {
+                refuse("There's no engine “\(name)”. Use claude or codex.")
+            }
+        }
+        // The model of a new engine is set with it below.
+        let modelAfterSwitch = engine != nil ? change.model : nil
+        if engine == nil, change.engine != nil, let model = change.model,
+           let option = Self.modelOption(named: model, in: models(for: target)), option.id != target.model {
+            setModel(target, option.id)
+            thread(for: target.id).entries.append(TranscriptEntry(kind: .note("New model \(option.label)\(by)")))
+        }
+
+        guard engine != nil || change.freshChat || change.message != nil else {
+            writeRoster()
+            return
+        }
         // A fresh chat must not land in the middle of a turn, and a message meant for the fresh
         // chat must not arrive in the old one: both wait for the bot to finish.
         let rest: @MainActor () -> Void = { [weak self] in
-            guard let self, let current = self.bots.first(where: { $0.id == target.id }) else { return }
+            guard let self, var current = self.bots.first(where: { $0.id == target.id }) else { return }
+            if let engine {
+                // Switching engines notes itself in the bot's chat.
+                self.setEngine(current, engine)
+                if let model = modelAfterSwitch, let updated = self.bots.first(where: { $0.id == target.id }) {
+                    if let option = Self.modelOption(named: model, in: self.models(for: updated)) {
+                        self.setModel(updated, option.id)
+                    } else {
+                        refuse("\(engine.displayName) has no model “\(model)” for \(updated.name), so it uses the default.")
+                    }
+                }
+                current = self.bots.first(where: { $0.id == target.id }) ?? current
+                if !isSelf { senderThread.entries.append(TranscriptEntry(kind: .note("Switched \(current.name) to \(engine.displayName)"))) }
+            }
             if change.freshChat {
                 self.startFreshChat(current, note: "Fresh chat\(by). Earlier messages stay here, but \(current.name) no longer has them in mind.")
                 if !isSelf { senderThread.entries.append(TranscriptEntry(kind: .note("Started a fresh chat for \(current.name)"))) }
@@ -2545,6 +2595,7 @@ final class AppModel {
                     self.deliver(from: from, to: current, text: message)
                 }
             }
+            self.writeRoster()
             // Whatever else was waiting on this bot gets its turn.
             if self.running[current.id] == nil { self.botBecameFree(current) }
         }
@@ -2554,7 +2605,7 @@ final class AppModel {
             waitingForBot[target.id, default: []].append(rest)
             if !isSelf {
                 senderThread.entries.append(TranscriptEntry(kind: .note(
-                    "\(target.name) is working. Its \(change.freshChat ? "fresh chat" : "message") waits until it finishes.")))
+                    "\(target.name) is working. The rest waits until it finishes.")))
             }
         }
     }
@@ -2713,22 +2764,144 @@ final class AppModel {
             from: creation.from, shown: creation.job)
     }
 
-    /// Writes the roster `list_bots` reads, leaving out the bot that is asking.
+    /// Writes the roster `list_bots` reads, every bot included; bupsy-mcp leaves out the asker.
     ///
-    /// Names, sections and jobs only — what the sidebar already shows. Nothing from any
-    /// conversation.
-    private func writeRoster(excluding bot: Bot) -> String? {
-        let entries = bots.filter { $0.id != bot.id && !$0.hidden }.map {
-            ["name": $0.name, "job": $0.personaPrompt ?? "", "section": $0.folder ?? "",
-             // What manage_bot can set: the model now and the ones its engine offers.
-             "model": $0.model ?? "default",
-             "models": models(for: $0).map { $0.id ?? "default" }.joined(separator: ", ")]
+    /// What the sidebar already shows (names, sections, jobs, models), whether each is working,
+    /// and its routines. Nothing from any conversation: `read_chat` has its own files. Rewritten
+    /// whenever a run starts or ends and when a bot changes another, so a bot checking on the
+    /// others mid-turn sees who is working now.
+    @discardableResult
+    func writeRoster() -> String? {
+        let ago = RelativeDateTimeFormatter()
+        let entries = bots.filter { !$0.hidden && $0.remote == nil }.map { bot -> [String: Any] in
+            var entry: [String: Any] = [
+                "id": bot.id.rawValue, "name": bot.name, "job": bot.personaPrompt ?? "",
+                "section": bot.folder ?? "", "engine": bot.engine.rawValue,
+                // What manage_bot can set: the model now and the ones its engine offers.
+                "model": bot.model ?? "default",
+                "models": models(for: bot).map { $0.id ?? "default" }.joined(separator: ", "),
+                "working": running[bot.id] != nil,
+                "queued": queued[bot.id]?.count ?? 0,
+                "routines": routines.filter { $0.botID == bot.id.rawValue }.map {
+                    ["name": $0.name, "schedule": "\(Schedule.describe($0.cron)) (\($0.cron))",
+                     "message": $0.prompt, "enabled": $0.enabled] as [String: Any]
+                },
+            ]
+            if let ended = lastRunEnded[bot.id] { entry["lastActive"] = ago.localizedString(for: ended, relativeTo: Date()) }
+            return entry
         }
         guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return nil }
         let url = OutboxWatcher.rosterFile
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         return (try? data.write(to: url, options: .atomic)) != nil ? url.path : nil
+    }
+
+    /// Where `read_chat` finds each bot's latest messages, beside the roster.
+    static var chatsDirectory: URL {
+        OutboxWatcher.rosterFile.deletingLastPathComponent().appendingPathComponent("chats", isDirectory: true)
+    }
+
+    /// Saves a bot's latest messages for `read_chat`: what was said, by whom, and when. Tool calls
+    /// and bupsy's own notes are left out, and long messages are cut, so another bot reads the
+    /// conversation rather than the work.
+    func writeChatSnapshot(_ bot: Bot) {
+        guard let thread = threads[bot.id] else { return }
+        let time = Date.FormatStyle(date: .abbreviated, time: .shortened)
+        var messages: [[String: String]] = []
+        for entry in thread.entries.suffix(400) {
+            let who: String, text: String
+            switch entry.kind {
+            case .userMessage(let said): who = "Person"; text = said
+            case .assistantText(let said): who = bot.name; text = said
+            case .messageFrom(_, let name, let said): who = "\(name) (bot)"; text = said
+            default: continue
+            }
+            let cut = text.count > 2_000 ? String(text.prefix(2_000)) + "…" : text
+            messages.append(["who": who, "text": cut, "at": entry.at.formatted(time)])
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: Array(messages.suffix(40))) else { return }
+        let dir = Self.chatsDirectory
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? data.write(to: dir.appendingPathComponent("\(bot.id.rawValue).json"), options: .atomic)
+    }
+
+    // MARK: - Bots scheduling, stopping and notifying
+
+    /// A bot named by another, exactly (any capitalisation); otherwise the asker is told.
+    private func namedBot(_ name: String, for sender: Bot, doing action: String) -> Bot? {
+        if let bot = bots.first(where: {
+            $0.remote == nil && $0.name.caseInsensitiveCompare(name.trimmingCharacters(in: .whitespaces)) == .orderedSame
+        }) { return bot }
+        thread(for: sender.id).entries.append(TranscriptEntry(kind: .failure(EngineFailure(
+            kind: .unknown, message: "No bot named “\(name)” to \(action)."))))
+        return nil
+    }
+
+    /// Schedules a message to a bot, as its Routines section does. A routine of the same name on
+    /// that bot is replaced, so a bot fixing a schedule doesn't leave the old one running too.
+    func receiveRoutine(from senderID: String, botName: String, name: String, message: String,
+                        cron: String, whenClosed: Bool) {
+        guard let sender = bots.first(where: { $0.id.rawValue == senderID }),
+              let target = namedBot(botName, for: sender, doing: "schedule") else { return }
+        let senderThread = thread(for: sender.id)
+        let next: Date?
+        do {
+            next = try CronExpression(cron).nextFire(after: Date())
+        } catch {
+            senderThread.entries.append(TranscriptEntry(kind: .failure(EngineFailure(
+                kind: .unknown, message: "Couldn't schedule “\(name)”: \(error.localizedDescription)"))))
+            return
+        }
+        let tier: Routine.Tier = whenClosed ? .launchAgent : .appOpen
+        let words = Schedule.describe(cron)
+        if let existing = routines.first(where: {
+            $0.botID == target.id.rawValue && $0.name.caseInsensitiveCompare(name) == .orderedSame
+        }) {
+            updateRoutine(existing, name: name, prompt: message, cron: cron, tier: tier)
+        } else {
+            addRoutine(to: target, name: name, prompt: message, cron: cron, tier: tier)
+        }
+        let when = next.map { ", next \($0.formatted(date: .abbreviated, time: .shortened))" } ?? ""
+        let by = target.id == sender.id ? "" : " by \(sender.name)"
+        thread(for: target.id).entries.append(TranscriptEntry(kind: .note(
+            "Routine “\(name)”: \(words)\(when)\(by)")))
+        if target.id != sender.id {
+            senderThread.entries.append(TranscriptEntry(kind: .note("Scheduled “\(name)” for \(target.name): \(words)\(when)")))
+        }
+        writeRoster()
+    }
+
+    func receiveRoutineRemoval(from senderID: String, botName: String, name: String) {
+        guard let sender = bots.first(where: { $0.id.rawValue == senderID }),
+              let target = namedBot(botName, for: sender, doing: "change") else { return }
+        guard let routine = routines.first(where: {
+            $0.botID == target.id.rawValue && $0.name.caseInsensitiveCompare(name) == .orderedSame
+        }) else {
+            thread(for: sender.id).entries.append(TranscriptEntry(kind: .failure(EngineFailure(
+                kind: .unknown, message: "\(target.name) has no routine called “\(name)”."))))
+            return
+        }
+        deleteRoutine(routine)
+        let by = target.id == sender.id ? "" : " by \(sender.name)"
+        thread(for: target.id).entries.append(TranscriptEntry(kind: .note("Removed routine “\(routine.name)”\(by)")))
+        writeRoster()
+    }
+
+    func receiveStop(from senderID: String, botName: String) {
+        guard let sender = bots.first(where: { $0.id.rawValue == senderID }),
+              let target = namedBot(botName, for: sender, doing: "stop") else { return }
+        // Its own turn ends when it stops talking; stopping itself would cut off its reply.
+        guard target.id != sender.id, running[target.id] != nil else { return }
+        stop(target.id)
+        thread(for: target.id).entries.append(TranscriptEntry(kind: .note("Stopped by \(sender.name)")))
+        thread(for: sender.id).entries.append(TranscriptEntry(kind: .note("Stopped \(target.name)")))
+    }
+
+    func receiveNotify(from senderID: String, title: String?, text: String) {
+        guard let sender = bots.first(where: { $0.id.rawValue == senderID }) else { return }
+        notifier.fromBot(title: title ?? sender.name, text: text, botID: sender.id)
+        thread(for: sender.id).entries.append(TranscriptEntry(kind: .note("Notified you: \(text)")))
     }
 
     /// A message one bot wants to send another, waiting on a person.

@@ -17,6 +17,11 @@ PR as the change; the release moves it under a version.
   the way, it stays here as it was, and you're told why. A bot that is working can move once it
   finishes; a name the other Mac already has becomes "Scout 2".
 - Both Macs need this version of Bupsy.
+**Context window for every bot**
+- Codex bots now show their context window and their plan's usage limits, read from Codex's own
+  record of each turn. Before, they showed none.
+- The context meter stays after Bupsy restarts or updates, until the bot's next reply, instead of
+  disappearing.
 
 **Fixed**
 - "Tailscale isn't running" in Settings › Use from other devices while Tailscale was running, when
@@ -30,6 +35,15 @@ PR as the change; the release moves it under a version.
 - In the button's menu, "Fresh chat when a chat gets long" does this by itself for every bot once
   a chat reaches 60% of its context window, before anything queued is sent. Off until you switch
   it on.
+
+**More for bots to do**
+- Schedule: a bot can set up a routine for itself or another bot ("every day at 2pm, tell Status
+  to start the day"), or remove one. It shows under the bot's Routines like any other.
+- Check on each other: the bot list now says who is working, what's queued and each bot's
+  routines, and a bot can read another bot's latest messages.
+- Stop a bot that's stuck, switch a bot between Claude Code and Codex, and send you a
+  notification when something's worth knowing.
+- Still yours alone: a bot's trust level, and deleting bots.
 
 **Bots can manage bots**
 - A bot can now change another bot's job, role tag or model, start it on a fresh chat, and send

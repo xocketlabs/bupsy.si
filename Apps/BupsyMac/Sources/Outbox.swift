@@ -17,10 +17,11 @@ struct BotChange: Equatable {
     var job: String?
     var role: String?
     var model: String?
+    var engine: String?
     var freshChat = false
     var message: String?
 
-    var isEmpty: Bool { job == nil && role == nil && model == nil && !freshChat && message == nil }
+    var isEmpty: Bool { job == nil && role == nil && model == nil && engine == nil && !freshChat && message == nil }
 }
 
 @MainActor
@@ -42,6 +43,12 @@ final class OutboxWatcher {
         case moveBots(from: String, bots: [String], section: String?)
         /// Change another bot (or itself): job, role, model, a fresh chat, a message.
         case manageBot(from: String, change: BotChange)
+        /// Schedule a message to a bot; replaces its routine of the same name.
+        case addRoutine(from: String, bot: String, name: String, message: String, cron: String, whenClosed: Bool)
+        case removeRoutine(from: String, bot: String, name: String)
+        case stopBot(from: String, bot: String)
+        /// A notification for the person, from a bot.
+        case notify(from: String, title: String?, text: String)
     }
 
     /// The roster `list_bots` reads, beside the outbox rather than in it, since the outbox is drained
@@ -118,10 +125,25 @@ final class OutboxWatcher {
             func field(_ key: String) -> String? {
                 (payload[key] as? String).flatMap { $0.isEmpty ? nil : $0 }
             }
-            if payload["kind"] as? String == "manage_bot" {
+            let kind = payload["kind"] as? String
+            if kind == "add_routine" {
+                guard let bot = field("bot"), let name = field("name"), let message = field("message"),
+                      let cron = field("schedule") else { continue }
+                onRequest(.addRoutine(from: from, bot: bot, name: name, message: message, cron: cron,
+                                      whenClosed: payload["when_closed"] as? Bool ?? false))
+            } else if kind == "remove_routine" {
+                guard let bot = field("bot"), let name = field("name") else { continue }
+                onRequest(.removeRoutine(from: from, bot: bot, name: name))
+            } else if kind == "stop_bot" {
+                guard let bot = field("bot") else { continue }
+                onRequest(.stopBot(from: from, bot: bot))
+            } else if kind == "notify" {
+                guard let text = field("text") else { continue }
+                onRequest(.notify(from: from, title: field("title"), text: text))
+            } else if kind == "manage_bot" {
                 guard let bot = field("bot") else { continue }
                 let change = BotChange(bot: bot, job: field("job"), role: field("role"), model: field("model"),
-                                       freshChat: payload["fresh_chat"] as? Bool ?? false, message: field("message"))
+                                       engine: field("engine"), freshChat: payload["fresh_chat"] as? Bool ?? false, message: field("message"))
                 guard !change.isEmpty else { continue }
                 onRequest(.manageBot(from: from, change: change))
             } else if payload["kind"] as? String == "move_bots" {
