@@ -32,6 +32,9 @@ const protocolVersion = "2024-11-05"
 // roster is the path of bupsy's roster file, read by list_bots.
 var roster string
 
+// self is the asking bot's id, left out of its own list_bots.
+var self string
+
 // request is one JSON-RPC call. ID is left as raw JSON because the spec permits a string or a
 // number and echoing back a different type than was sent breaks strict clients.
 type request struct {
@@ -56,6 +59,7 @@ type rpcError struct {
 func main() {
 	outbox := os.Getenv("BUPSY_OUTBOX")
 	sender := os.Getenv("BUPSY_BOT_ID")
+	self = sender
 	// Optional: a file bupsy writes listing the roster. Without it list_bots says so plainly.
 	roster = os.Getenv("BUPSY_ROSTER")
 	if outbox == "" || sender == "" {
@@ -105,7 +109,8 @@ func handle(req request, outbox, sender string) response {
 		}
 
 	case "tools/list":
-		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool(), askPersonTool(), updateMeTool(), moveBotsTool(), manageBotTool()}}
+		reply.Result = map[string]any{"tools": []any{messageBotTool(), createBotTool(), listBotsTool(), askPersonTool(), updateMeTool(), moveBotsTool(), manageBotTool(),
+			addRoutineTool(), removeRoutineTool(), stopBotTool(), readChatTool(), notifyPersonTool()}}
 
 	case "tools/call":
 		reply.Result = call(req.Params, outbox, sender)
@@ -295,6 +300,10 @@ func manageBotTool() map[string]any {
 					"type":        "string",
 					"description": "The model, as list_bots shows the choices, e.g. \"sonnet\" or \"opus\". \"default\" for whatever its CLI is set to.",
 				},
+				"engine": map[string]any{
+					"type":        "string",
+					"description": "\"claude\" or \"codex\". Switching engines also switches to that engine's own conversation, and resets the model to its default.",
+				},
 				"fresh_chat": map[string]any{"type": "boolean", "description": "Start a new conversation, leaving the old context behind."},
 				"message": map[string]any{
 					"type":        "string",
@@ -306,11 +315,105 @@ func manageBotTool() map[string]any {
 	}
 }
 
+// addRoutineTool describes scheduling a message to a bot.
+//
+// A routine is the same thing the person sets up under a bot's Routines: on a schedule, bupsy
+// sends the bot a message and it works on it. Gated by the asking bot's trust like manage_bot,
+// since a routine spends the person's usage on a timer.
+func addRoutineTool() map[string]any {
+	return map[string]any{
+		"name": "add_routine",
+		"description": "Schedule a message that bupsy sends to a bot on a schedule, e.g. a daily " +
+			"\"start the day\" at 2pm. The bot works on it as if the person had sent it. You can " +
+			"schedule yourself. The schedule is five-field cron in this Mac's local time: minute " +
+			"hour day-of-month month day-of-week, e.g. \"0 14 * * *\" (every day at 2pm) or " +
+			"\"30 9 * * 1-5\" (weekdays at 9:30). Lists and ranges work; step syntax (*/n) does " +
+			"not. A routine with the same name on that bot is replaced. list_bots shows routines.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"bot":      map[string]any{"type": "string", "description": "The bot to message, as list_bots shows it."},
+				"name":     map[string]any{"type": "string", "description": "A short name, e.g. \"Start the day\"."},
+				"message":  map[string]any{"type": "string", "description": "What bupsy sends the bot each time."},
+				"schedule": map[string]any{"type": "string", "description": "Five-field cron, local time."},
+				"when_closed": map[string]any{
+					"type":        "boolean",
+					"description": "Also run while the Bupsy app is closed (it opens to run it). Default: only while Bupsy is open.",
+				},
+			},
+			"required": []any{"bot", "name", "message", "schedule"},
+		},
+	}
+}
+
+func removeRoutineTool() map[string]any {
+	return map[string]any{
+		"name":        "remove_routine",
+		"description": "Delete a bot's routine by name, as list_bots shows it.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"bot":  map[string]any{"type": "string", "description": "The bot whose routine it is."},
+				"name": map[string]any{"type": "string", "description": "The routine's name."},
+			},
+			"required": []any{"bot", "name"},
+		},
+	}
+}
+
+func stopBotTool() map[string]any {
+	return map[string]any{
+		"name": "stop_bot",
+		"description": "Stop a bot that is working, as the person's Stop button does. What it " +
+			"has done so far stays; anything queued for it waits. Use it for a bot stuck in a " +
+			"loop or doing the wrong thing, not to end your own turn.",
+		"inputSchema": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"bot": map[string]any{"type": "string", "description": "The bot to stop."}},
+			"required":   []any{"bot"},
+		},
+	}
+}
+
+func readChatTool() map[string]any {
+	return map[string]any{
+		"name": "read_chat",
+		"description": "Read the latest messages in another bot's chat with the person: what " +
+			"was asked, and what it replied. Saved when each of its turns ends, so a bot that " +
+			"is working shows up to its last finished turn. Tool calls are left out.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"bot":  map[string]any{"type": "string", "description": "The bot, as list_bots shows it."},
+				"last": map[string]any{"type": "integer", "description": "How many messages, newest last. Default 10, at most 40."},
+			},
+			"required": []any{"bot"},
+		},
+	}
+}
+
+func notifyPersonTool() map[string]any {
+	return map[string]any{
+		"name": "notify_person",
+		"description": "Send the person a notification on their Mac, for something they should " +
+			"know soon (a batch finished, something broke). Not for questions: use ask_person. " +
+			"Use sparingly.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"title": map[string]any{"type": "string", "description": "Optional short title. Defaults to your name."},
+				"text":  map[string]any{"type": "string", "description": "One or two sentences."},
+			},
+			"required": []any{"text"},
+		},
+	}
+}
+
 // listBotsTool describes reading the roster.
 func listBotsTool() map[string]any {
 	return map[string]any{
 		"name":        "list_bots",
-		"description": "List the other bupsy bots: each one's name, sidebar section, model and job. Use it before messaging, creating, moving or managing a bot.",
+		"description": "List the other bupsy bots: each one's name, sidebar section, model, whether it is working, its job and its routines. Use it before messaging, creating, moving, managing or scheduling a bot.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 	}
 }
@@ -331,6 +434,11 @@ type callParams struct {
 		Model    string   `json:"model"`
 		Fresh    bool     `json:"fresh_chat"`
 		Message  string   `json:"message"`
+		Engine   string   `json:"engine"`
+		Schedule string   `json:"schedule"`
+		Closed   bool     `json:"when_closed"`
+		Last     int      `json:"last"`
+		Title    string   `json:"title"`
 	} `json:"arguments"`
 }
 
@@ -423,22 +531,79 @@ func call(params json.RawMessage, outbox, sender string) map[string]any {
 	case "manage_bot":
 		bot := strings.TrimSpace(args.Bot)
 		job, role, model := strings.TrimSpace(args.Job), strings.TrimSpace(args.Role), strings.TrimSpace(args.Model)
-		message := strings.TrimSpace(args.Message)
+		message, engine := strings.TrimSpace(args.Message), strings.ToLower(strings.TrimSpace(args.Engine))
 		if bot == "" {
 			return toolError("name the bot to change")
 		}
-		if job == "" && role == "" && model == "" && !args.Fresh && message == "" {
-			return toolError("give at least one of job, role, model, fresh_chat or message")
+		if job == "" && role == "" && model == "" && engine == "" && !args.Fresh && message == "" {
+			return toolError("give at least one of job, role, model, engine, fresh_chat or message")
+		}
+		if engine != "" && engine != "claude" && engine != "codex" {
+			return toolError("engine is \"claude\" or \"codex\"")
 		}
 		if err := drop(outbox, map[string]any{
 			"kind": "manage_bot", "from": sender, "bot": bot, "job": job, "role": role,
-			"model": model, "fresh_chat": args.Fresh, "message": message,
+			"model": model, "engine": engine, "fresh_chat": args.Fresh, "message": message,
 		}); err != nil {
 			return toolError("could not change it: " + err.Error())
 		}
 		return toolText("Asked bupsy to change " + bot + ". It applies the changes and notes them " +
 			"in both chats, or names what it could not do (an unknown bot or model). If " + bot +
 			" is working, its fresh chat and message wait until it finishes.")
+
+	case "add_routine":
+		bot, name := strings.TrimSpace(args.Bot), strings.TrimSpace(args.Name)
+		message, schedule := strings.TrimSpace(args.Message), strings.Join(strings.Fields(args.Schedule), " ")
+		if bot == "" || name == "" || message == "" || schedule == "" {
+			return toolError("bot, name, message and schedule are all required")
+		}
+		if len(strings.Fields(schedule)) != 5 || strings.Contains(schedule, "/") {
+			return toolError("schedule must be five-field cron without step syntax, e.g. \"0 14 * * *\"")
+		}
+		if len([]rune(name)) > 60 {
+			return toolError("keep the name under 60 characters")
+		}
+		if err := drop(outbox, map[string]any{
+			"kind": "add_routine", "from": sender, "bot": bot, "name": name, "message": message,
+			"schedule": schedule, "when_closed": args.Closed,
+		}); err != nil {
+			return toolError("could not schedule it: " + err.Error())
+		}
+		return toolText("Asked bupsy to schedule \"" + name + "\" for " + bot + ". It notes the " +
+			"routine and when it next runs in your chat, or says why it could not.")
+
+	case "remove_routine":
+		bot, name := strings.TrimSpace(args.Bot), strings.TrimSpace(args.Name)
+		if bot == "" || name == "" {
+			return toolError("both bot and name are required")
+		}
+		if err := drop(outbox, map[string]any{"kind": "remove_routine", "from": sender, "bot": bot, "name": name}); err != nil {
+			return toolError("could not remove it: " + err.Error())
+		}
+		return toolText("Asked bupsy to remove \"" + name + "\" from " + bot + ".")
+
+	case "stop_bot":
+		bot := strings.TrimSpace(args.Bot)
+		if bot == "" {
+			return toolError("name the bot to stop")
+		}
+		if err := drop(outbox, map[string]any{"kind": "stop_bot", "from": sender, "bot": bot}); err != nil {
+			return toolError("could not stop it: " + err.Error())
+		}
+		return toolText("Asked bupsy to stop " + bot + ". If it was not working, nothing happens.")
+
+	case "read_chat":
+		return readChat(strings.TrimSpace(args.Bot), args.Last)
+
+	case "notify_person":
+		text, title := strings.TrimSpace(args.Text), strings.TrimSpace(args.Title)
+		if text == "" {
+			return toolError("say what the notification is")
+		}
+		if err := drop(outbox, map[string]any{"kind": "notify", "from": sender, "title": title, "text": text}); err != nil {
+			return toolError("could not notify: " + err.Error())
+		}
+		return toolText("Sent. The person sees it on their Mac when they are not looking at bupsy.")
 
 	case "ask_person":
 		question := strings.TrimSpace(args.Question)
@@ -464,41 +629,84 @@ func call(params json.RawMessage, outbox, sender string) map[string]any {
 	}
 }
 
-// listBots reads the roster bupsy wrote. Names and jobs only — the same things the person sees in
-// the sidebar, nothing from any bot's conversation.
-func listBots() map[string]any {
+// rosterBot is one bot as bupsy writes it for list_bots and read_chat: what the sidebar shows,
+// whether it is working, and its routines. Nothing from any conversation.
+type rosterBot struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Job        string `json:"job"`
+	Section    string `json:"section"`
+	Engine     string `json:"engine"`
+	Model      string `json:"model"`
+	Models     string `json:"models"`
+	Working    bool   `json:"working"`
+	Queued     int    `json:"queued"`
+	LastActive string `json:"lastActive"`
+	Routines   []struct {
+		Name     string `json:"name"`
+		Schedule string `json:"schedule"`
+		Message  string `json:"message"`
+		Enabled  bool   `json:"enabled"`
+	} `json:"routines"`
+}
+
+func readRoster() ([]rosterBot, map[string]any) {
 	if roster == "" {
-		return toolError("bupsy did not share the roster with this bot")
+		return nil, toolError("bupsy did not share the roster with this bot")
 	}
 	data, err := os.ReadFile(roster)
 	if err != nil {
-		return toolError("could not read the roster: " + err.Error())
+		return nil, toolError("could not read the roster: " + err.Error())
 	}
-	var bots []struct {
-		Name    string `json:"name"`
-		Job     string `json:"job"`
-		Section string `json:"section"`
-		Model   string `json:"model"`
-		Models  string `json:"models"`
-	}
+	var bots []rosterBot
 	if err := json.Unmarshal(data, &bots); err != nil {
-		return toolError("the roster file is not readable")
+		return nil, toolError("the roster file is not readable")
+	}
+	return bots, nil
+}
+
+// listBots reads the roster bupsy wrote, leaving out the bot asking.
+func listBots() map[string]any {
+	bots, problem := readRoster()
+	if problem != nil {
+		return problem
 	}
 	var lines []string
 	for _, bot := range bots {
+		if bot.ID != "" && bot.ID == self {
+			continue
+		}
 		line := "- " + bot.Name
 		if bot.Section != "" {
 			line += " [section: " + bot.Section + "]"
 		}
 		if bot.Model != "" {
 			line += " [model: " + bot.Model
+			if bot.Engine != "" {
+				line += " on " + bot.Engine
+			}
 			if bot.Models != "" {
 				line += "; can use: " + bot.Models
 			}
 			line += "]"
 		}
+		if bot.Working {
+			line += " [working now]"
+		} else if bot.LastActive != "" {
+			line += " [idle; last active " + bot.LastActive + "]"
+		}
+		if bot.Queued > 0 {
+			line += fmt.Sprintf(" [%d queued]", bot.Queued)
+		}
 		if bot.Job != "" {
 			line += ": " + bot.Job
+		}
+		for _, routine := range bot.Routines {
+			state := ""
+			if !routine.Enabled {
+				state = " (paused)"
+			}
+			line += "\n    routine \"" + routine.Name + "\" " + routine.Schedule + state + ": " + routine.Message
 		}
 		lines = append(lines, line)
 	}
@@ -506,6 +714,56 @@ func listBots() map[string]any {
 		return toolText("No other bots yet.")
 	}
 	return toolText(strings.Join(lines, "\n"))
+}
+
+// readChat returns a bot's latest messages from the snapshot bupsy saves when each of its turns
+// ends, beside the roster.
+func readChat(name string, last int) map[string]any {
+	if name == "" {
+		return toolError("name the bot whose chat to read")
+	}
+	bots, problem := readRoster()
+	if problem != nil {
+		return problem
+	}
+	var id, shown string
+	for _, bot := range bots {
+		if strings.EqualFold(bot.Name, name) && bot.ID != "" {
+			id, shown = bot.ID, bot.Name
+		}
+	}
+	if id == "" || strings.ContainsAny(id, "/\\") || strings.Contains(id, "..") {
+		return toolError("no bot named " + name)
+	}
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(roster), "chats", id+".json"))
+	if err != nil {
+		return toolText(shown + " has no saved chat yet.")
+	}
+	var messages []struct {
+		Who  string `json:"who"`
+		Text string `json:"text"`
+		At   string `json:"at"`
+	}
+	if err := json.Unmarshal(data, &messages); err != nil {
+		return toolError("the saved chat is not readable")
+	}
+	if last <= 0 {
+		last = 10
+	}
+	if last > 40 {
+		last = 40
+	}
+	if len(messages) > last {
+		messages = messages[len(messages)-last:]
+	}
+	var lines []string
+	for _, message := range messages {
+		lines = append(lines, "["+message.At+"] "+message.Who+": "+message.Text)
+	}
+	if len(lines) == 0 {
+		return toolText(shown + " has no messages yet.")
+	}
+	return toolText(strings.Join(lines, "\n\n"))
 }
 
 func toolText(text string) map[string]any {

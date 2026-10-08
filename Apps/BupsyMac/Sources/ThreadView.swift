@@ -1230,7 +1230,8 @@ enum BupsyToolLine: Equatable, Sendable {
         switch tool {
         // The note bupsy writes when it applies the move says what moved, and what did not.
         case "ToolSearch", "mcp__bupsy__ask_person", "mcp__bupsy__update_me", "mcp__bupsy__move_bots",
-             "mcp__bupsy__manage_bot":
+             "mcp__bupsy__manage_bot", "mcp__bupsy__add_routine", "mcp__bupsy__remove_routine",
+             "mcp__bupsy__stop_bot", "mcp__bupsy__notify_person":
             self = .hidden
         case "mcp__bupsy__message_bot":
             self = .messaged(to: arguments["to"] as? String ?? "a bot", text: arguments["text"] as? String ?? "")
@@ -1238,6 +1239,8 @@ enum BupsyToolLine: Equatable, Sendable {
             self = .note("Asked you to create \(arguments["name"] as? String ?? "a bot")")
         case "mcp__bupsy__list_bots":
             self = .note("Looked at who else is on the roster")
+        case "mcp__bupsy__read_chat":
+            self = .note("Read \(arguments["bot"] as? String ?? "a bot")'s chat")
         default:
             self = .raw
         }
