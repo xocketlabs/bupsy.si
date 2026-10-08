@@ -203,6 +203,9 @@ enum ChatLiveStatus {
             return "Asking you"
         case "mcp__bupsy__move_bots":
             return "Tidying the sidebar"
+        case "mcp__bupsy__manage_bot":
+            if let bot = object["bot"] as? String, !bot.isEmpty { return "Changing \(bot)" }
+            return "Changing a bot"
         case "ToolSearch", "mcp__bupsy__update_me", "mcp__bupsy__create_bot", "mcp__bupsy__list_bots":
             return "Working"
         default:

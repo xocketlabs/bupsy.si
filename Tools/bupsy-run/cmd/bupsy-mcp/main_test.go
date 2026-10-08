@@ -154,3 +154,38 @@ func TestListBotsShowsSections(t *testing.T) {
 		t.Fatalf("roster lines wrong: %q", text)
 	}
 }
+
+func TestManageBotDropsARequest(t *testing.T) {
+	outbox := t.TempDir()
+	result := callTool(t, outbox, "manage_bot", map[string]any{
+		"bot": " Lead ", "model": "sonnet", "fresh_chat": true, "message": "Read LEAD-HANDOFF.md"})
+	if result["isError"] == true {
+		t.Fatalf("unexpected error: %v", result)
+	}
+	files := dropped(t, outbox)
+	if len(files) != 1 || files[0]["kind"] != "manage_bot" || files[0]["bot"] != "Lead" ||
+		files[0]["model"] != "sonnet" || files[0]["fresh_chat"] != true ||
+		files[0]["message"] != "Read LEAD-HANDOFF.md" || files[0]["from"] != "bot-1" {
+		t.Fatalf("wrong request dropped: %v", files)
+	}
+}
+
+func TestManageBotNeedsABotAndAChange(t *testing.T) {
+	for _, args := range []map[string]any{{"model": "sonnet"}, {"bot": "Lead"}, {"bot": "Lead", "fresh_chat": false}} {
+		outbox := t.TempDir()
+		if result := callTool(t, outbox, "manage_bot", args); result["isError"] != true || len(dropped(t, outbox)) != 0 {
+			t.Fatalf("expected a refusal for %v: %v", args, result)
+		}
+	}
+}
+
+func TestListBotsShowsModels(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "roster.json")
+	_ = os.WriteFile(file, []byte(`[{"name":"Lead","job":"Runs it","model":"opus","models":"default, opus, sonnet"}]`), 0o600)
+	roster = file
+	defer func() { roster = "" }()
+	text := listBots()["content"].([]any)[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "- Lead [model: opus; can use: default, opus, sonnet]: Runs it") {
+		t.Fatalf("roster lines wrong: %q", text)
+	}
+}
