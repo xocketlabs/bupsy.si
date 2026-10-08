@@ -148,11 +148,23 @@ public enum Tailscale {
     /// Runs the command with a deadline. Output is read as it arrives, not at the end: a status
     /// with many devices is more than a pipe holds, and a process blocked writing it would never
     /// finish.
+    /// The Mac app's binary is both the app and the command line, and picks by how it was started:
+    /// from a terminal (TERM or SHLVL set) it answers as the command line; from anything else it
+    /// tries to open the app and prints nothing useful. Bupsy opened from Finder, the Dock or at
+    /// login has neither, so it said "Tailscale isn't running" while Tailscale was running. This
+    /// is Tailscale's own switch for running it as the command line.
+    static func commandEnvironment(_ inherited: [String: String]) -> [String: String] {
+        var environment = inherited
+        environment["TAILSCALE_BE_CLI"] = "1"
+        return environment
+    }
+
     static func run(_ command: String, _ arguments: [String], timeout: TimeInterval) async throws -> Result {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: command)
             process.arguments = arguments
+            process.environment = commandEnvironment(ProcessInfo.processInfo.environment)
             process.standardInput = FileHandle.nullDevice
             let pipe = Pipe()
             process.standardOutput = pipe

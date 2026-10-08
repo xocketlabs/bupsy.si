@@ -5,6 +5,11 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Fixed**
+- "Tailscale isn't running" in Settings › Use from other devices while Tailscale was running, when
+  Bupsy was opened from Finder, the Dock or at login. Tailscale's Mac app only answered Bupsy when
+  Bupsy had been started from a terminal.
+
 **Fresh chat**
 - A Fresh chat button at the top of every bot's chat. The bot first writes itself short hand-off
   notes (shown in the chat), then carries on in a new conversation that starts from those notes,
