@@ -55,6 +55,15 @@ be, and the app says so rather than hiding it.
 Read [docs/00-compliance-and-auth.md](docs/00-compliance-and-auth.md) before touching anything that
 authenticates. It quotes the vendor terms the design is built around.
 
+## Platforms
+
+| Platform | Status |
+|---|---|
+| **Mac** (macOS 14+) | The app. Everything happens here. |
+| **Phone and other Macs** | In the browser, through your Mac over Tailscale: Settings › Use from other devices. |
+| **iPhone app** | 🚧 In development. Not available to download yet. |
+| **Windows and Linux** | 🚧 In development. Not available to download yet. The Go core (`bupsy-run`) already runs there. |
+
 ## Build it
 
 Requires macOS 14+, Swift 6, and Xcode.

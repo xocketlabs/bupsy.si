@@ -121,6 +121,15 @@
   .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
   @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
   @media (min-width: 980px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  /* Where bupsy runs: one card per platform, with a status badge and no download link. */
+  .platforms { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .platforms { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 980px) { .platforms { grid-template-columns: repeat(4, 1fr); } }
+  .platform h3 { margin: 12px 0 6px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .status.soon { color: var(--pink); background: color-mix(in srgb, var(--pink) 12%, transparent); }
+  .status.dev { color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 24px; box-shadow: var(--shadow-sm); transition: transform .25s ease; }
   .card:hover { transform: translateY(-3px); }
   .card img { width: 52px; height: 52px; margin-bottom: 14px; }
@@ -192,6 +201,7 @@
     <div class="nav-links">
       <a href="#roster">The roster</a>
       <a href="#team">Teamwork</a>
+      <a href="#platforms">Platforms</a>
       <a href="#how">How it works</a>
       <a class="pill" href="#join">Join the waitlist</a>
     </div>
@@ -280,6 +290,22 @@
       <h2>bupsy runs the tools. It never holds the keys.</h2>
       <p>You sign in to your CLI yourself. There's no bupsy account and no server of ours — your conversations are files on your own disk.</p>
       <ul><li>No servers of ours</li><li>No credentials stored</li><li>Native Swift</li><li>No telemetry</li></ul>
+    </div>
+  </div>
+</section>
+
+<section id="platforms">
+  <div class="wrap">
+    <div class="center">
+      <p class="kicker">Where bupsy runs</p>
+      <h2>Mac first. Your other devices next.</h2>
+      <p class="sub">bupsy is a Mac app today. The iPhone app and Windows &amp; Linux are being built now and can't be downloaded yet.</p>
+    </div>
+    <div class="platforms">
+      <div class="card platform"><span class="status soon"><i></i>Coming soon</span><h3>Mac</h3><p>The full app: your roster, chats, routines and approvals. macOS 14 or later.</p></div>
+      <div class="card platform"><span class="status soon"><i></i>With the Mac app</span><h3>Phone &amp; other Macs</h3><p>Open bupsy in the browser on your own devices, privately over Tailscale. Chat, approve, stop.</p></div>
+      <div class="card platform"><span class="status dev"><i></i>In development</span><h3>iPhone app</h3><p>A native app with notifications when a bot needs you, and Face ID to approve.</p></div>
+      <div class="card platform"><span class="status dev"><i></i>In development</span><h3>Windows &amp; Linux</h3><p>bupsy for your other computers. The engine already runs there; the app is on its way.</p></div>
     </div>
   </div>
 </section>
