@@ -1357,8 +1357,12 @@ struct BotFilesList: View {
                 }
             }
         }
+        // Each new entry restarts this, so a burst of streamed lines reads the files once, after
+        // it settles, rather than once per line.
         .task(id: model.thread(for: bot.id).entries.count) {
-            files = model.filesWritten(by: bot)
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            files = await model.filesWrittenInBackground(by: bot)
         }
     }
 }

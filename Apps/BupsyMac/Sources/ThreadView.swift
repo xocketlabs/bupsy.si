@@ -271,7 +271,7 @@ struct Bubble: View {
                         .font(.system(size: Theme.scaled(9)))
                         .accessibilityHidden(true)
                     if let sender = model.bots.first(where: { $0.name == botName }) {
-                        BotFace(bot: sender, mood: .idle, size: Theme.scaled(14))
+                        BotFace(bot: sender, mood: .idle, size: Theme.scaled(14), still: true)
                             .accessibilityHidden(true)
                     }
                     Text("Message from \(botName)")
@@ -325,7 +325,7 @@ struct Bubble: View {
                         HStack(spacing: Theme.Space.xs) {
                             Text("Messaged")
                             if let recipient = model.bots.first(where: { $0.name.caseInsensitiveCompare(to) == .orderedSame }) {
-                                BotFace(bot: recipient, mood: .idle, size: Theme.scaled(14))
+                                BotFace(bot: recipient, mood: .idle, size: Theme.scaled(14), still: true)
                                     .accessibilityHidden(true)
                             }
                             Text(to).fontWeight(.medium)
@@ -404,7 +404,10 @@ struct Bubble: View {
         HStack(alignment: .top, spacing: ThreadLayout.avatarGap) {
             Group {
                 if showsAvatar {
-                    BotFace(bot: bot, mood: .idle, size: ThreadLayout.avatar)
+                    // Still: one per run of replies, so a long thread had dozens on screen, each
+                    // redrawing 30 times a second while you scrolled. The bot's live face is in
+                    // the sidebar and the header.
+                    BotFace(bot: bot, mood: .idle, size: ThreadLayout.avatar, still: true)
                 } else {
                     Color.clear.frame(width: ThreadLayout.avatar, height: 1)
                 }

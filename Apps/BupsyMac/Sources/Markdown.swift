@@ -39,7 +39,20 @@ struct ReplySegment: Identifiable {
     let id: Int
     let kind: Kind
 
+    /// Parsed replies, by their text. A reply's view is rebuilt whenever anything it reads
+    /// changes, and during a run that is many times a second for every reply on screen.
+    @MainActor private static var cache: [String: [ReplySegment]] = [:]
+
+    @MainActor
     static func split(_ markdown: String) -> [ReplySegment] {
+        if let cached = cache[markdown] { return cached }
+        let segments = parse(markdown)
+        if cache.count > 400 { cache.removeAll(keepingCapacity: true) }
+        cache[markdown] = segments
+        return segments
+    }
+
+    private static func parse(_ markdown: String) -> [ReplySegment] {
         var segments: [ReplySegment] = []
         var prose: [MarkdownBlock] = []
         func flush() {
@@ -78,7 +91,23 @@ enum ReplyText {
         }
     }
 
+    /// Built text, by what it was built from. Building means parsing inline markdown and laying
+    /// out mentions, and a reply on screen was rebuilt on every redraw of the thread.
+    private static var cache: [String: NSAttributedString] = [:]
+
     static func make(_ blocks: [MarkdownBlock], palette: Palette.Scheme, bots: [Bot]) -> NSAttributedString {
+        // Everything the text depends on: the blocks, the colours, and each bot's name and face
+        // (a mention draws both).
+        let faces = bots.map { "\($0.name)|\($0.avatarHue)|\($0.avatarShape?.rawValue ?? "")|\($0.avatarColour ?? -1)" }
+        let key = "\(blocks)\u{1}\(palette.foreground)\(palette.mutedForeground)\(palette.primary)\u{1}\(faces)"
+        if let cached = cache[key] { return cached }
+        let built = build(blocks, palette: palette, bots: bots)
+        if cache.count > 400 { cache.removeAll(keepingCapacity: true) }
+        cache[key] = built
+        return built
+    }
+
+    private static func build(_ blocks: [MarkdownBlock], palette: Palette.Scheme, bots: [Bot]) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let body = NSFont.systemFont(ofSize: ThreadLayout.messageSize)
         let text = NSColor(palette.foreground)
