@@ -47,6 +47,11 @@ public enum MarkdownBlock: Equatable, Sendable {
     /// arrived as lines starting with a literal "- ", and every list a model wrote (which is
     /// most of them) rendered as raw hyphens. Measured on a real reply before this existed.
     case list([MarkdownListItem])
+    /// A pipe table: a header row, then rows with as many cells as the header has.
+    ///
+    /// Models reach for one whenever they compare things, and as prose it arrived as lines of
+    /// literal pipes and dashes. Measured on a real reply listing four videos.
+    case table(header: [String], rows: [[String]])
 
     /// A flat bulleted list. Shorthand for the most common list there is.
     public static func bullets(_ items: [String]) -> MarkdownBlock {
@@ -116,8 +121,35 @@ public enum MarkdownBlock: Equatable, Sendable {
         return text.isEmpty ? nil : (level: hashes.count, text: text)
     }
 
-    /// Parses fences, headings and lists. Deliberately no more than that: it is what engines
-    /// emit, and a fuller markdown parser would be a lot of surface for very little fidelity.
+    /// The cells of a table line, or nil when the line is not one: it must hold a pipe and,
+    /// once its outer pipes are dropped, at least two cells. `\|` is a pipe inside a cell.
+    static func tableCells(_ line: String) -> [String]? {
+        var text = line.trimmingCharacters(in: .whitespaces)
+        guard text.contains("|") else { return nil }
+        if text.hasPrefix("|") { text.removeFirst() }
+        if text.hasSuffix("|") && !text.hasSuffix("\\|") { text.removeLast() }
+        let placeholder = "\u{0}"
+        let cells = text.replacingOccurrences(of: "\\|", with: placeholder)
+            .components(separatedBy: "|")
+            .map { $0.replacingOccurrences(of: placeholder, with: "|").trimmingCharacters(in: .whitespaces) }
+        return cells.count >= 2 ? cells : nil
+    }
+
+    /// Whether a line is a table's header separator: cells of dashes, each with an optional
+    /// colon at either end for alignment, as GitHub's tables allow.
+    static func isTableSeparator(_ line: String) -> Bool {
+        guard let cells = tableCells(line) else { return false }
+        return cells.allSatisfy { cell in
+            var core = Substring(cell)
+            if core.hasPrefix(":") { core = core.dropFirst() }
+            if core.hasSuffix(":") { core = core.dropLast() }
+            return !core.isEmpty && core.allSatisfy { $0 == "-" }
+        }
+    }
+
+    /// Parses fences, headings, lists and tables. Deliberately no more than that: it is what
+    /// engines emit, and a fuller markdown parser would be a lot of surface for very little
+    /// fidelity.
     public static func parse(_ markdown: String) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
         var prose: [String] = []
@@ -148,7 +180,25 @@ public enum MarkdownBlock: Equatable, Sendable {
                 counters.removeAll()
             }
 
-            for line in prose {
+            var index = 0
+            while index < prose.count {
+                let line = prose[index]
+                index += 1
+                // A header row with a separator under it opens a table, which runs while lines
+                // keep their pipes.
+                if let header = tableCells(line), index < prose.count, isTableSeparator(prose[index]) {
+                    flushParagraph()
+                    flushItems()
+                    index += 1
+                    var rows: [[String]] = []
+                    while index < prose.count, let cells = tableCells(prose[index]) {
+                        // As many cells as the header: extra ones dropped, missing ones empty.
+                        rows.append((0..<header.count).map { $0 < cells.count ? cells[$0] : "" })
+                        index += 1
+                    }
+                    blocks.append(.table(header: header, rows: rows))
+                    continue
+                }
                 if let heading = headingLine(line) {
                     flushParagraph()
                     flushItems()

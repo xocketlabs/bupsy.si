@@ -38,3 +38,41 @@ struct ShellCommandTests {
         }
     }
 }
+
+@Suite("Tables in a reply")
+struct MarkdownTableTests {
+    @Test("a pipe table becomes a table, between the prose around it")
+    func table() {
+        let reply = """
+            All four videos:
+
+            | | Desktop | Mobile |
+            |---|:---:|---:|
+            | **Luxury** | `a.mp4` | b.mp4 |
+            | Dubai | c.mp4 |
+            Each is 20 seconds.
+            """
+        #expect(MarkdownBlock.parse(reply) == [
+            .prose("All four videos:"),
+            .table(header: ["", "Desktop", "Mobile"], rows: [
+                ["**Luxury**", "`a.mp4`", "b.mp4"],
+                ["Dubai", "c.mp4", ""],
+            ]),
+            .prose("Each is 20 seconds."),
+        ])
+    }
+
+    @Test("pipes without a separator row stay prose")
+    func notATable() {
+        #expect(MarkdownBlock.parse("a | b\nc | d") == [.prose("a | b\nc | d")])
+    }
+
+    @Test("an escaped pipe stays inside its cell")
+    func escapedPipe() {
+        #expect(MarkdownBlock.tableCells(#"| a \| b | c |"#) == ["a | b", "c"])
+        #expect(MarkdownBlock.isTableSeparator("|---|:--:|"))
+        #expect(MarkdownBlock.isTableSeparator("| - | -- |"))
+        #expect(!MarkdownBlock.isTableSeparator("| a | -- |"))
+        #expect(!MarkdownBlock.isTableSeparator("| : | -- |"))
+    }
+}

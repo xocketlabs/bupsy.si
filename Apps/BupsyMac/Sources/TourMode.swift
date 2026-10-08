@@ -82,6 +82,11 @@ enum TourMode {
                     1. Run `make app`
                     2. Open a [release note](https://github.com/xocketlabs/bupsy.si)
 
+                    | | Desktop | Mobile |
+                    |---|---|---|
+                    | **Luxury** | `desktop.mp4` | mobile.mp4 |
+                    | Dubai | desktop-dubai.mp4 | mobile-dubai.mp4 |
+
                     ```sh
                     make app
                     ```
@@ -122,6 +127,11 @@ enum TourMode {
                       - Nested items step in
                     1. Run `make app`
                     2. Open a [release note](https://github.com/xocketlabs/bupsy.si)
+
+                    | | Desktop | Mobile |
+                    |---|---|---|
+                    | **Luxury** | `desktop.mp4` | mobile.mp4 |
+                    | Dubai | desktop-dubai.mp4 | mobile-dubai.mp4 |
 
                     ```sh
                     make app

@@ -22,6 +22,8 @@ struct FormattedReply: View {
                                         linkColour: NSColor(palette.primary))
                 case .code(let language, let text):
                     CodeBlock(language: language, text: text)
+                case .table(let header, let rows):
+                    ReplyTable(header: header, rows: rows)
                 }
             }
         }
@@ -33,6 +35,7 @@ struct ReplySegment: Identifiable {
     enum Kind {
         case prose([MarkdownBlock])
         case code(language: String?, text: String)
+        case table(header: [String], rows: [[String]])
     }
 
     /// By position, not by text: two identical paragraphs used to share an id.
@@ -64,6 +67,9 @@ struct ReplySegment: Identifiable {
             if case .code(let language, let text) = block {
                 flush()
                 segments.append(ReplySegment(id: segments.count, kind: .code(language: language, text: text)))
+            } else if case .table(let header, let rows) = block {
+                flush()
+                segments.append(ReplySegment(id: segments.count, kind: .table(header: header, rows: rows)))
             } else {
                 prose.append(block)
             }
@@ -167,8 +173,8 @@ enum ReplyText {
                               indent: CGFloat(min(item.level, 4)) * nestIndent,
                               hanging: markerWidth)
                 }
-            case .code:
-                // Code is its own segment; ReplySegment never puts it here.
+            case .code, .table:
+                // Code and tables are their own segments; ReplySegment never puts them here.
                 break
             }
         }
@@ -330,6 +336,53 @@ final class ReplyTextView: NSTextView {
 
     /// A message never scrolls itself; the thread does.
     override func scrollWheel(with event: NSEvent) { nextResponder?.scrollWheel(with: event) }
+}
+
+/// A table from a reply: a bold header ruled off from the rows, each row ruled apart, cells
+/// wrapping within the bubble's width.
+///
+/// Cells size to their text. Stretched to fill their columns (for a shaded header band), they
+/// made the grid claim more than the width it was offered and pushed the bubble off the window.
+struct ReplyTable: View {
+    @Environment(\.palette) private var palette
+    let header: [String]
+    let rows: [[String]]
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+            GridRow {
+                ForEach(Array(header.enumerated()), id: \.offset) { _, cell in
+                    self.cell(cell, isHeader: true)
+                }
+            }
+            Rectangle().fill(palette.mutedForeground.opacity(0.5)).frame(height: 1)
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                if index > 0 { Rectangle().fill(palette.border).frame(height: 1) }
+                GridRow {
+                    ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                        self.cell(cell, isHeader: false)
+                    }
+                }
+            }
+        }
+        .clipShape(.rect(cornerRadius: Theme.Radius.control))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.control).strokeBorder(palette.border)
+        }
+    }
+
+    private func cell(_ text: String, isHeader: Bool) -> some View {
+        Text((try? AttributedString(markdown: text,
+                                    options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+             ?? AttributedString(text))
+            .font(isHeader ? ThreadLayout.messageFont.weight(.semibold) : ThreadLayout.messageFont)
+            .foregroundStyle(palette.foreground)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, Theme.Space.compact)
+            .padding(.vertical, Theme.Space.tight)
+            .gridColumnAlignment(.leading)
+    }
 }
 
 struct CodeBlock: View {
