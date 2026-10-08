@@ -8,8 +8,13 @@ import Foundation
 ///
 /// The client sends the pairing key as a cookie it writes itself. Its session has no cookie store
 /// at all: the key lives in the Keychain and nowhere else on the phone.
+///
+/// One client talks to one Mac. It marks every bot it brings back with that Mac's id, so a bot's
+/// identity is complete from the moment it's decoded.
 struct RemoteClient: Sendable {
     let pairing: Pairing
+    /// This phone's id for the Mac (see `PairedMac`).
+    var macID = ""
     var session: URLSession = .remote
 
     func mac() async throws -> MacInfo {
@@ -17,11 +22,16 @@ struct RemoteClient: Sendable {
     }
 
     func bots() async throws -> BotList {
-        try await get(["bots"])
+        var list: BotList = try await get(["bots"])
+        list.bots = list.bots.map { $0.on(macID) }
+        return list
     }
 
+    /// - Parameter botID: the bot's id on this client's Mac.
     func thread(_ botID: String) async throws -> BotThread {
-        try await get(["bots", botID, "messages"])
+        var thread: BotThread = try await get(["bots", botID, "messages"])
+        thread.bot = thread.bot.on(macID)
+        return thread
     }
 
     func send(_ text: String, to botID: String) async throws {
