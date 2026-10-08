@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Context window for every bot**
+- Codex bots now show their context window and their plan's usage limits, read from Codex's own
+  record of each turn. Before, they showed none.
+- The context meter stays after Bupsy restarts or updates, until the bot's next reply, instead of
+  disappearing.
+
 **Fixed**
 - "Tailscale isn't running" in Settings › Use from other devices while Tailscale was running, when
   Bupsy was opened from Finder, the Dock or at login. Tailscale's Mac app only answered Bupsy when
