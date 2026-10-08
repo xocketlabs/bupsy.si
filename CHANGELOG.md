@@ -5,6 +5,19 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Move a bot to another Mac**
+- Right-click a bot (or open Runs on in its details) and choose "Move to Mac mini…" to have it
+  run on another of your linked Macs from now on. A section's menu has "Move section to Mac
+  mini…" for all its bots at once.
+- The bot first writes itself notes on where it is up to, then carries on from them in a fresh
+  chat there. Its recent messages, face, job, model, trust, routines, goals and folder watches go
+  with it, and the files in its own folder are copied over (up to 200 MB). A bot working in a
+  folder you chose keeps it if the other Mac has the same folder, and says so if it doesn't.
+- It leaves this Mac only once the other Mac says it is set up there. If anything goes wrong on
+  the way, it stays here as it was, and you're told why. A bot that is working can move once it
+  finishes; a name the other Mac already has becomes "Scout 2".
+- Both Macs need this version of Bupsy.
+
 **Fixed**
 - "Tailscale isn't running" in Settings › Use from other devices while Tailscale was running, when
   Bupsy was opened from Finder, the Dock or at login. Tailscale's Mac app only answered Bupsy when

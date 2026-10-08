@@ -33,6 +33,12 @@ final class LinkedMacs {
     @ObservationIgnored private var poller: Task<Void, Never>?
     @ObservationIgnored private let keys = LinkedMacKeys()
     @ObservationIgnored private let file = AppHome.directory.appendingPathComponent("linked-macs.json")
+    #if DEBUG
+    /// Keys for a link made by the BUPSY_LINK_TEST switch, held in memory only, so a throwaway
+    /// test link never writes to the person's Keychain.
+    @ObservationIgnored private var testKeys: [String: String] = [:]
+    private static var isTestLink: Bool { ProcessInfo.processInfo.environment["BUPSY_LINK_TEST"] != nil }
+    #endif
 
     static let listInterval: Duration = .seconds(3)
     static let chatInterval: Duration = .milliseconds(1500)
@@ -57,8 +63,11 @@ final class LinkedMacs {
 
     func isRemote(_ botID: BotID) -> Bool { botID.rawValue.hasPrefix("remote:") }
 
-    private func client(_ macID: String) -> RemoteClient? {
+    func client(_ macID: String) -> RemoteClient? {
         guard let link = links.first(where: { $0.id == macID }) else { return nil }
+        #if DEBUG
+        if let key = testKeys[macID] { return RemoteClient(address: link.address, key: key) }
+        #endif
         return RemoteClient(address: link.address, key: keys.get(macID))
     }
 
@@ -73,7 +82,11 @@ final class LinkedMacs {
         let key = try await RemoteClient(address: address, key: nil).pair(code: code, name: name)
         let info = try await RemoteClient(address: address, key: key).sessionInfo()
         let id = UUID().uuidString
+        #if DEBUG
+        if Self.isTestLink { testKeys[id] = key } else { try keys.set(key, for: id) }
+        #else
         try keys.set(key, for: id)
+        #endif
         links.append(Link(id: id, name: info.mac, address: address, kind: info.kind ?? "desktop"))
         save()
         await refresh()
@@ -101,7 +114,11 @@ final class LinkedMacs {
         #if DEBUG
         // Testing only: link to "<address> <code>" at launch. Debug builds only.
         if let test = ProcessInfo.processInfo.environment["BUPSY_LINK_TEST"]?.split(separator: " "), test.count == 2 {
-            Task { try? await add(address: String(test[0]), code: String(test[1])) }
+            Task {
+                try? await add(address: String(test[0]), code: String(test[1]))
+                // And then, with BUPSY_MOVE_TEST, move a bot (or "section:<name>") there.
+                if let what = ProcessInfo.processInfo.environment["BUPSY_MOVE_TEST"] { await model?.runMoveTest(what) }
+            }
         }
         #endif
         poller = Task { [weak self] in

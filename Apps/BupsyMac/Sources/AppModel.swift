@@ -84,6 +84,15 @@ final class AppModel {
     @ObservationIgnored var freshChatDue: Set<BotID> = []
     /// Bots writing their hand-off notes right now, whose own long chat must not ask for another.
     var writingHandoff: Set<BotID> = []
+    /// Bots on their way to another Mac, with that Mac's name. See `AppModel+MoveBots`.
+    var moving: [BotID: String] = [:]
+    /// Bots whose notes are written and whose move is being sent: nothing new may start in them,
+    /// or it would be work done here that never reaches the other Mac.
+    @ObservationIgnored var sealedForMove: Set<BotID> = []
+    /// A move waiting for the person to confirm it, shown by the sidebar.
+    var moveRequest: MoveRequest?
+    /// How the last move went, shown by the sidebar until dismissed.
+    var moveOutcome: MoveOutcome?
     /// Set when persistence could not be opened. The app still works; it just forgets.
     var storageProblem: String?
     /// Whether the database opened at all, which changes what a storage problem means.
@@ -706,7 +715,7 @@ final class AppModel {
         try? store?.deleteTrigger(id: watch.id)
     }
 
-    private func syncWatcher(_ watch: FolderWatch) {
+    func syncWatcher(_ watch: FolderWatch) {
         watchers.removeValue(forKey: watch.id)?.stop()
         guard watch.enabled, FileManager.default.fileExists(atPath: watch.path) else { return }
         watchers[watch.id] = FolderWatcher(path: watch.path) { [weak self] changed in
@@ -828,7 +837,7 @@ final class AppModel {
     /// Rewritten from scratch each time rather than patched: one agent describing the current
     /// truth is far easier to reason about than a set of incremental edits, and launchd is a
     /// user-visible resource we should leave tidy.
-    private func syncLaunchAgent() {
+    func syncLaunchAgent() {
         // A throwaway home must not install, change or remove the real background scheduler.
         guard !AppHome.isSandboxed else { return }
         let objectiveRoutines = objectives.map {
@@ -1263,6 +1272,14 @@ final class AppModel {
         _ prompt: String, to bot: Bot,
         onFinish: (@MainActor @Sendable (String) -> Void)?
     ) {
+        // Leaving for another Mac: said, not dropped silently, so it can be sent again there.
+        if sealedForMove.contains(bot.id) {
+            let thread = thread(for: bot.id)
+            thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
+            thread.entries.append(TranscriptEntry(kind: .note(
+                "Not sent: \(bot.name) is moving to \(moving[bot.id] ?? "another Mac"). Send it there once it arrives.")))
+            return
+        }
         // Busy: keep it rather than drop it. It shows in the thread now and goes to the bot, with
         // anything else typed meanwhile, the moment the current run ends.
         if running[bot.id] != nil {
@@ -1387,6 +1404,9 @@ final class AppModel {
         // One run per bot at a time, wherever it is. A bot cannot answer in a group while it is
         // still working on something you asked it directly.
         guard running[bot.id] == nil, let adapter = adapters[bot.engine] else { return false }
+        // On its way to another Mac: a routine or another bot's message must not start work here
+        // that the move would then cut off.
+        guard !sealedForMove.contains(bot.id) else { return false }
 
         // A run another bot started reads as that bot's message, showing what it actually wrote
         // (`shown`) rather than bupsy's framing around it — never as something the person said.

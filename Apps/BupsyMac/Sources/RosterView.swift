@@ -52,6 +52,8 @@ struct BotMenu: View {
             Button(action: onNewFolder) { Label("New section…", systemImage: "plus") }
         }
 
+        MoveToMacItems(bot: bot)
+
         Divider()
 
         Button { model.togglePin(bot) } label: {
@@ -105,6 +107,32 @@ struct BotMenu: View {
         }
         Button(role: .destructive, action: onDelete) {
             Label("Delete bot…", systemImage: "trash")
+        }
+    }
+}
+
+/// "Move to Mac mini…", one for each of the person's linked Macs that is awake, for a bot of
+/// this Mac's. Shared by the bot's menus and its details, so they offer the same Macs.
+struct MoveToMacItems: View {
+    @Environment(AppModel.self) private var model
+    let bot: Bot
+
+    var body: some View {
+        let macs = model.moveTargets
+        if bot.remote == nil, !macs.isEmpty {
+            Divider()
+            if let mac = model.moving[bot.id] {
+                Text("Moving to \(mac)…")
+            } else {
+                ForEach(macs) { mac in
+                    Button { model.askToMove(bot, to: mac) } label: {
+                        Label("Move to \(mac.name)…",
+                              systemImage: mac.kind == "laptop" ? "laptopcomputer" : "desktopcomputer")
+                    }
+                    // One move at a time: a second would wait on the first's notes anyway.
+                    .disabled(!model.moving.isEmpty)
+                }
+            }
         }
     }
 }

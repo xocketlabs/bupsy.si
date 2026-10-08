@@ -498,7 +498,7 @@ struct BotPage: View {
                 BotPanelMenuRow(label: "Model", value: modelLabel ?? "Default") {
                     ModelMenuItems(bot: bot)
                 }
-                BotPanelMenuRow(label: "Runs on", value: machineName) {
+                BotPanelMenuRow(label: "Runs on", value: model.moving[bot.id].map { "Moving to \($0)…" } ?? machineName) {
                     Button("This Mac") { model.assign(bot, to: nil) }
                     if !model.machines.isEmpty {
                         Divider()
@@ -506,6 +506,8 @@ struct BotPage: View {
                             Button(machine.name) { model.assign(bot, to: machine.id) }
                         }
                     }
+                    // Another of the person's Macs: the bot moves there for good.
+                    MoveToMacItems(bot: bot)
                 }
                 BotPanelMenuRow(label: "Trust", value: bot.autonomy.trustLabel, tone: trustTone) {
                     ForEach(Autonomy.allCases, id: \.self) { level in
