@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Tables, and a quieter idle**
+- Tables in a reply render as tables: a shaded header and ruled rows, instead of lines of
+  pipes and dashes.
+- Resting bot faces redraw 12 times a second instead of 30, so an idle Bupsy uses far less CPU.
+  Faces of bots at work keep the full rate.
+
 **No more blank chats**
 - A long chat could open on an empty pane with every message still there: the lazily built
   list guessed row heights and ended up scrolled past its content. A chat now shows its latest
