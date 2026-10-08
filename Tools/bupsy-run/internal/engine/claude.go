@@ -189,6 +189,15 @@ func (c Claude) Normalise(raw string) []Event {
 		if message == nil {
 			return []Event{{Kind: KindUnknown, Raw: l.raw}}
 		}
+		// A slash command that runs in the CLI itself reports back as a "user" line in a
+		// wrapper: `/compact` says "Compacted", and a command whose setup failed says why.
+		// It is the only reply such a run has, so it is shown as one.
+		if text, ok := message["content"].(string); ok {
+			if output, found := localCommandOutput(text); found {
+				return []Event{{Kind: KindText, Text: output}}
+			}
+			return nil
+		}
 		var events []Event
 		for _, block := range blocks(message["content"]) {
 			if str(block, "type") != "tool_result" {
@@ -268,6 +277,24 @@ func usageEvent(l line) Event {
 
 // flatten renders a tool result, which arrives as a string or as content blocks depending on the
 // tool.
+// localCommandOutput is what a built-in command printed, from <local-command-stdout> or
+// <local-command-stderr>. Not found for any other text, such as the summary a compacted chat
+// continues from.
+func localCommandOutput(text string) (string, bool) {
+	trimmed := strings.TrimSpace(text)
+	for _, tag := range []string{"local-command-stdout", "local-command-stderr"} {
+		open, close := "<"+tag+">", "</"+tag+">"
+		if !strings.HasPrefix(trimmed, open) || !strings.HasSuffix(trimmed, close) {
+			continue
+		}
+		// The CLI escapes angle brackets inside the wrapper ("&lt;command&gt;").
+		inner := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&amp;", "&").Replace(trimmed[len(open) : len(trimmed)-len(close)])
+		inner = strings.TrimSpace(inner)
+		return inner, inner != ""
+	}
+	return "", false
+}
+
 func flatten(content any) string {
 	if text, ok := content.(string); ok {
 		return text

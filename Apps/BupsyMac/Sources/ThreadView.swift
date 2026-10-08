@@ -944,17 +944,30 @@ struct Composer: View {
     /// What was in the box when listening started; what is heard goes after it.
     @State private var dictationBase = ""
     @Binding var replyingTo: ReplyTarget?
-    let onSend: () -> Void
+    /// Sends what is in the box. Given the prompt to send instead when the box holds a Codex
+    /// `/prompts:` command, which the chat shows as typed.
+    let onSend: (_ expanded: String?) -> Void
     let onStop: () -> Void
+    /// The slash commands that open something on the bot's page: /details and /routine.
+    let onPageCommand: (BupsyCommand) -> Void
+    /// The row of the slash command menu the arrow keys are on.
+    @State private var highlighted = 0
+    /// The text the menu was closed for with Esc. Typing anything brings it back.
+    @State private var menuClosedFor: String?
+    /// Why a command could not be sent ("This prompt needs FILE=…"), until the box changes.
+    @State private var commandProblem: String?
+    private var library: SlashCommandLibrary { .shared }
 
     init(draft: Binding<String>, bot: Bot, isRunning: Bool, replyingTo: Binding<ReplyTarget?>,
-         onSend: @escaping () -> Void, onStop: @escaping () -> Void) {
+         onSend: @escaping (_ expanded: String?) -> Void, onStop: @escaping () -> Void,
+         onPageCommand: @escaping (BupsyCommand) -> Void) {
         self._draft = draft
         self.bot = bot
         self.isRunning = isRunning
         self._replyingTo = replyingTo
         self.onSend = onSend
         self.onStop = onStop
+        self.onPageCommand = onPageCommand
     }
 
     private let corner: CGFloat = Theme.Radius.xl
@@ -971,7 +984,23 @@ struct Composer: View {
                     .foregroundStyle(palette.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if let commandProblem {
+                Label(commandProblem, systemImage: "exclamationmark.circle")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(palette.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             field
+        }
+        // The engine's commands are read again each time the menu opens: a command file can be
+        // added or changed at any moment, and nothing says when.
+        .onChange(of: draft.hasPrefix("/"), initial: true) { _, opening in
+            guard opening, bot.remote == nil else { return }
+            library.refresh(engine: bot.engine, workdir: model.workingDirectory(for: bot))
+        }
+        .onChange(of: draft) {
+            highlighted = 0
+            commandProblem = nil
         }
         // Leaving the chat stops listening: a mic left on in a chat you are not looking at is
         // the one thing a voice feature must never do.
@@ -1107,11 +1136,28 @@ struct Composer: View {
                 .frame(minHeight: Theme.Size.controlMd)
                 .focused($focused)
                 .onSubmit(send)
-                // Esc lets go of the message you were replying to, the way it closes anything
-                // else you opened. Left alone when there is nothing to cancel.
+                // Esc closes the command menu, or else lets go of the message you were replying
+                // to, the way it closes anything else you opened. Left alone when there is
+                // nothing to cancel.
                 .onKeyPress(.escape) {
+                    if menuShown {
+                        menuClosedFor = draft
+                        return .handled
+                    }
                     guard replyingTo != nil else { return .ignored }
                     replyingTo = nil
+                    return .handled
+                }
+                // The menu's keys, only while it is open: Return sends as ever when it is not.
+                .onKeyPress(keys: [.upArrow, .downArrow, .return, .tab]) { press in
+                    guard menuShown, press.modifiers.isDisjoint(with: [.command, .shift, .option, .control])
+                    else { return .ignored }
+                    let items = menuItems
+                    switch press.key {
+                    case .upArrow: highlighted = (highlighted - 1 + items.count) % items.count
+                    case .downArrow: highlighted = (highlighted + 1) % items.count
+                    default: pick(items[min(highlighted, items.count - 1)])
+                    }
                     return .handled
                 }
 
@@ -1196,12 +1242,95 @@ struct Composer: View {
         }
         // Under Reduce Motion the peek simply appears and goes, with no slide.
         .animation(reduceMotion ? nil : .spring(duration: 0.35), value: isRunning)
+        // Above the box, the full width of it, over the chat rather than pushing it up; and over
+        // the bot peeking from behind the box, which would otherwise cover a row.
+        // A line along the box's top edge, with the menu standing on it: its own height, growing
+        // upward, whatever the rows add up to.
+        .overlay(alignment: .top) {
+            Color.clear.frame(height: 0).overlay(alignment: .bottom) {
+                if menuShown {
+                    SlashMenu(items: menuItems, highlighted: $highlighted, onPick: pick)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, Theme.Space.snug)
+                }
+            }
+        }
+    }
+
+    // MARK: - Slash commands
+
+    /// The menu's rows for what is typed now. Empty, and so closed, for anything but a command.
+    private var menuItems: [SlashMenuItem] {
+        SlashMenuItem.items(for: draft, bot: bot,
+                            engineCommands: library.commands(engine: bot.engine, workdir: model.workingDirectory(for: bot)),
+                            models: model.models(for: bot))
+    }
+
+    private var menuShown: Bool {
+        draft.hasPrefix("/") && menuClosedFor != draft && !menuItems.isEmpty
+    }
+
+    /// A row chosen with Return, Tab or a click.
+    private func pick(_ item: SlashMenuItem) {
+        switch item.action {
+        case .insert(let text):
+            draft = text
+        case .run(let command):
+            draft = ""
+            perform(command, argument: "")
+        case .model(let id):
+            draft = ""
+            model.setModelFromChat(bot, id)
+        }
+        focused = true
+    }
+
+    /// One of Bupsy's own commands, picked from the menu or sent as typed.
+    private func perform(_ command: BupsyCommand, argument: String) {
+        switch command {
+        case .help:
+            // The menu is the help: every command, each saying what it does.
+            draft = "/"
+            menuClosedFor = nil
+        case .fresh:
+            model.moveToFreshChat(bot)
+        case .stop:
+            if isRunning {
+                onStop()
+            } else {
+                model.thread(for: bot.id).entries.append(TranscriptEntry(kind: .note("\(bot.name) isn't working on anything.")))
+            }
+        case .model:
+            let wanted = argument.trimmingCharacters(in: .whitespaces)
+            guard !wanted.isEmpty else { draft = "/model "; return }
+            let option = AppModel.modelOption(named: wanted, in: model.models(for: bot))
+            model.setModelFromChat(bot, option.map(\.id) ?? wanted)
+        case .details, .routine:
+            onPageCommand(command)
+        }
     }
 
     /// Sends only real words. A draft of spaces and newlines stays put.
+    ///
+    /// Bupsy's own commands are done here and never sent. A Codex `/prompts:` command is sent as
+    /// the prompt it stands for, which `codex exec` would not work out for itself. Anything else,
+    /// a Claude command included, goes exactly as typed.
     private func send() {
         guard sendEnabled else { return }
-        onSend()
+        if let (name, argument) = SlashInput.parse(draft),
+           let command = BupsyCommand(rawValue: name.lowercased()), command.isAvailable(for: bot) {
+            draft = ""
+            perform(command, argument: argument)
+            return
+        }
+        if bot.engine == .codex, bot.remote == nil, let expansion = model.codexPromptExpansion(draft) {
+            switch expansion {
+            case .success(let prompt): onSend(prompt)
+            case .failure(let problem): commandProblem = problem.description
+            }
+            return
+        }
+        onSend(nil)
     }
 
     private var sendEnabled: Bool {

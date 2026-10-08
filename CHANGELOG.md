@@ -5,6 +5,21 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Slash commands**
+- Type `/` in a bot's message box for a menu of commands, narrowed as you type. Up and Down to
+  choose, Return or Tab to pick, Esc to close; a click works too.
+- Bupsy's own, for every bot: /model (pick from the list, or type a name), /details, /routine,
+  /fresh, /stop and /help. These are done by Bupsy and never sent to the bot.
+- Claude Code bots also get your own commands and skills (from `~/.claude`) and the project's
+  (from `.claude` in the bot's folder), plus the built-ins that work for a bot: /compact,
+  /context, /usage, /review, /security-review and /init. What /compact says, and why a command
+  couldn't start, now shows in the chat; before, those left no reply at all.
+- Codex bots get your custom prompts (`~/.codex/prompts`) as /prompts:name. Codex doesn't fill
+  these in when it runs for a bot, so Bupsy does, with the same `$1`, `$ARGUMENTS` and `KEY=value`
+  rules; the chat shows what you typed.
+- A Claude command is sent on its own, without the bot's job in front of it, since Claude Code
+  only runs a command at the very start of a message.
+
 **Move a bot to another Mac**
 - Right-click a bot (or open Runs on in its details) and choose "Move to Mac mini…" to have it
   run on another of your linked Macs from now on. A section's menu has "Move section to Mac

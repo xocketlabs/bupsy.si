@@ -72,6 +72,8 @@ final class AppModel {
     var tourPalette: Bool?
     var tourDetails: DetailTab?
     var tourSheet: String?
+    /// Text put in the open bot's message box, to picture the slash command menu.
+    var tourDraft: String?
 
     var needsOnboarding = !AppHome.defaults.bool(forKey: "si.bupsy.onboarded")
 
@@ -1265,20 +1267,22 @@ final class AppModel {
         }
     }
 
-    func send(_ prompt: String, to bot: Bot) {
+    /// `shown` is what the chat shows in place of the prompt: the `/prompts:name args` a person
+    /// typed, where the engine is sent the prompt it stands for.
+    func send(_ prompt: String, to bot: Bot, shown: String? = nil) {
         // A bot on another Mac is sent to there; that Mac queues and runs it.
         if bot.remote != nil { linked.send(prompt, to: bot); return }
-        send(prompt, to: bot, onFinish: nil)
+        send(prompt, to: bot, shown: shown, onFinish: nil)
     }
 
     func send(
-        _ prompt: String, to bot: Bot,
+        _ prompt: String, to bot: Bot, shown: String? = nil,
         onFinish: (@MainActor @Sendable (String) -> Void)?
     ) {
         // Leaving for another Mac: said, not dropped silently, so it can be sent again there.
         if sealedForMove.contains(bot.id) {
             let thread = thread(for: bot.id)
-            thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
+            thread.entries.append(TranscriptEntry(kind: .userMessage(shown ?? prompt)))
             thread.entries.append(TranscriptEntry(kind: .note(
                 "Not sent: \(bot.name) is moving to \(moving[bot.id] ?? "another Mac"). Send it there once it arrives.")))
             return
@@ -1287,7 +1291,7 @@ final class AppModel {
         // anything else typed meanwhile, the moment the current run ends.
         if running[bot.id] != nil {
             let thread = thread(for: bot.id)
-            let entry = TranscriptEntry(kind: .userMessage(prompt))
+            let entry = TranscriptEntry(kind: .userMessage(shown ?? prompt))
             thread.entries.append(entry)
             queued[bot.id, default: []].append(prompt)
             queuedEntries[bot.id, default: []].append(entry.id)
@@ -1298,7 +1302,7 @@ final class AppModel {
             }
             return
         }
-        startRun(prompt, bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: onFinish)
+        startRun(prompt, bot: bot, thread: thread(for: bot.id), groupID: nil, onFinish: onFinish, shown: shown)
     }
 
     /// A run something other than you started: a routine, a goal check or a folder watch.
@@ -1413,6 +1417,7 @@ final class AppModel {
 
         // A run another bot started reads as that bot's message, showing what it actually wrote
         // (`shown`) rather than bupsy's framing around it — never as something the person said.
+        // From the person, `shown` is the short command they typed for a longer prompt.
         // A prompt bupsy wrote on the person's behalf — a new bot's "introduce yourself" — is not
         // shown as something they said. The bot's reply is the first thing in the thread.
         if hidesPrompt || alreadyShown {
@@ -1420,7 +1425,7 @@ final class AppModel {
             thread.entries.append(TranscriptEntry(kind: .messageFrom(
                 botID: sender.id.rawValue, botName: sender.name, text: shown ?? prompt)))
         } else {
-            thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
+            thread.entries.append(TranscriptEntry(kind: .userMessage(shown ?? prompt)))
         }
         thread.isRunning = true
         activeThread[bot.id] = thread
@@ -1462,7 +1467,7 @@ final class AppModel {
             let joined = [sender.id.rawValue, sender.name, shown ?? prompt].joined(separator: "\u{1}")
             persist(.text(joined), run: run.id, seq: 0, asMessageFrom: true)
         } else {
-            persist(.text(prompt), run: run.id, seq: 0, asUserMessage: true)
+            persist(.text(shown ?? prompt), run: run.id, seq: 0, asUserMessage: true)
         }
 
         // A fresh gate per run: the hook script and settings are written to a temporary
@@ -1481,12 +1486,15 @@ final class AppModel {
         // gate that could not be set up fails the run instead.
         let ungated = bot.engine == .claude && gateSettings == nil
 
+        // Claude Code runs a slash command only from the very start of the prompt, so one goes
+        // alone: no job in front of it, and a fresh chat's notes wait for the next message.
+        let isCommand = bot.engine == .claude && SlashInput.looksLikeCommand(prompt)
         // The first turn of a fresh chat carries the notes the bot left itself at the end of the
         // last one; not a group's turn, which has its own conversation.
-        let carried = groupID == nil && thread.conversationID == nil
+        let carried = groupID == nil && thread.conversationID == nil && !isCommand
             ? takeHandoffNotes(bot.id).map { "\(Self.handoffHeading)\n\n\($0)\n\n---\n\n\(prompt)" } : nil
         let request = RunRequest(
-            prompt: bot.personaPrompt.map { "\($0)\n\n\(carried ?? prompt)" } ?? carried ?? prompt,
+            prompt: isCommand ? prompt : bot.personaPrompt.map { "\($0)\n\n\(carried ?? prompt)" } ?? carried ?? prompt,
             workingDirectory: workingDirectory(for: bot),
             resume: thread.conversationID,
             model: bot.model,
