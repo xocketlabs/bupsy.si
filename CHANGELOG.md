@@ -5,6 +5,11 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**No more blank chats**
+- A long chat could open on an empty pane with every message still there: the lazily built
+  list guessed row heights and ended up scrolled past its content. A chat now shows its latest
+  150 items laid out in full, with **Show earlier messages** at the top for the rest.
+
 **Busy chats stay responsive**
 - The Files panel no longer re-reads a bot's whole tool history on the main thread at every
   streamed line: it waits for a burst to settle, reads off the main thread, and looks at the

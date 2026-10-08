@@ -26,6 +26,9 @@ struct BotPage: View {
     @State private var editingBot: Bot?
     /// The message being replied to, shown above the composer until sent or dismissed.
     @State private var replyingTo: ReplyTarget?
+    /// Where each bot's transcript starts on screen, fixed when it opens so rows never slide off
+    /// the top while you read; new ones extend it at the bottom. See `windowStart`.
+    @State private var windowStarts: [BotID: Int] = [:]
     @State private var tab = DetailTab.details
     @State private var awayFromBottom = false
     /// Messages that arrived while you were scrolled up reading, counted on the jump button
@@ -676,10 +679,33 @@ struct BotPage: View {
                         // What each row needs to know about its neighbours, in one pass, so no
                         // bubble reads the whole thread while it draws.
                         let rows = ThreadRowContext.rows(for: thread.entries, isRunning: thread.isRunning)
-                        // Lazy, so a long thread only builds the rows on screen. Every row keeps
-                        // its entry id, so scrollTo still finds rows that are not built yet.
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(thread.entries.enumerated()), id: \.element.id) { index, entry in
+                        let start = windowStart(unread: unread)
+                        // The recent stretch, laid out in full. Lazy, rows got guessed heights
+                        // until built; a long thread of mixed rows (tool lines, long replies)
+                        // guessed far wrong, and the view ended up scrolled past its content:
+                        // a blank pane with every message still there. Measured on a 700-row
+                        // thread. Laid out in full, a bounded window is exact and still quick.
+                        VStack(alignment: .leading, spacing: 0) {
+                            if start > 0 {
+                                Button {
+                                    let anchor = thread.entries[start].id
+                                    windowStarts[bot.id] = max(0, start - Self.windowSize)
+                                    // Keep your place: the rows added above would otherwise push
+                                    // what you were reading down out of view.
+                                    Task { @MainActor in
+                                        try? await Task.sleep(for: .milliseconds(40))
+                                        proxy.scrollTo(anchor, anchor: .top)
+                                    }
+                                } label: {
+                                    Label("Show earlier messages", systemImage: "arrow.up")
+                                        .font(Theme.Typography.caption.weight(.medium))
+                                }
+                                .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
+                                .frame(maxWidth: .infinity)
+                                .padding(.bottom, Theme.Space.step)
+                                .help("\(start) earlier \(start == 1 ? "item" : "items") in this chat")
+                            }
+                            ForEach(Array(thread.entries.enumerated()).dropFirst(start), id: \.element.id) { index, entry in
                                 VStack(alignment: .leading, spacing: Theme.Space.step) {
                                     if showsDaySeparator(at: index) { DaySeparator(date: entry.at) }
                                     if index == unread { NewDivider().id(NewDivider.anchor) }
@@ -773,6 +799,10 @@ struct BotPage: View {
                     // stopped short and left the latest message half under the composer.
                     .task(id: bot.id) {
                         unseenCount = 0
+                        // Fix where this chat's window starts, so it grows at the bottom from
+                        // here rather than sliding as messages arrive.
+                        windowStarts[bot.id] = nil
+                        windowStarts[bot.id] = windowStart(unread: firstUnreadIndex)
                         try? await Task.sleep(for: .milliseconds(60))
                         // To the row that holds the divider: a lazy stack can only scroll to its
                         // own rows' ids, not to a view inside a row it has not built yet.
@@ -858,6 +888,19 @@ struct BotPage: View {
     /// The first message from the bot that arrived after you last read it, or nil when there is
     /// none, nothing new, or a bot you are opening for the first time, where everything is new
     /// and a line above the first message would say nothing.
+    /// How many entries a chat opens with. Enough for a long working session; earlier ones are
+    /// a click away.
+    static let windowSize = 150
+
+    /// The first entry on screen: the last `windowSize`, reaching back to the first unread one
+    /// when that is further up, so opening at "New" always has the divider to land on.
+    private func windowStart(unread: Int?) -> Int {
+        let count = thread.entries.count
+        var start = windowStarts[bot.id] ?? max(0, count - Self.windowSize)
+        if let unread, unread < start { start = max(0, unread - 10) }
+        return min(start, max(0, count - 1))
+    }
+
     private var firstUnreadIndex: Int? {
         guard let seenEntry = model.readBeforeOpening[bot.id], let seen = seenEntry else { return nil }
         guard let index = thread.entries.firstIndex(where: { $0.isFromBot && $0.at > seen }),
