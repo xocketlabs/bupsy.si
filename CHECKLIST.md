@@ -94,10 +94,15 @@ and a Neon database (waitlist signups).
 | **Neon `DATABASE_URL`** | Waitlist signups — `wrangler pages secret put DATABASE_URL --project-name bupsy` |
 | **Connect tools in Executor** | Gmail, Notion, Linear… for every bot |
 
+## In development (not downloadable yet)
+
+- 🚧 **iPhone app**: native, with notifications when a bot needs you and Face ID to approve. Until it
+  ships, a phone uses Bupsy in the browser through the Mac (Settings › Use from other devices).
+- 🚧 **Windows / Linux app**: the Go core already runs there; the app is being built.
+
 ## Decided against, on purpose
 
-- **Phone app** and **voice** — not in 1.0
-- **Windows / Linux app** — Mac first; the Go core already runs there
+- **Voice**: not in 1.0
 - **Webhooks** — would need an inbound port; 1.0 has none
 - **Grok engine** — Claude Code and Codex cover 1.0
 

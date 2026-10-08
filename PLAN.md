@@ -85,7 +85,8 @@ The feature set we are claiming, split by which incumbent it answers:
 - Connectors: Gmail, Calendar, Drive, Slack, Notion, GitHub via MCP
 - Computer use — browser automation inside the VM
 - Multi-bot teams with a coordinator; bots hand work to each other
-- ~~iOS companion for approvals and checking in~~ — **cut from 1.0**
+- iOS companion for approvals and checking in — **in development** (cut from 1.0; a phone uses the
+  browser through the Mac meanwhile, over Tailscale)
 - ~~Voice: spoken replies and calls~~ — **cut from 1.0**
 
 ---
@@ -575,9 +576,13 @@ allowlists, computer use, channels, multi-bot teams with a coordinator.
 Onboarding that survives the sign-in step. Freestyle as second `CloudHost`. Signed, notarized,
 auto-updating release. Docs, site, launch.
 
-**Deliberately out of scope for 1.0:** the iOS companion and voice (both cut — see
-[docs/03-decisions.md](docs/03-decisions.md) #21–22), Windows and Linux (macOS first, reassess
-after), teams/multi-user, hosted anything, a bot marketplace, any monetisation at all.
+**Deliberately out of scope for 1.0:** voice (cut — see
+[docs/03-decisions.md](docs/03-decisions.md) #22), teams/multi-user, hosted anything, a bot
+marketplace, any monetisation at all.
+
+**In development after 1.0, not downloadable yet:** the iOS app and the Windows and Linux apps. The
+site and README mark both "In development". Until the iOS app ships, a phone uses Bupsy in the
+browser through the Mac over Tailscale.
 
 Cutting the companion app removes the opt-in local HTTP+SSE listener it needed, so **1.0 ships with
 zero inbound network surface.** That is a better security story than the one first planned, and it
