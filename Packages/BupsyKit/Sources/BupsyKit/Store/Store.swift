@@ -470,15 +470,21 @@ public struct Store: Sendable {
                 .limit(limit)
                 .fetchAll(db)
 
+            // Three small reads per run, not every event in it: a run's tool calls carry their
+            // whole arguments (a file written, tens of kilobytes), and this summary is read each
+            // time a bot's page draws. Loading every event made switching to a busy bot slow.
             return try runs.map { run in
-                let events = try EventRecord
-                    .filter(Column("runID") == run.id)
+                let prompt = try EventRecord
+                    .filter(Column("runID") == run.id && Column("type") == "userMessage")
                     .order(Column("seq"))
-                    .fetchAll(db)
-
-                let prompt = events.first { $0.type == "userMessage" }
-                let reply = events.last { $0.type == "text" }
-                let tools = events.filter { $0.type == "toolCall" }.count
+                    .fetchOne(db)
+                let reply = try EventRecord
+                    .filter(Column("runID") == run.id && Column("type") == "text")
+                    .order(Column("seq").desc)
+                    .fetchOne(db)
+                let tools = try EventRecord
+                    .filter(Column("runID") == run.id && Column("type") == "toolCall")
+                    .fetchCount(db)
 
                 return RunSummary(
                     id: run.id,
@@ -493,6 +499,13 @@ public struct Store: Sendable {
                     outputTokens: run.outputTokens,
                     triggerID: run.triggerID)
             }
+        }
+    }
+
+    /// Whether a bot has run at all. For a page that only needs yes or no, without reading any.
+    public func hasRuns(forBot botID: String) throws -> Bool {
+        try database.read { db in
+            try RunRecord.filter(Column("botID") == botID).fetchCount(db) > 0
         }
     }
 

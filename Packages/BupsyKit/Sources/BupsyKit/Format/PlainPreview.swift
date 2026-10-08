@@ -14,7 +14,9 @@ public enum PlainPreview {
         var lines: [String] = []
         var inFence = false
         var gathered = 0
-        for raw in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+        // Only the start is ever read, so only the start is split into lines: splitting all of a
+        // long reply first cost as much as flattening it.
+        for raw in markdown.prefix(limit * 8).split(separator: "\n", omittingEmptySubsequences: false) {
             if gathered >= limit { break }
             var line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("```") { inFence.toggle(); continue }

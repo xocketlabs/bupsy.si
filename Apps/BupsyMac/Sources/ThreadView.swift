@@ -537,7 +537,7 @@ struct ToolAside: View {
                     }
                     .frame(width: 16, height: 16)
                     Text(verb)
-                    Text(PathShortener.shorten(summary, workingDirectory: workingDirectory))
+                    Text(ShortenedPaths.of(summary, workingDirectory: workingDirectory))
                         .strikethrough(declined)
                         .font(ThreadLayout.monoFont)
                         .foregroundStyle(declined ? palette.mutedForeground : palette.foreground)
@@ -1165,5 +1165,21 @@ enum BupsyToolLine: Equatable, Sendable {
         default:
             self = .raw
         }
+    }
+}
+
+/// Tool lines' summaries with their paths shortened, worked out once each. A chat has a tool line
+/// for nearly every step a bot took, and each redraw of the chat shortened every one again.
+@MainActor
+enum ShortenedPaths {
+    private static var cache: [String: String] = [:]
+
+    static func of(_ summary: String, workingDirectory: String?) -> String {
+        let key = (workingDirectory ?? "") + "\u{1}" + summary
+        if let known = cache[key] { return known }
+        let shortened = PathShortener.shorten(summary, workingDirectory: workingDirectory)
+        if cache.count > 2_000 { cache.removeAll(keepingCapacity: true) }
+        cache[key] = shortened
+        return shortened
     }
 }

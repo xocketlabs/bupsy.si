@@ -5,6 +5,16 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Snappier switching**
+- A click on a bot answers at once in the sidebar, and the chat follows a frame later with a
+  quick fade in: before, nothing on screen moved until the whole new chat was built.
+- A chat draws its latest dozen items first and fills in the rest above, out of sight, a few
+  at a time, pinned to where it opened. About a third faster to appear than before.
+- Tables are rows of equal columns: a table with a long cell no longer draws over the messages
+  after it.
+- Sidebar previews, tool lines' paths and the Activity tab's run summaries no longer redo their
+  work on every redraw.
+
 **Faster switching between bots**
 - A reply's measured size is remembered instead of laid out again each time SwiftUI asks, and
   a bot's folder is looked up once instead of on every tool line, so opening a chat is much
