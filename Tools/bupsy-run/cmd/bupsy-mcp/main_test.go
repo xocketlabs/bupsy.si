@@ -117,3 +117,40 @@ func TestUpdateMeDrops(t *testing.T) {
 		t.Fatal("empty update should be refused")
 	}
 }
+
+func TestMoveBotsDropsARequest(t *testing.T) {
+	outbox := t.TempDir()
+	result := callTool(t, outbox, "move_bots", map[string]any{
+		"bots": []any{" Lead ", "QA Reviewer", ""}, "section": "Frontier & Co"})
+	if result["isError"] == true {
+		t.Fatalf("unexpected error: %v", result)
+	}
+	files := dropped(t, outbox)
+	if len(files) != 1 || files[0]["kind"] != "move_bots" || files[0]["from"] != "bot-1" ||
+		files[0]["section"] != "Frontier & Co" {
+		t.Fatalf("wrong request dropped: %v", files)
+	}
+	bots, _ := files[0]["bots"].([]any)
+	if len(bots) != 2 || bots[0] != "Lead" || bots[1] != "QA Reviewer" {
+		t.Fatalf("bots not trimmed and filtered: %v", bots)
+	}
+}
+
+func TestMoveBotsNeedsABot(t *testing.T) {
+	outbox := t.TempDir()
+	result := callTool(t, outbox, "move_bots", map[string]any{"bots": []any{" "}, "section": "X"})
+	if result["isError"] != true || len(dropped(t, outbox)) != 0 {
+		t.Fatalf("expected a refusal and nothing dropped: %v", result)
+	}
+}
+
+func TestListBotsShowsSections(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "roster.json")
+	_ = os.WriteFile(file, []byte(`[{"name":"Lead","job":"Runs it","section":"Frontier & Co"},{"name":"Scout","job":""}]`), 0o600)
+	roster = file
+	defer func() { roster = "" }()
+	text := listBots()["content"].([]any)[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "- Lead [section: Frontier & Co]: Runs it") || !strings.Contains(text, "- Scout") {
+		t.Fatalf("roster lines wrong: %q", text)
+	}
+}

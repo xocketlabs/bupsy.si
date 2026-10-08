@@ -1067,7 +1067,8 @@ enum BupsyToolLine: Equatable, Sendable {
     /// From arguments already parsed, so a row that needs more than the line reads them once.
     init(tool: String, arguments: [String: Any]) {
         switch tool {
-        case "ToolSearch", "mcp__bupsy__ask_person", "mcp__bupsy__update_me":
+        // The note bupsy writes when it applies the move says what moved, and what did not.
+        case "ToolSearch", "mcp__bupsy__ask_person", "mcp__bupsy__update_me", "mcp__bupsy__move_bots":
             self = .hidden
         case "mcp__bupsy__message_bot":
             self = .messaged(to: arguments["to"] as? String ?? "a bot", text: arguments["text"] as? String ?? "")

@@ -2195,6 +2195,8 @@ final class AppModel {
                 self?.receiveQuestion(from: from, question: question, options: options)
             case .updateMe(let from, let name, let role, let job):
                 self?.receiveUpdate(from: from, name: name, role: role, job: job)
+            case .moveBots(let from, let names, let section):
+                self?.receiveMove(from: from, names: names, section: section)
             }
         }
         watcher.start()
@@ -2316,6 +2318,51 @@ final class AppModel {
         }
     }
 
+    /// Files bots into a section a bot named, making it if it is new.
+    ///
+    /// Applied at once, like a bot's own name: a section is a sidebar label, and moving a bot
+    /// changes nothing about what it can do. What moved, and any name that matched no bot, is
+    /// noted in the asking bot's chat so the person sees who reorganised their sidebar.
+    func receiveMove(from senderID: String, names: [String], section: String?) {
+        guard let sender = bots.first(where: { $0.id.rawValue == senderID }) else { return }
+        let trimmed = section?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // "Unassigned" is what the sidebar calls no section, so a bot that reads it back and
+        // asks for it means no section rather than a new one by that name.
+        let wantsNone = trimmed.isEmpty || trimmed.caseInsensitiveCompare("Unassigned") == .orderedSame
+        // An existing section by any capitalisation, so "frontier & co" joins "Frontier & Co"
+        // rather than starting a second one beside it.
+        let target: String? = wantsNone ? nil
+            : allSections.first { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+                ?? String(trimmed.prefix(40))
+
+        var moved: [String] = []
+        var missing: [String] = []
+        for name in names {
+            // Exact names only, as for messages: a near miss must not move the wrong bot.
+            guard let bot = bots.first(where: {
+                $0.name.caseInsensitiveCompare(name.trimmingCharacters(in: .whitespaces)) == .orderedSame
+            }) else {
+                missing.append(name)
+                continue
+            }
+            if bot.folder != target { setFolder(bot, target) }
+            if !moved.contains(bot.name) { moved.append(bot.name) }
+        }
+        if let target { addSection(target) }
+
+        let thread = thread(for: sender.id)
+        if !moved.isEmpty {
+            let list = ListFormatter.localizedString(byJoining: moved)
+            thread.entries.append(TranscriptEntry(kind: .note(target.map { "Moved \(list) to \($0)" }
+                ?? "Took \(list) out of their sections")))
+        }
+        if !missing.isEmpty {
+            let list = missing.map { "“\($0)”" }.joined(separator: ", ")
+            thread.entries.append(TranscriptEntry(kind: .failure(EngineFailure(
+                kind: .unknown, message: "No bot named \(list) to move."))))
+        }
+    }
+
     func decideJobChange(_ change: PendingJobChange, allow: Bool) {
         pendingJobChanges.removeAll { $0.id == change.id }
         guard let current = bots.first(where: { $0.id == change.bot.id }) else { return }
@@ -2426,10 +2473,11 @@ final class AppModel {
 
     /// Writes the roster `list_bots` reads, leaving out the bot that is asking.
     ///
-    /// Names and jobs only — what the sidebar already shows. Nothing from any conversation.
+    /// Names, sections and jobs only — what the sidebar already shows. Nothing from any
+    /// conversation.
     private func writeRoster(excluding bot: Bot) -> String? {
         let entries = bots.filter { $0.id != bot.id && !$0.hidden }.map {
-            ["name": $0.name, "job": $0.personaPrompt ?? ""]
+            ["name": $0.name, "job": $0.personaPrompt ?? "", "section": $0.folder ?? ""]
         }
         guard let data = try? JSONSerialization.data(withJSONObject: entries) else { return nil }
         let url = OutboxWatcher.rosterFile

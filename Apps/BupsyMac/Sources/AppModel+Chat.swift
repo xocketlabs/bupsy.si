@@ -201,6 +201,8 @@ enum ChatLiveStatus {
             return "Messaging a bot"
         case "mcp__bupsy__ask_person":
             return "Asking you"
+        case "mcp__bupsy__move_bots":
+            return "Tidying the sidebar"
         case "ToolSearch", "mcp__bupsy__update_me", "mcp__bupsy__create_bot", "mcp__bupsy__list_bots":
             return "Working"
         default:
