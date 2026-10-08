@@ -37,6 +37,15 @@ PR as the change; the release moves it under a version.
   background priority, so your own apps stay quick while bots work hard. A bot with the Mac to
   itself still gets all of it. Measured: three bots' headless Chrome took about seven cores while
   the app itself used a tenth of one.
+**Bupsy for Windows and Linux, first build (in development, not downloadable yet)**
+- `bupsy-desktop` runs your bots on a Windows or Linux computer and opens them in your browser,
+  using the same page your phone uses with the Mac: chats, sending messages, Allow/Deny, Stop.
+- It listens on this computer alone (127.0.0.1), and the browser is paired once like a phone,
+  because your bots can reach this computer's own addresses too and must not answer their own
+  approvals.
+- Claude bots ask before acting, through the same approval hook and the same trust levels as on
+  the Mac; Codex bots are held by their sandbox. There is no screen for making a bot yet:
+  `bupsy-desktop --new-bot "Name" --engine codex --job "…"` makes one.
 
 **Use Bupsy from your phone or another Mac**
 - Settings › Use from other devices: one switch shares Bupsy with your own devices over Tailscale.

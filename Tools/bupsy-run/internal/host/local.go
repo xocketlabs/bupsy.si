@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"runtime"
 	"sync"
 
 	"github.com/xocketlabs/bupsy.si/tools/bupsy-run/internal/engine"
@@ -31,8 +32,16 @@ func RunResolved(
 	req engine.Request,
 	emit func(engine.Event),
 ) error {
+	if runtime.GOOS == "windows" {
+		var err error
+		if path, args, err = unshim(path, args); err != nil {
+			return err
+		}
+	}
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = req.WorkingDir
+	// Cancelling stops the engine's whole process tree, not just the engine. See proc_*.go.
+	configure(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

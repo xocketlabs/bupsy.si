@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -50,12 +51,16 @@ func Install(dir string, timeoutSeconds int) (string, error) {
 	}
 
 	script := filepath.Join(dir, "gate.sh")
-	if err := os.WriteFile(script, []byte(ShellScript(dir, timeoutSeconds)), 0o755); err != nil {
+	// What the shell sees. On Windows the hook runs under Git Bash, which reads "C:/Users/..."
+	// as plainly as Windows does, while backslashes would be escapes to it — so the paths baked
+	// into the script and the hook command use forward slashes there. Elsewhere this is a no-op.
+	shellDir, shellScript := shellPath(dir), shellPath(script)
+	if err := os.WriteFile(script, []byte(ShellScript(shellDir, timeoutSeconds)), 0o755); err != nil {
 		return "", err
 	}
 
 	settings := filepath.Join(dir, "settings.json")
-	payload, err := SettingsJSON(script)
+	payload, err := SettingsJSON(shellScript)
 	if err != nil {
 		return "", err
 	}
@@ -63,6 +68,14 @@ func Install(dir string, timeoutSeconds int) (string, error) {
 		return "", err
 	}
 	return settings, nil
+}
+
+// shellPath is a native path as sh should be handed it.
+func shellPath(path string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.ToSlash(path)
+	}
+	return path
 }
 
 // SettingsJSON renders the settings file installing the hook.
@@ -148,7 +161,7 @@ ID="$$-$(date +%%s)-$(awk 'BEGIN{srand();printf "%%d", rand()*100000}')"
 PENDING="$GATE/pending/$ID.json"
 DECISION="$GATE/decisions/$ID.json"
 
-mkdir -p "$GATE/pending" "$GATE/decisions" || fail "cannot create $GATE"
+mkdir -p "$GATE/pending" "$GATE/decisions" "$GATE/expired" || fail "cannot create $GATE"
 
 # Write atomically: the watcher polls this directory and must never read half a file.
 cat > "$PENDING.part" || fail "cannot write the request"
@@ -170,6 +183,9 @@ while [ "$i" -lt %d ]; do
 done
 
 rm -f "$PENDING"
+# Tells the app this one was denied for lack of an answer, so its card can settle. Best effort:
+# the denial below is what matters, and it must not wait on this.
+mkdir -p "$GATE/expired" && : > "$GATE/expired/$ID"
 printf '%%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"bupsy: nobody approved this in time, so it was denied"}}' || fail "cannot print the denial"
 exit 0
 `, dir, timeoutSeconds)

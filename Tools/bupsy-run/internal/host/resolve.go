@@ -16,7 +16,8 @@ import (
 // user's shell PATH, so a tool the user installed and can run in Terminal is invisible to it.
 // Every candidate directory below is one an engine installer actually uses.
 func Resolve(name string) (string, error) {
-	if strings.ContainsRune(name, filepath.Separator) {
+	// A path rather than a name. Windows accepts either slash, so both count there.
+	if strings.ContainsRune(name, filepath.Separator) || strings.ContainsRune(name, '/') {
 		if info, err := os.Stat(name); err == nil && !info.IsDir() {
 			return name, nil
 		}
@@ -34,6 +35,19 @@ func Resolve(name string) (string, error) {
 		"/bin", // some shell builtins resolve here only
 		"/sbin",
 		"/usr/sbin",
+	}
+	if runtime.GOOS == "windows" {
+		// Where npm puts global installs by default, and where the native installers go. A
+		// program started from the Start menu does get the user's PATH on Windows, but one
+		// installed a moment ago is not on it until the next sign-in.
+		for _, env := range []string{"APPDATA", "LOCALAPPDATA"} {
+			if base := os.Getenv(env); base != "" {
+				candidates = append(candidates, filepath.Join(base, "npm"))
+			}
+		}
+		if base := os.Getenv("LOCALAPPDATA"); base != "" {
+			candidates = append(candidates, filepath.Join(base, "Programs", name))
+		}
 	}
 	for _, dir := range candidates {
 		for _, candidate := range withExecutableSuffixes(filepath.Join(dir, name)) {
@@ -73,9 +87,13 @@ func Resolve(name string) (string, error) {
 // `claude` installed through npm on Windows is a `.cmd` shim, not an `.exe`, and it carries no
 // execute bit for a Unix-style check to find. A resolver that only looked for the bare name would
 // report the engine as missing on a machine where it works fine from a prompt.
+//
+// An `.exe` wins over a shim beside it: it takes its arguments as given, where a batch file hands
+// them to cmd.exe to re-read (see unshim). `.ps1` is not offered, because a PowerShell script is
+// not something a process can be started from directly.
 func withExecutableSuffixes(path string) []string {
 	if runtime.GOOS != "windows" {
 		return []string{path}
 	}
-	return []string{path + ".cmd", path + ".exe", path + ".bat", path + ".ps1", path}
+	return []string{path + ".exe", path + ".cmd", path + ".bat", path}
 }
