@@ -20,6 +20,8 @@ enum ThreadLayout {
     static let messageFont = Font.system(size: messageSize)
     static let metaFont = Font.system(size: Theme.scaled(12.5))
     static let monoFont = Font.system(size: Theme.scaled(11.5), design: .monospaced)
+    /// Inside a message bubble: a little more across than down, as messaging apps pad them.
+    static let bubblePadding = CGSize(width: 13, height: 8)
 }
 
 /// What one transcript row needs to know about the rows around it, worked out once per thread
@@ -279,5 +281,52 @@ struct ThreadComposerPeek: View {
             .frame(width: 10, height: 7)
             .rotationEffect(.degrees(angle))
             .offset(x: x, y: visible - 3)
+    }
+}
+
+/// A message bubble, with a small tail at its top corner on the side it was sent from.
+///
+/// The tail is drawn outside the rect, `tailWidth` past the edge, so whoever places a tailed
+/// bubble leaves that much room beside it. Only the first message of a run carries one, the way
+/// a messaging app marks who started speaking.
+struct ChatBubbleShape: Shape {
+    enum Tail { case none, leading, trailing }
+
+    var tail: Tail
+    var radius: CGFloat = Theme.Radius.bubble
+
+    static let tailWidth: CGFloat = 7
+    static let tailHeight: CGFloat = 11
+    /// The corner the tail grows from, nearly square so the two join cleanly.
+    private static let tailCorner: CGFloat = 3
+
+    func path(in rect: CGRect) -> Path {
+        let small = Self.tailCorner
+        let radii: RectangleCornerRadii = switch tail {
+        case .none: .init(topLeading: radius, bottomLeading: radius, bottomTrailing: radius, topTrailing: radius)
+        case .leading: .init(topLeading: small, bottomLeading: radius, bottomTrailing: radius, topTrailing: radius)
+        case .trailing: .init(topLeading: radius, bottomLeading: radius, bottomTrailing: radius, topTrailing: small)
+        }
+        var path = UnevenRoundedRectangle(cornerRadii: radii, style: .continuous).path(in: rect)
+        let width = Self.tailWidth, height = Self.tailHeight
+        switch tail {
+        case .none:
+            break
+        case .leading:
+            path.move(to: CGPoint(x: rect.minX + small, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.minX - width + 1.5, y: rect.minY))
+            path.addQuadCurve(to: CGPoint(x: rect.minX - width + 1, y: rect.minY + 1.5),
+                              control: CGPoint(x: rect.minX - width, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + height))
+            path.closeSubpath()
+        case .trailing:
+            path.move(to: CGPoint(x: rect.maxX - small, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX + width - 1.5, y: rect.minY))
+            path.addQuadCurve(to: CGPoint(x: rect.maxX + width - 1, y: rect.minY + 1.5),
+                              control: CGPoint(x: rect.maxX + width, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + height))
+            path.closeSubpath()
+        }
+        return path
     }
 }
