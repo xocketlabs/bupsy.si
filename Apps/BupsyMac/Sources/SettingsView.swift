@@ -32,6 +32,7 @@ private struct SettingsContent: View {
                 RemoteSettingsSection()
                 LinkedMacsSection()
                 LidSleepSection()
+                VoiceSettingsSection()
                 about
             }
             .padding(Theme.Space.section)

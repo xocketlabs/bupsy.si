@@ -1549,6 +1549,12 @@ final class AppModel {
                     if !byPause { Task { @MainActor [weak self] in self?.botBecameFree(bot) } }
                 } else {
                     onFinish?(reply)
+                    // Read aloud when asked to, and only the chat on screen: a roster of bots
+                    // finishing at once must not all talk over each other.
+                    if VoiceOutput.readsReplies, groupID == nil, selectedBotID == bot.id,
+                       !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VoiceOutput.shared.speak(reply)
+                    }
                     // Next tick, so whatever onFinish started (a group hand-off) claims the bot
                     // first.
                     Task { @MainActor [weak self] in self?.botBecameFree(bot) }
