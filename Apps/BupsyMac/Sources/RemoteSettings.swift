@@ -24,6 +24,8 @@ struct RemoteSettingsSection: View {
                                 .foregroundStyle(palette.mutedForeground)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        // The words take the row, so the switch sits at the card's edge.
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .bupsySwitch()
 
@@ -184,6 +186,7 @@ struct LidSleepSection: View {
                                 .foregroundStyle(palette.mutedForeground)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .bupsySwitch()
                     .disabled(availability != .ready)
@@ -389,6 +392,7 @@ struct VoiceSettingsSection: View {
                                 .foregroundStyle(palette.mutedForeground)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .bupsySwitch()
                     HStack(spacing: Theme.Space.snug) {

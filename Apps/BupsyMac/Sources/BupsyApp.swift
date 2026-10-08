@@ -63,6 +63,11 @@ struct BupsyApp: App {
                 NewChatCommand().environment(model)
                 ContinueClaudeCommand().environment(model)
             }
+            // Bupsy > Settings, Cmd comma. Settings is a page in the window, so there is no
+            // `Settings` scene to provide this item, and SwiftUI leaves it out without one.
+            CommandGroup(replacing: .appSettings) {
+                SettingsCommand().environment(model)
+            }
             // Bupsy > Pause all bots, beside Settings. No shortcut: it is not something to hit by
             // accident, and every obvious one is taken.
             CommandGroup(after: .appSettings) {
@@ -74,13 +79,6 @@ struct BupsyApp: App {
                 }
                 .keyboardShortcut("/", modifiers: .command)
             }
-        }
-
-        // Bupsy > Settings, Cmd comma. The scene provides both the menu item and the shortcut.
-        Settings {
-            SettingsView()
-                .environment(model)
-                .preferredColorScheme(model.appearance.scheme)
         }
 
         // Present whether or not the window is. A bot that works for ten minutes and then asks a
@@ -179,6 +177,22 @@ private struct ContinueClaudeCommand: View {
             model.claudeChatsRequest = UUID()
         }
         .keyboardShortcut("o", modifiers: [.command, .shift])
+    }
+}
+
+/// Bupsy > Settings…, Cmd comma. Reopens the window if it was closed, then goes to Settings, on
+/// whichever pane it was last left on.
+private struct SettingsCommand: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Settings…") {
+            openWindow(id: MainWindow.id)
+            NSApp.activate(ignoringOtherApps: true)
+            model.openSettings()
+        }
+        .keyboardShortcut(",", modifiers: .command)
     }
 }
 
@@ -549,6 +563,9 @@ struct RootView: View {
         case .usage:
             // Draws its own topbar, so the breadcrumb can carry the period it is showing.
             floating { UsageSheet() }
+        case .settings:
+            // Draws its own topbar too, for the pane in the breadcrumb.
+            floating { SettingsPage() }
         case .team:
             floating { TeamView(onOpen: { openBot($0) }) }
         case .groups:

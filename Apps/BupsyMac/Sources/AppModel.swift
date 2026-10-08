@@ -66,6 +66,9 @@ final class AppModel {
     var claudeChatsRequest: UUID?
     /// Set by `showMainWindow()`: the menu bar icon reopens the main window if it was closed.
     var windowRequest: UUID?
+    /// The Settings pane on screen. Kept here rather than in the page, so `openSettings(_:)` can
+    /// choose it from anywhere and leaving Settings and coming back finds the same pane.
+    var settingsPane: SettingsPane = .appearance
 
     // Hooks for the debug tour (TourMode); nil in normal use.
     var tourDestination: NavRail.Destination?

@@ -31,6 +31,10 @@ enum TourMode {
                 Step(name: "chat-\(suffix)", appearance: look) { m in reset(m); if let bot { m.tourDestination = .bot(bot.id) } },
                 Step(name: "panel-details-\(suffix)", appearance: look) { m in reset(m); m.tourDetails = .details },
                 Step(name: "palette-\(suffix)", appearance: look) { m in reset(m); m.tourPalette = false },
+                // Settings, on its fullest pane, in both looks for the cards' contrast.
+                Step(name: "settings-\(suffix)", appearance: look) { m in
+                    reset(m); m.settingsPane = .engines; m.tourDestination = .settings
+                },
             ]
             if let group {
                 steps.append(Step(name: "group-\(suffix)", appearance: look) { m in reset(m); m.tourDestination = .group(group.id) })
@@ -180,6 +184,14 @@ enum TourMode {
             Step(name: "usage", appearance: .light) { m in reset(m); m.tourDestination = .usage },
             Step(name: "machines", appearance: .light) { m in reset(m); m.tourDestination = .machines },
             Step(name: "permissions", appearance: .light) { m in reset(m); m.tourDestination = .permissions },
+        ]
+        // Every other Settings pane, so a pane that clips or crowds shows up here.
+        for pane in SettingsPane.allCases where pane != .engines {
+            steps.append(Step(name: "settings-\(pane.rawValue)", appearance: .light) { m in
+                reset(m); m.settingsPane = pane; m.tourDestination = .settings
+            })
+        }
+        steps += [
             Step(name: "new-bot", appearance: .light) { m in reset(m); if let bot { m.tourDestination = .bot(bot.id) }; m.tourSheet = "newBot" },
             Step(name: "new-group", appearance: .light) { m in reset(m); m.tourSheet = "newGroup" },
             Step(name: "new-routine", appearance: .light) { m in reset(m); m.tourSheet = "newRoutine" },
