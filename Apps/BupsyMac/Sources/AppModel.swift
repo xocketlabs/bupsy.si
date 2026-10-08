@@ -1235,8 +1235,10 @@ final class AppModel {
         // anything else typed meanwhile, the moment the current run ends.
         if running[bot.id] != nil {
             let thread = thread(for: bot.id)
-            thread.entries.append(TranscriptEntry(kind: .userMessage(prompt)))
+            let entry = TranscriptEntry(kind: .userMessage(prompt))
+            thread.entries.append(entry)
             queued[bot.id, default: []].append(prompt)
+            queuedEntries[bot.id, default: []].append(entry.id)
             if queuedNote[bot.id] == nil {
                 let note = TranscriptEntry(kind: .note("Queued. \(bot.name) reads this when it's done."))
                 queuedNote[bot.id] = note.id
@@ -1279,15 +1281,40 @@ final class AppModel {
     /// Messages typed while a bot was busy, waiting to go to it together.
     private var queued: [BotID: [String]] = [:]
     private var queuedNote: [BotID: UUID] = [:]
+    /// The thread rows of those messages, so Edit can take them back out.
+    private var queuedEntries: [BotID: [UUID]] = [:]
     /// Work waiting for a bot that was busy elsewhere — a group turn, say. Run in order as it frees.
     private var waitingForBot: [BotID: [@MainActor () -> Void]] = [:]
 
     func queuedCount(for bot: Bot) -> Int { queued[bot.id]?.count ?? 0 }
 
+    /// Stops what the bot is doing so what you queued goes now, instead of after it finishes.
+    ///
+    /// Stopping already sends the queue on: the run's cleanup frees the bot and the queued
+    /// messages start the next run, resuming the same conversation, so the bot reads them with
+    /// everything it had done so far.
+    func sendQueuedNow(_ bot: Bot) {
+        guard running[bot.id] != nil, queuedCount(for: bot) > 0 else { return }
+        thread(for: bot.id).entries.append(TranscriptEntry(kind: .note(
+            "You sent this now. \(bot.name) stopped what it was doing to read it.")))
+        stop(bot.id)
+    }
+
+    /// Takes queued messages back out of the thread and the queue, and returns their text for
+    /// the message box, so a message sent too soon can be changed rather than chased.
+    func takeBackQueued(_ bot: Bot) -> String? {
+        guard let messages = queued.removeValue(forKey: bot.id), !messages.isEmpty else { return nil }
+        let ids = Set(queuedEntries.removeValue(forKey: bot.id) ?? [])
+            .union(queuedNote.removeValue(forKey: bot.id).map { [$0] } ?? [])
+        thread(for: bot.id).entries.removeAll { ids.contains($0.id) }
+        return messages.joined(separator: "\n\n")
+    }
+
     /// Called when a bot's run ends: queued messages first, then anything else that waited for it.
     private func botBecameFree(_ bot: Bot) {
         guard running[bot.id] == nil else { return }
         if let messages = queued.removeValue(forKey: bot.id), let prompt = QueuedMessages.prompt(messages) {
+            queuedEntries[bot.id] = nil
             let thread = thread(for: bot.id)
             if let note = queuedNote.removeValue(forKey: bot.id) {
                 thread.entries.removeAll { $0.id == note }

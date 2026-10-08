@@ -687,6 +687,9 @@ struct BotPage: View {
                                            context: rows.indices.contains(index) ? rows[index] : nil,
                                            onReply: { author, text in
                                                replyingTo = ReplyTarget(author: author, text: text)
+                                           },
+                                           onEditQueued: { text in
+                                               draft = draft.isEmpty ? text : text + "\n\n" + draft
                                            })
                                 }
                                 .padding(.top, gap(before: index))
