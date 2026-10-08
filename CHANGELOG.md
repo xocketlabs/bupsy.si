@@ -5,6 +5,20 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Use Bupsy from your phone or another Mac**
+- Settings › Use from other devices: one switch shares Bupsy with your own devices over Tailscale.
+  Open the address on your phone (add it to the Home Screen and it opens like an app) or another
+  Mac: your bots, live chats, sending messages, Allow/Deny on approvals, answering questions, Stop.
+- Only your devices can reach it: Bupsy listens on this Mac alone, and Tailscale Serve (never
+  Funnel) carries it over your private network with HTTPS, on its own port (8443), leaving anything
+  else you serve alone. Each device is paired once with a QR code or a 6-character code; a code
+  works once, for 10 minutes, and a few wrong guesses retire it. Devices can be removed any time.
+
+**Survive sleep**
+- Settings › Keep working with the lid closed: a switch that keeps this Mac running with the lid
+  shut, so bots keep working. It uses Sleepless's one-time permission, so Bupsy never asks for
+  your password or holds administrator rights.
+
 **Snappier switching**
 - A click on a bot answers at once in the sidebar, and the chat follows a frame later with a
   quick fade in: before, nothing on screen moved until the whole new chat was built.

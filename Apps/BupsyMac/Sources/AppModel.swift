@@ -2211,6 +2211,9 @@ final class AppModel {
             ?? Bundle.main.url(forResource: "bupsy-mcp", withExtension: nil)?.path
     }
 
+    /// Using Bupsy from the person's other devices, over Tailscale. See `RemoteAccess`.
+    @ObservationIgnored lazy var remote = RemoteAccess(model: self)
+
     /// Starts listening for messages bots want to send each other.
     func startOutbox() {
         guard outbox == nil else { return }

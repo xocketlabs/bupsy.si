@@ -5,8 +5,8 @@ import SwiftUI
 
 /// Bupsy > Settings (Cmd comma).
 ///
-/// Only what the app really has today: how it looks, which engines are signed in, and what
-/// build this is. Each engine's own sign-in and sign-out run its CLI in Terminal (see
+/// Only what the app really has today: how it looks, which engines are signed in, using it from
+/// other devices, keeping the Mac awake with the lid closed, and what build this is. Each engine's own sign-in and sign-out run its CLI in Terminal (see
 /// `AppModel+Account.swift`); this window shows the verdict and never anything more.
 struct SettingsView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -29,6 +29,8 @@ private struct SettingsContent: View {
             VStack(alignment: .leading, spacing: Theme.Space.section) {
                 appearance
                 engines
+                RemoteSettingsSection()
+                LidSleepSection()
                 about
             }
             .padding(Theme.Space.section)
