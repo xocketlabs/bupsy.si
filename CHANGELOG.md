@@ -20,6 +20,11 @@ PR as the change; the release moves it under a version.
   bot's on the left in grey beside its face. The first bubble of a run has a small tail and the
   bot's name in its colour; every bubble has its time in the corner.
 - Code blocks inside a bubble stay a clear recess in light mode.
+**Run commands from a reply**
+- A command in a bot's reply has a Run button beside Copy. It runs in that bot's folder through
+  your login shell, and its output appears under the command, with Stop while it runs.
+- Commands that delete, use sudo, pipe a download into a shell or push ask once before running.
+- Only for bots on this Mac; a cloud machine's files aren't here.
 
 **Your own browser, and replies you can copy**
 - A bot on this Mac can use your own browser: Claude through Claude in Chrome, Codex through its

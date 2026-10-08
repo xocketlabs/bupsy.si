@@ -276,6 +276,9 @@ struct Bubble: View {
         case .assistantText(let text):
             botMessage(actionText: text) {
                 FormattedReply(markdown: text)
+                    // Commands in a reply run in this bot's folder, when that folder is here.
+                    .environment(\.commandDirectory,
+                                 bot.machineID == nil ? model.workingDirectory(for: bot) : nil)
             } trailing: {
                 replyButton(author: bot.name, text: text)
             }

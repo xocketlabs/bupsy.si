@@ -309,6 +309,15 @@ struct CodeBlock: View {
     let language: String?
     let text: String
     @State private var copied = false
+    /// Where Run runs, from the bot's chat; nil hides Run.
+    @Environment(\.commandDirectory) private var commandDirectory
+    @State private var run: CommandRun?
+    @State private var confirmingRun = false
+
+    /// The command this block holds, when it is one and this chat may run it.
+    private var command: String? {
+        commandDirectory == nil ? nil : ShellCommand.command(language: language, text: text)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -331,6 +340,30 @@ struct CodeBlock: View {
                 .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
                 .help("Copy this code")
                 .accessibilityLabel(copied ? "Copied" : "Copy code")
+                // Run it here rather than copying it into a terminal.
+                if let command, let directory = commandDirectory {
+                    Button {
+                        if ShellCommand.needsConfirmation(command) { confirmingRun = true } else { start(command, in: directory) }
+                    } label: {
+                        HStack(spacing: Theme.Space.xs) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: Theme.scaled(8.5), weight: .semibold))
+                            Text("Run")
+                        }
+                        .font(Theme.Typography.caption.weight(.medium))
+                        .foregroundStyle(palette.primary)
+                    }
+                    .buttonStyle(BupsyButtonStyle(kind: .ghost, size: .sm))
+                    .disabled(run?.isRunning == true)
+                    .help("Run this in \(directory.lastPathComponent)")
+                    .accessibilityLabel("Run command")
+                    .confirmationDialog("Run this command?", isPresented: $confirmingRun) {
+                        Button("Run") { start(command, in: directory) }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("It may delete or change things outside this chat:\n\n\(command)")
+                    }
+                }
             }
             .padding(.leading, Theme.Space.step)
             .padding(.trailing, Theme.Space.tight)
@@ -354,11 +387,21 @@ struct CodeBlock: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let run {
+                CommandRunOutput(run: run) { self.run = nil }
+            }
         }
         // A recess inside the grey bubble: the page's white in light, where the rail's colour is
         // nearly the bubble's own and the block disappeared; the near-black rail in dark.
         .background(colorScheme == .dark ? palette.sidebar : palette.background,
                     in: .rect(cornerRadius: Theme.Radius.control))
+    }
+
+    private func start(_ command: String, in directory: URL) {
+        let fresh = CommandRun()
+        run = fresh
+        fresh.start(command, in: directory)
     }
 
     private func copy() {
