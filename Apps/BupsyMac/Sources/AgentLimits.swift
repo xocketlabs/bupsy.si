@@ -16,23 +16,28 @@ struct AgentLimitsCard: View {
     let limits: RateLimit?
     @State private var expanded = false
 
-    /// The context window, when it is known. Claude Code models carry a 200k window unless the
-    /// model ID asks for 1M. Other engines do not say, and a guessed size would be a confident
-    /// wrong number, so their card shows only the plan limits.
-    static func contextCapacity(for bot: Bot) -> Int? {
+    /// The context window, when it is known. The engine's own figure first; failing that, Claude
+    /// Code models carry a 200k window unless the model ID asks for 1M. Other engines do not say,
+    /// and a guessed size would be a confident wrong number, so their card shows only the plan
+    /// limits.
+    static func contextCapacity(for bot: Bot, reported: Int? = nil) -> Int? {
+        if let reported, reported > 0 { return reported }
         guard bot.engine == .claude else { return nil }
         return (bot.model ?? "").lowercased().contains("1m") ? 1_000_000 : 200_000
     }
 
-    private var capacity: Int? { Self.contextCapacity(for: bot) }
+    /// The last call's context, never the run's totals, which count it once per step.
+    private var context: ContextUse? { usage?.context }
+
+    private var capacity: Int? { Self.contextCapacity(for: bot, reported: context?.window) }
 
     private struct Segment: Identifiable { let id: String; let tokens: Int; let colour: Color }
 
     private var segments: [Segment] {
-        guard let usage else { return [] }
-        let cached = usage.cachedInputTokens ?? 0
-        let input = max(0, (usage.inputTokens ?? 0) - cached)
-        let reply = usage.outputTokens ?? 0
+        guard let context else { return [] }
+        let cached = context.cachedTokens
+        let input = context.newTokens
+        let reply = context.replyTokens
         return [
             Segment(id: "Reused from earlier", tokens: cached, colour: palette.info),
             Segment(id: "New this turn", tokens: input, colour: palette.primary),
@@ -44,8 +49,8 @@ struct AgentLimitsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if usage != nil, let capacity { context(capacity) }
-            if usage != nil, capacity != nil, let limits, !limits.windows.isEmpty {
+            if context != nil, let capacity { contextMeter(capacity) }
+            if context != nil, capacity != nil, let limits, !limits.windows.isEmpty {
                 Rectangle().fill(palette.border).frame(height: 1).padding(.horizontal, Theme.Space.step)
             }
             if let limits, !limits.windows.isEmpty { plan(limits) }
@@ -53,7 +58,7 @@ struct AgentLimitsCard: View {
         .background(palette.card, in: .rect(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
-    private func context(_ capacity: Int) -> some View {
+    private func contextMeter(_ capacity: Int) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.compact) {
             Button {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { expanded.toggle() }
@@ -78,10 +83,13 @@ struct AgentLimitsCard: View {
             .help(expanded ? "Hide the breakdown" : "Show the breakdown")
 
             GeometryReader { proxy in
+                // Never wider than the track: a context past its window (or a wrong window
+                // size) fills the bar rather than running off the card.
+                let scale = proxy.size.width / CGFloat(max(capacity, used))
                 HStack(spacing: 1.5) {
                     ForEach(segments) { segment in
                         Rectangle().fill(segment.colour)
-                            .frame(width: max(2, proxy.size.width * CGFloat(segment.tokens) / CGFloat(capacity)))
+                            .frame(width: max(2, CGFloat(segment.tokens) * scale))
                     }
                     Spacer(minLength: 0)
                 }

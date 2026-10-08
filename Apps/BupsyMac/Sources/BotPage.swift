@@ -375,13 +375,13 @@ struct BotPage: View {
 
         if !windows.isEmpty || !counted.isEmpty {
             VStack(alignment: .leading, spacing: Theme.Space.gutter) {
-                // The live figure if a run reported one this session, else the last saved run's.
-                let lastUsage = thread.latestUsage ?? runs.first.flatMap { run in
-                    run.inputTokens.map { Usage(inputTokens: $0, outputTokens: run.outputTokens) }
-                }
+                // Only a live figure: a saved run keeps its totals, which add up every step of
+                // the run and so read as many times the real context.
+                let lastUsage = thread.latestUsage
                 // The context half needs a known window size; without one the card shows only the
                 // plan limits, and nothing at all when there are none.
-                if (lastUsage != nil && AgentLimitsCard.contextCapacity(for: bot) != nil)
+                if (lastUsage?.context != nil
+                    && AgentLimitsCard.contextCapacity(for: bot, reported: lastUsage?.context?.window) != nil)
                     || !windows.isEmpty {
                     AgentLimitsCard(bot: bot, usage: lastUsage, limits: thread.latestLimits)
                 }

@@ -210,3 +210,27 @@ struct ContractTests {
         #expect(ClaudeAdapter().binaryName == "claude")
     }
 }
+
+@Suite("Context window from a run's result")
+struct ClaudeContextTests {
+    @Test("the context is the last call's, not the run's summed totals")
+    func lastCall() throws {
+        let line = #"{"type":"result","subtype":"success","usage":{"input_tokens":30,"cache_read_input_tokens":3000000,"cache_creation_input_tokens":800000,"output_tokens":9000,"iterations":[{"input_tokens":2,"cache_read_input_tokens":20000,"cache_creation_input_tokens":5000,"output_tokens":100},{"input_tokens":3,"cache_read_input_tokens":180000,"cache_creation_input_tokens":4000,"output_tokens":700}]},"modelUsage":{"claude-haiku-4-5":{"contextWindow":200000},"claude-opus-5-5":{"contextWindow":1000000}}}"#
+        let usage = ClaudeAdapter.usage(from: try #require(JSONLine(line)))
+        let context = try #require(usage.context)
+        #expect(context.cachedTokens == 180_000)
+        #expect(context.newTokens == 4_003)
+        #expect(context.replyTokens == 700)
+        #expect(context.total == 184_703)
+        // The main model's window, not the side model's.
+        #expect(context.window == 1_000_000)
+        // The run totals are still the run totals.
+        #expect(usage.inputTokens == 3_800_030)
+    }
+
+    @Test("no list of calls means no context figure, rather than the totals")
+    func noIterations() throws {
+        let line = #"{"type":"result","subtype":"success","usage":{"input_tokens":2,"cache_read_input_tokens":21558,"output_tokens":4}}"#
+        #expect(ClaudeAdapter.usage(from: try #require(JSONLine(line))).context == nil)
+    }
+}
