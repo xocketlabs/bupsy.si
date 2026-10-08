@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Only the keys Xcode can't generate from build settings. Everything else (usage strings, launch
+  screen, orientations) is an INFOPLIST_KEY_ setting in project.yml, merged into this at build time.
+-->
+<plist version="1.0">
+<dict>
+	<!-- Best-effort background refresh: a look at the Mac now and then while the app is closed, to
+	     post a local notification when a bot newly needs the person. This is not push. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>si.bupsy.ios.refresh</string>
+	</array>
+	<!-- Only HTTPS through the system, so TestFlight asks no export compliance questions. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

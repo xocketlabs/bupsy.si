@@ -94,6 +94,24 @@ jobs:
             exit 1
           }
 
+      # The iPhone app shares no code with the Mac app, only the remote API, so nothing else here
+      # would notice it breaking. Built for the simulator, unsigned; its tests need a simulator
+      # runtime, so they run locally (xcodebuild test -scheme BupsyiOS) rather than on every PR.
+      # Same build folder as the Mac app, so the clean-up step below removes this copy too.
+      - name: Build the iPhone app
+        run: |
+          set -o pipefail
+          xcodebuild -project Bupsy.xcodeproj -scheme BupsyiOS \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$GITHUB_WORKSPACE/../bupsy-dd" \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build-ios.log | tail -20 || {
+            grep -E '^/.*: error: ' build-ios.log | sort -u | head -40 | while IFS= read -r line; do
+              file="${line%%:*}"; rest="${line#*:}"; lineno="${rest%%:*}"
+              echo "::error file=${file#"$GITHUB_WORKSPACE"/},line=${lineno}::${line##*: error: }"
+            done
+            exit 1
+          }
+
       # Only on a manual run: a dev DMG anyone with access can download from the run's Artifacts.
       - name: Package a DMG
         if: github.event_name == 'workflow_dispatch'

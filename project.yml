@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: si.bupsy
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
   createIntermediateGroups: true
 
 packages:
@@ -84,3 +85,56 @@ targets:
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 "$GO" build -trimpath -o "$DERIVED_FILE_DIR/bupsy-mcp-arm64" ./cmd/bupsy-mcp
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 "$GO" build -trimpath -o "$DERIVED_FILE_DIR/bupsy-mcp-amd64" ./cmd/bupsy-mcp
           lipo -create "$DERIVED_FILE_DIR/bupsy-mcp-arm64" "$DERIVED_FILE_DIR/bupsy-mcp-amd64" -output "$OUT/bupsy-mcp"
+
+  # The iPhone app. It talks to Bupsy on the person's Mac only through the remote API that
+  # Apps/BupsyMac/Sources/RemoteAccess.swift serves over Tailscale, so it shares no code with
+  # BupsyKit, which links GRDB and macOS-only APIs. The API is the contract between the two.
+  BupsyiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Apps/BupsyiOS/Sources
+      - path: Apps/BupsyiOS/Resources
+    # A scheme of its own so `xcodebuild test -scheme BupsyiOS` runs the client's tests.
+    scheme:
+      testTargets:
+        - BupsyiOSTests
+    settings:
+      base:
+        PRODUCT_NAME: Bupsy
+        PRODUCT_BUNDLE_IDENTIFIER: si.bupsy.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        # iPhone only for now: the layout is one column, and an iPad deserves the two-pane one.
+        TARGETED_DEVICE_FAMILY: "1"
+        # Signing is left to whoever builds for a device: set your team in Xcode, or pass
+        # DEVELOPMENT_TEAM. The simulator and CI build with CODE_SIGNING_ALLOWED=NO.
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Apps/BupsyiOS/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Bupsy
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_NSCameraUsageDescription: Bupsy uses the camera to scan the pairing code your Mac shows.
+        INFOPLIST_KEY_NSFaceIDUsageDescription: Bupsy checks it's you before a bot is allowed to do something on your Mac.
+
+  BupsyiOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Apps/BupsyiOS/Tests
+    dependencies:
+      - target: BupsyiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: si.bupsy.ios.tests
+        # The app's product is "Bupsy", not its target's name, which xcodegen would assume.
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Bupsy.app/Bupsy
+        BUNDLE_LOADER: $(TEST_HOST)
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        GENERATE_INFOPLIST_FILE: YES
