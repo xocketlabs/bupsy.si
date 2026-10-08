@@ -62,6 +62,17 @@ struct LocalHostTests {
         #expect(reported == [Int(ProcessBox.niceness)])
     }
 
+    @Test("a bot's run does not inherit the Claude Code session Bupsy was opened from")
+    func dropsHostSession() {
+        let inherited = ["CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "abc", "CLAUDE_CODE_ENTRYPOINT": "claude-vscode",
+                         "CLAUDE_CODE_MESSAGING_TOKEN": "t", "VSCODE_PID": "641", "ELECTRON_RUN_AS_NODE": "1",
+                         "PATH": "/usr/bin", "HOME": "/Users/me", "ANTHROPIC_API_KEY": "kept",
+                         "CLAUDE_CODE_USE_BEDROCK": "1"]
+        let cleaned = ProcessBox.withoutHostSession(inherited)
+        #expect(cleaned == ["PATH": "/usr/bin", "HOME": "/Users/me", "ANTHROPIC_API_KEY": "kept",
+                            "CLAUDE_CODE_USE_BEDROCK": "1"])
+    }
+
     @Test("writes provided stdin through before closing it")
     func forwardsStdin() async throws {
         let output = try await collect(

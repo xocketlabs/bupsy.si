@@ -61,6 +61,7 @@ struct BupsyApp: App {
             // Cmd N starts a chat, as the rail's plus does, instead of File > New Window.
             CommandGroup(replacing: .newItem) {
                 NewChatCommand().environment(model)
+                ContinueClaudeCommand().environment(model)
             }
             // Bupsy > Pause all bots, beside Settings. No shortcut: it is not something to hit by
             // accident, and every obvious one is taken.
@@ -166,6 +167,21 @@ private struct NewChatCommand: View {
     }
 }
 
+/// File > Continue a Claude Code Chat, Shift Cmd O.
+private struct ContinueClaudeCommand: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Continue a Claude Code Chat…") {
+            openWindow(id: MainWindow.id)
+            NSApp.activate(ignoringOtherApps: true)
+            model.claudeChatsRequest = UUID()
+        }
+        .keyboardShortcut("o", modifiers: [.command, .shift])
+    }
+}
+
 /// Bupsy > Pause all bots, or Resume bots while paused. The same toggle as the menu bar's.
 private struct PauseCommand: View {
     @Environment(AppModel.self) private var model
@@ -184,6 +200,7 @@ private enum RootSheet: Identifiable {
     case onboarding
     case newBot
     case newGroup
+    case claudeChats
     case introduction(AppModel.PendingIntroduction)
     case creation(AppModel.PendingCreation)
     case jobChange(AppModel.PendingJobChange)
@@ -191,6 +208,7 @@ private enum RootSheet: Identifiable {
     var id: String {
         switch self {
         case .onboarding: "onboarding"
+        case .claudeChats: "claudeChats"
         case .newBot: "newBot"
         case .newGroup: "newGroup"
         case .introduction(let item): "introduction-\(item.id.uuidString)"
@@ -218,6 +236,7 @@ struct RootView: View {
     @State private var paletteSearchFirst = false
     @State private var isAddingBot = false
     @State private var isAddingGroup = false
+    @State private var isContinuingClaude = false
 
     /// What the rail highlights when there is nothing to show: a bot id no bot has, so no row
     /// lights up. Falling back to Machines lit Machines while the panel showed the empty roster.
@@ -227,6 +246,10 @@ struct RootView: View {
         content
             .withPalette(colorScheme)
             .onChange(of: model.tourDestination) { _, new in if let new { go(to: new) } }
+            // File › Continue a Claude Code Chat.
+            .onChange(of: model.claudeChatsRequest) { _, new in
+                if new != nil { isContinuingClaude = true; model.claudeChatsRequest = nil }
+            }
             .onChange(of: destination) { _, new in
                 DispatchQueue.main.async { panelDestination = new }
             }
@@ -268,6 +291,7 @@ struct RootView: View {
         if model.needsOnboarding { return .onboarding }
         if isAddingBot { return .newBot }
         if isAddingGroup { return .newGroup }
+        if isContinuingClaude { return .claudeChats }
         if let introduction = model.pendingIntroductions.first { return .introduction(introduction) }
         if let creation = model.pendingCreations.first { return .creation(creation) }
         if let change = model.pendingJobChanges.first { return .jobChange(change) }
@@ -285,6 +309,7 @@ struct RootView: View {
                 // answering them is what removes them from the queue.
                 guard new == nil else { return }
                 if isAddingBot { isAddingBot = false } else if isAddingGroup { isAddingGroup = false }
+                else if isContinuingClaude { isContinuingClaude = false }
             }
         )
     }
@@ -298,6 +323,8 @@ struct RootView: View {
             BotCreatorSheet()
         case .newGroup:
             NewGroupSheet(onCreated: { group in go(to: .group(group.id)) })
+        case .claudeChats:
+            ClaudeChatsSheet(onContinued: { id in go(to: .bot(id)) })
         case .introduction(let introduction):
             // Dismissing without answering would drop the message silently, which is the
             // behaviour this whole feature exists to prevent.
@@ -372,6 +399,10 @@ struct RootView: View {
                     onCreateGroup: {
                         isStartingChat = false
                         isAddingGroup = true
+                    },
+                    onContinueClaude: {
+                        isStartingChat = false
+                        isContinuingClaude = true
                     },
                     onDismiss: { isStartingChat = false }
                 )

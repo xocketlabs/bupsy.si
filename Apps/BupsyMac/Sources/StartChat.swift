@@ -17,6 +17,7 @@ struct StartChatPalette: View {
     let onCreate: () -> Void
     var onCreateManually: () -> Void = {}
     var onCreateGroup: () -> Void = {}
+    var onContinueClaude: () -> Void = {}
     let onDismiss: () -> Void
 
     @State private var query = ""
@@ -183,6 +184,8 @@ struct StartChatPalette: View {
             PaletteItem(kind: .create, section: "Create", title: "New bot", subtitle: "It asks what it's for"),
             PaletteItem(kind: .createGroup, section: "Create", title: "New group chat", subtitle: "Two or more bots, one lead"),
             PaletteItem(kind: .createManually, section: "Create", title: "Set up a bot yourself", subtitle: "Pick its face, job, engine and trust"),
+            PaletteItem(kind: .continueClaude, section: "Create", title: "Continue a Claude Code chat",
+                        subtitle: "From VS Code or the terminal, with everything it knows"),
         ].filter { model.bots.count >= 2 || $0.kind != .createGroup }
 
         let chats: [PaletteItem] = {
@@ -266,6 +269,7 @@ struct StartChatPalette: View {
         case .create: onCreate()
         case .createManually: onCreateManually()
         case .createGroup: onCreateGroup()
+        case .continueClaude: onContinueClaude()
         case .createNamed(let name):
             namedDraft = name
             isCreatingNamed = true
@@ -280,6 +284,7 @@ struct PaletteItem: Identifiable {
         case create
         case createManually
         case createGroup
+        case continueClaude
         case bot(Bot)
         case group(ChatGroup)
         case message(Bot, Date)
@@ -308,6 +313,7 @@ struct PaletteItem: Identifiable {
         case .create: "create"
         case .createManually: "create-manually"
         case .createGroup: "create-group"
+        case .continueClaude: "continue-claude"
         case .bot(let bot): "bot-" + bot.id.rawValue
         case .group(let group): "group-" + group.id
         case .message(let bot, let at): "msg-\(bot.id.rawValue)-\(at.timeIntervalSince1970)"
@@ -379,9 +385,10 @@ private struct PaletteRow: View {
             BotFace(bot: bot, mood: botMood, size: 36, still: botMood == .idle && !highlighted)
         case .group(let group), .groupMessage(let group, _):
             StackedFaces(bots: model.bots.filter { group.memberIDs.contains($0.id) }, size: 30)
-        case .create, .createGroup, .createManually, .createNamed:
+        case .create, .createGroup, .createManually, .createNamed, .continueClaude:
             let symbol = row.kind == .createGroup ? "person.2.fill"
-                : (row.kind == .createManually ? "gearshape.fill" : "plus")
+                : row.kind == .createManually ? "gearshape.fill"
+                : row.kind == .continueClaude ? "arrow.uturn.right" : "plus"
             Image(systemName: symbol)
                 .font(.system(size: Theme.scaled(13), weight: .medium))
                 .foregroundStyle(palette.foreground)

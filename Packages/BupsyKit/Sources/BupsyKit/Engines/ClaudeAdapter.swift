@@ -121,6 +121,7 @@ public struct ClaudeAdapter: EngineAdapter {
         ]
         if let resume = request.resume {
             arguments += ["--resume", resume.rawValue]
+            if request.forkSession { arguments.append("--fork-session") }
         }
         if let model = request.model {
             arguments += ["--model", model]

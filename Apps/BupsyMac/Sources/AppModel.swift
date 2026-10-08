@@ -62,6 +62,8 @@ final class AppModel {
     var navigationRequest: NavigationRequest?
     /// Set by `startChat(searchFirst:)`, the Cmd N command: the root view opens the palette.
     var startChatRequest: StartChatRequest?
+    /// Set by File › Continue a Claude Code Chat; the window opens the sheet and clears it.
+    var claudeChatsRequest: UUID?
     /// Set by `showMainWindow()`: the menu bar icon reopens the main window if it was closed.
     var windowRequest: UUID?
 
@@ -103,7 +105,8 @@ final class AppModel {
     private var routineTimer: Task<Void, Never>?
     private let keychain = KeychainStore()
     private let notifier = Notifier()
-    private let store: Store?
+    /// Internal rather than private so the model's extensions in other files can write to it.
+    let store: Store?
 
     private let host: any ExecutionHost = LocalHost()
     private let adapters: [EngineID: any EngineAdapter] = [
@@ -1462,7 +1465,9 @@ final class AppModel {
             gateSettingsPath: gateSettings,
             onlyGivenApps: bot.onlyBupsyApps,
             // The browser is the one on this Mac; a cloud machine has none to reach.
-            useBrowser: bot.useBrowser && bot.machineID == nil
+            useBrowser: bot.useBrowser && bot.machineID == nil,
+            // A conversation copied from Claude Code forks on its first message here.
+            forkSession: bot.engine == .claude && thread.conversationID != nil && shouldFork(bot.id)
         )
 
         // Hold the Mac awake for the duration, if this bot asks for it. An agent run killed at
@@ -1582,6 +1587,12 @@ final class AppModel {
                     for event in adapter.normalise(output) {
                         thread.apply(event)
                         if case .failed = event { failed = true }
+                        // The copy exists once Claude reports a session of its own: later runs
+                        // continue that copy, never fork the original again.
+                        if case .started(let id) = event, request.forkSession,
+                           id.rawValue != request.resume?.rawValue {
+                            forked(bot.id)
+                        }
                         if case .text(let chunk) = event { reply += chunk }
                         // Claude sends a usage line; Codex reports it only on `.done`.
                         if case .usage(let usage) = event { runUsage = usage }

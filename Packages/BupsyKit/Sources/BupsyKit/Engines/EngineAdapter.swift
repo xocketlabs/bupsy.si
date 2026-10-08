@@ -19,11 +19,14 @@ public struct RunRequest: Sendable {
     /// Let the engine drive the person's own browser through its extension: Claude in Chrome for
     /// Claude, Codex's browser use for Codex. Only meaningful on this Mac, where that browser is.
     public var useBrowser: Bool
+    /// Continue `resume` as a new conversation of its own, leaving the original as it was: how a
+    /// conversation carried over from Claude Code is copied rather than moved.
+    public var forkSession: Bool
 
     public init(prompt: String, workingDirectory: URL? = nil, resume: ConversationID? = nil,
                 model: String? = nil, autonomy: Autonomy = .ask, mcpConfigPaths: [String] = [],
                 gateSettingsPath: String? = nil, onlyGivenApps: Bool = false,
-                useBrowser: Bool = false) {
+                useBrowser: Bool = false, forkSession: Bool = false) {
         self.prompt = prompt
         self.workingDirectory = workingDirectory
         self.resume = resume
@@ -33,6 +36,7 @@ public struct RunRequest: Sendable {
         self.gateSettingsPath = gateSettingsPath
         self.onlyGivenApps = onlyGivenApps
         self.useBrowser = useBrowser
+        self.forkSession = forkSession
     }
 }
 
