@@ -62,22 +62,24 @@ struct BotFace: View {
         self.still = still
     }
 
-    /// How often a live face redraws. A resting face only breathes and blinks, slow motion that
-    /// reads the same at 12 frames a second; at 30 the faces on screen kept an idle app near a
-    /// fifth of a core busy. A face doing something keeps the full rate.
-    static func frameInterval(for mood: BotMood) -> Double {
+    /// Whether a face in this mood moves at all. A resting bot holds still: each moving face
+    /// updates the window every frame, and each update walks the whole view tree, the open
+    /// chat's messages included, which kept an idle app at a quarter of a core even at 12 frames
+    /// a second. Measured on a real roster. Motion is kept for what is worth noticing: working,
+    /// waiting on you, done, failed.
+    static func moves(in mood: BotMood) -> Bool {
         switch mood {
-        case .idle, .sleeping: 1 / 12
-        default: 1 / 30
+        case .idle, .sleeping: false
+        default: true
         }
     }
 
     var body: some View {
         Group {
-            if reduceMotion || still {
+            if reduceMotion || still || !Self.moves(in: mood) {
                 Canvas { context, canvas in draw(in: &context, size: canvas, time: 0.4) }
             } else {
-                TimelineView(.animation(minimumInterval: Self.frameInterval(for: mood))) { timeline in
+                TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
                     Canvas { context, canvas in
                         draw(in: &context, size: canvas,
                              time: timeline.date.timeIntervalSinceReferenceDate)

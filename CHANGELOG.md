@@ -8,8 +8,8 @@ PR as the change; the release moves it under a version.
 **Tables, and a quieter idle**
 - Tables in a reply render as tables: a shaded header and ruled rows, instead of lines of
   pipes and dashes.
-- Resting bot faces redraw 12 times a second instead of 30, so an idle Bupsy uses far less CPU.
-  Faces of bots at work keep the full rate.
+- Resting bot faces hold still, so an idle Bupsy does no work: every moving face updated the
+  whole window each frame. Faces move while a bot works, waits on you, finishes or fails.
 
 **No more blank chats**
 - A long chat could open on an empty pane with every message still there: the lazily built
