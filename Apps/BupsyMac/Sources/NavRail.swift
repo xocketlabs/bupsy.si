@@ -147,6 +147,36 @@ struct NavRail: View {
         .background {
             Color.clear.confirmsSignOut($signingOut, onConfirm: { awaitingAccount = true })
         }
+        // Moving a bot or a section to another Mac: asked from the bot's menus, its details and
+        // a section's menu, so the request lives on the model and is answered here, once.
+        .background {
+            Color.clear.confirmationDialog(
+                model.moveRequest.map(model.moveTitle) ?? "",
+                isPresented: Binding(
+                    get: { model.moveRequest != nil },
+                    set: { if !$0 { model.moveRequest = nil } }),
+                titleVisibility: .visible,
+                presenting: model.moveRequest
+            ) { request in
+                Button("Move to \(request.mac.name)") { model.confirmMove(request) }
+                Button("Cancel", role: .cancel) {}
+            } message: { request in
+                Text(model.moveMessage(request))
+            }
+        }
+        .background {
+            Color.clear.alert(
+                model.moveOutcome?.title ?? "",
+                isPresented: Binding(
+                    get: { model.moveOutcome != nil },
+                    set: { if !$0 { model.moveOutcome = nil } }),
+                presenting: model.moveOutcome
+            ) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { outcome in
+                Text(outcome.message)
+            }
+        }
         .background {
             Color.clear.alert(
                 "That didn't work",
@@ -294,6 +324,15 @@ struct NavRail: View {
                                     model.dissolveFolder(folder)
                                 }
                                 .disabled(!model.bots.contains { $0.folder == folder })
+                                // The whole section to another of the person's Macs, bots and all.
+                                if model.bots.contains(where: { $0.folder == folder }) {
+                                    ForEach(model.moveTargets) { mac in
+                                        Button("Move section to \(mac.name)…") {
+                                            model.askToMove(section: folder, to: mac)
+                                        }
+                                        .disabled(!model.moving.isEmpty)
+                                    }
+                                }
                                 Divider()
                                 // Asks first. Its bots move to Unassigned; nothing is deleted
                                 // but the section.

@@ -179,7 +179,87 @@ public struct RemoteClient: Sendable {
         return path
     }
 
+    // MARK: - Moving a bot there
+
+    /// Tells the other Mac a bot is coming, with the size of the folder to follow, so a Mac
+    /// without room, or with a Bupsy too old to take bots, says so before anything is sent.
+    public func beginMove(_ move: String, bytes: Int64) async throws {
+        let (data, response) = try await send("POST", "/api/moves/\(Self.escape(move))/begin",
+                                              body: ["bytes": bytes], authenticated: true)
+        guard let http = response as? HTTPURLResponse else { throw Failure.unreachable }
+        // An older Bupsy has no such route and answers as it does for anything it does not know.
+        if http.statusCode == 404 {
+            throw Failure.refused("That Mac's Bupsy is too old to take a bot. Update Bupsy there, then try again.")
+        }
+        guard http.statusCode == 200 else { throw Self.failure(http.statusCode, data) }
+    }
+
+    /// Sends the zipped folder in pieces (`BotMove.partBytes`), each saying where it starts, so
+    /// the other Mac can tell a piece that went missing from one that arrived twice.
+    public func sendMoveFiles(_ move: String, archive: URL, progress: (@Sendable (Double) -> Void)? = nil) async throws {
+        let size = Int64((try? archive.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        let handle = try FileHandle(forReadingFrom: archive)
+        defer { try? handle.close() }
+        for part in BotMove.parts(of: size) {
+            try handle.seek(toOffset: UInt64(part.offset))
+            let data = try handle.read(upToCount: part.length) ?? Data()
+            var request = URLRequest(
+                url: Self.url(address, "/api/moves/\(Self.escape(move))/files", query: ["offset": String(part.offset)]),
+                timeoutInterval: 120)
+            request.httpMethod = "POST"
+            request.httpShouldHandleCookies = false
+            if let key { request.setValue("bupsy_device=\(key)", forHTTPHeaderField: "Cookie") }
+            request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            request.httpBody = data
+            let (body, response): (Data, URLResponse)
+            do { (body, response) = try await session.data(for: request) } catch { throw Failure.unreachable }
+            guard let http = response as? HTTPURLResponse else { throw Failure.unreachable }
+            guard http.statusCode == 200 else { throw Self.failure(http.statusCode, body) }
+            progress?(Double(part.offset + Int64(part.length)) / Double(max(size, 1)))
+        }
+    }
+
+    /// Hands over the bot itself. Asked again once if the answer is lost on the way back: the
+    /// other Mac remembers a move it finished and answers the same, rather than making a second
+    /// copy, so a retry is safe.
+    public func finishMove(_ move: String, manifest: BotMoveManifest) async throws -> BotMoveReceipt {
+        let body = try BotMove.encoder.encode(manifest)
+        var lastFailure: Error = Failure.unreachable
+        for attempt in 0..<3 {
+            if attempt > 0 { try? await Task.sleep(for: .seconds(2)) }
+            var request = URLRequest(url: address.appendingPathComponent("api/moves/\(Self.escape(move))"),
+                                     timeoutInterval: 300)
+            request.httpMethod = "POST"
+            request.httpShouldHandleCookies = false
+            if let key { request.setValue("bupsy_device=\(key)", forHTTPHeaderField: "Cookie") }
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await session.data(for: request)
+            } catch {
+                lastFailure = Failure.unreachable
+                continue
+            }
+            guard let http = response as? HTTPURLResponse else { lastFailure = Failure.unreachable; continue }
+            guard http.statusCode == 200 else { throw Self.failure(http.statusCode, data) }
+            do {
+                return try JSONDecoder().decode(BotMoveReceipt.self, from: data)
+            } catch {
+                throw Failure.refused("That Mac took the bot but didn't say what it called it.")
+            }
+        }
+        throw lastFailure
+    }
+
     // MARK: - Plumbing
+
+    static func url(_ address: URL, _ path: String, query: [String: String]) -> URL {
+        let base = address.appendingPathComponent(String(path.dropFirst()))
+        var components = URLComponents(url: base, resolvingAgainstBaseURL: false)!
+        components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+        return components.url ?? base
+    }
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
         let (data, response) = try await send("GET", path, body: nil, authenticated: true)

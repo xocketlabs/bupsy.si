@@ -23,7 +23,7 @@ extension AppModel {
         only the notes, and don't use any tools.
         """
 
-    private static func handoffKey(_ bot: BotID) -> String { "si.bupsy.handoffNotes.\(bot.rawValue)" }
+    static func handoffKey(_ bot: BotID) -> String { "si.bupsy.handoffNotes.\(bot.rawValue)" }
 
     /// The button: hand-off notes now, or as soon as the bot finishes what it is doing.
     func moveToFreshChat(_ bot: Bot) {

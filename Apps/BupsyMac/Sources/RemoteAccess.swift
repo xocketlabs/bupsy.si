@@ -31,11 +31,17 @@ final class RemoteAccess {
     private(set) var pairing: (code: String, link: URL)?
     private(set) var devices: [PairedDevice] = []
 
-    @ObservationIgnored private weak var model: AppModel?
+    @ObservationIgnored private(set) weak var model: AppModel?
     @ObservationIgnored private var server: LocalHTTPServer?
     @ObservationIgnored private lazy var registry = RemoteDevices(
         file: AppHome.directory.appendingPathComponent("remote-devices.json"))
     @ObservationIgnored private var iconPNG: Data?
+    /// Bots on their way here from another of the person's Macs, by move id: the folder arriving
+    /// in pieces. See `RemoteAccess+Moves`.
+    @ObservationIgnored var incomingMoves: [String: IncomingMove] = [:]
+    /// Each move's import, kept once started, so a Mac asking again (its answer lost on the way)
+    /// gets the same answer rather than a second copy of the bot.
+    @ObservationIgnored var finishedMoves: [String: Task<HTTPResponse, Never>] = [:]
 
     /// The port Bupsy asks for on loopback; any free one is used if it is taken.
     static let preferredPort: UInt16 = 47815
@@ -186,6 +192,7 @@ final class RemoteAccess {
         }
         // Refresh the list so the Settings window shows when each device was last seen.
         devices = registry.devices
+        if request.path.hasPrefix("/api/moves/") { return await receiveMove(request) }
         return route(request)
     }
 
@@ -268,9 +275,12 @@ final class RemoteAccess {
     }
 
     /// Bodies are a line of JSON, except a file sent to a bot, which may be a document or a short
-    /// clip. Only that route takes more, and still needs a paired device's key to be kept.
+    /// clip, and a bot moving here, which brings its chat and its folder in pieces. Only those
+    /// routes take more, and still need a paired device's key to be kept.
     nonisolated static func bodyLimit(_ method: String, _ path: String) -> Int {
-        method == "POST" && path.hasSuffix("/files") ? RemoteClient.maxUpload + 64 * 1024 : HTTPParser.maxBodyBytes
+        guard method == "POST" else { return HTTPParser.maxBodyBytes }
+        if path.hasPrefix("/api/moves/") { return max(BotMove.maxManifestBytes, BotMove.partBytes) + 64 * 1024 }
+        return path.hasSuffix("/files") ? RemoteClient.maxUpload + 64 * 1024 : HTTPParser.maxBodyBytes
     }
 
     /// A file another device attached for this bot: saved in the bot's own folder, under
