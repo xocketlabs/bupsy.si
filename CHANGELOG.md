@@ -5,6 +5,11 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Faster switching between bots**
+- A reply's measured size is remembered instead of laid out again each time SwiftUI asks, and
+  a bot's folder is looked up once instead of on every tool line, so opening a chat is much
+  quicker. A chat opens with its latest 80 items; Show earlier messages loads the rest.
+
 **Tables, and a quieter idle**
 - Tables in a reply render as tables: a shaded header and ruled rows, instead of lines of
   pipes and dashes.
@@ -14,7 +19,7 @@ PR as the change; the release moves it under a version.
 **No more blank chats**
 - A long chat could open on an empty pane with every message still there: the lazily built
   list guessed row heights and ended up scrolled past its content. A chat now shows its latest
-  150 items laid out in full, with **Show earlier messages** at the top for the rest.
+  80 items laid out in full, with **Show earlier messages** at the top for the rest.
 
 **Busy chats stay responsive**
 - The Files panel no longer re-reads a bot's whole tool history on the main thread at every
