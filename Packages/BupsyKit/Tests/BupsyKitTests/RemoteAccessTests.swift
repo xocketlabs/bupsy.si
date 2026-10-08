@@ -106,6 +106,15 @@ struct RemoteDevicesTests {
 
 @Suite("Remote access: Tailscale and sleep")
 struct TailscaleAndSleepTests {
+    @Test("runs Tailscale as the command line, even from an app opened in Finder")
+    func commandLineMode() {
+        // Opened from Finder there is no TERM or SHLVL, and the Mac app's binary then tries to be
+        // the app rather than answer.
+        let environment = Tailscale.commandEnvironment(["HOME": "/Users/someone", "PATH": "/usr/bin:/bin"])
+        #expect(environment["TAILSCALE_BE_CLI"] == "1")
+        #expect(environment["HOME"] == "/Users/someone")
+    }
+
     @Test("status reads connection and this Mac's name")
     func status() {
         let running = Tailscale.parseStatus(#"{"BackendState":"Running","Self":{"DNSName":"mac.tail1.ts.net."}}"#)
