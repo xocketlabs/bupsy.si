@@ -356,6 +356,14 @@ public struct Store: Sendable {
             }
         }
 
+        // Whether a bot can be seen and used from the person's other devices. On by default, so
+        // everything that was shared stays shared; "This Mac only" is something to choose.
+        migrator.registerMigration("v15-shared-with-devices") { db in
+            try db.alter(table: "bots") { t in
+                t.add(column: "sharedWithDevices", .boolean).notNull().defaults(to: true)
+            }
+        }
+
         return migrator
     }
 

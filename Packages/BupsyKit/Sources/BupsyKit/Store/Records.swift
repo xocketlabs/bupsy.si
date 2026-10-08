@@ -67,6 +67,8 @@ public struct BotRecord: Codable, FetchableRecord, MutablePersistableRecord, Sen
     public var onlyBupsyApps: Bool
     /// Allowed to drive the person's own browser through the engine's extension.
     public var useBrowser: Bool
+    /// Reachable from the person's other devices, or kept to this Mac.
+    public var sharedWithDevices: Bool
     /// Tools this bot may use without asking, as a JSON array of names. Names, never values.
     public var toolAllowlist: String
 
@@ -77,7 +79,7 @@ public struct BotRecord: Codable, FetchableRecord, MutablePersistableRecord, Sen
                 pinned: Bool = false, hidden: Bool = false, lastReadAt: Date? = nil,
                 avatarShape: String? = nil, avatarColour: Int? = nil, role: String? = nil,
                 onlyBupsyApps: Bool = false, toolAllowlist: String = "[]",
-                useBrowser: Bool = false) {
+                useBrowser: Bool = false, sharedWithDevices: Bool = true) {
         self.id = id; self.name = name; self.engine = engine; self.model = model
         self.machineID = machineID; self.autonomy = autonomy; self.personaPrompt = personaPrompt
         self.workdir = workdir; self.avatarHue = avatarHue; self.createdAt = createdAt
@@ -86,6 +88,7 @@ public struct BotRecord: Codable, FetchableRecord, MutablePersistableRecord, Sen
         self.avatarShape = avatarShape; self.avatarColour = avatarColour
         self.role = role; self.onlyBupsyApps = onlyBupsyApps
         self.toolAllowlist = toolAllowlist; self.useBrowser = useBrowser
+        self.sharedWithDevices = sharedWithDevices
     }
 }
 

@@ -1935,6 +1935,7 @@ final class AppModel {
         copy.role = bot.role
         copy.onlyBupsyApps = bot.onlyBupsyApps
         copy.useBrowser = bot.useBrowser
+        copy.sharedWithDevices = bot.sharedWithDevices
 
         bots.append(copy)
         try? store?.save(copy.record(sortIndex: bots.count - 1))
@@ -2776,6 +2777,12 @@ final class AppModel {
     func setOnlyBupsyApps(_ bot: Bot, _ only: Bool) {
         guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
         bots[index].onlyBupsyApps = only
+        try? store?.save(bots[index].record(sortIndex: index))
+    }
+
+    func setSharedWithDevices(_ bot: Bot, _ shared: Bool) {
+        guard let index = bots.firstIndex(where: { $0.id == bot.id }) else { return }
+        bots[index].sharedWithDevices = shared
         try? store?.save(bots[index].record(sortIndex: index))
     }
 
