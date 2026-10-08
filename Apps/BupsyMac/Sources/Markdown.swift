@@ -258,6 +258,26 @@ struct SelectableReplyText: NSViewRepresentable {
     /// The widest a reply grows before wrapping, when the parent proposes no width.
     static let fallbackWidth: CGFloat = 720
 
+    /// Sizes already worked out for a text, by width. SwiftUI asks a view its size several times
+    /// a layout pass, and each answer was a full text layout: opening a chat laid out every reply
+    /// in it many times over, the bulk of what switching bots cost.
+    ///
+    /// Kept on the text itself rather than on the view: `ReplyText` hands back the same text for
+    /// the same reply, so going back to a chat finds its replies already measured, and the sizes
+    /// go when the text does.
+    final class Sizes {
+        var byWidth: [CGFloat: CGSize] = [:]
+    }
+
+    nonisolated(unsafe) private static var sizesKey: UInt8 = 0
+
+    private static func sizes(of text: NSAttributedString) -> Sizes {
+        if let known = objc_getAssociatedObject(text, &sizesKey) as? Sizes { return known }
+        let fresh = Sizes()
+        objc_setAssociatedObject(text, &sizesKey, fresh, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        return fresh
+    }
+
     func makeNSView(context: Context) -> ReplyTextView {
         let storage = NSTextStorage()
         let layout = NSLayoutManager()
@@ -291,6 +311,12 @@ struct SelectableReplyText: NSViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView view: ReplyTextView, context: Context) -> CGSize? {
         guard let layout = view.layoutManager, let container = view.textContainer else { return nil }
+        let key = proposal.width.flatMap { $0.isFinite ? max($0, 1) : nil } ?? -1
+        let sizes = Self.sizes(of: text)
+        if let known = sizes.byWidth[key] { return known }
+        // Measured from what is drawn, so make sure the view holds this text before measuring:
+        // a size taken from stale or empty storage would be kept for this text from then on.
+        if let storage = view.textStorage, !storage.isEqual(to: text) { storage.setAttributedString(text) }
         // Answer probes the way `Text` does: no width or an unbounded one gets the natural width
         // up to the cap; a zero width gets the narrowest wrap. Answering a zero probe with the
         // full width made the row's stack treat this as fixed and split its space with the
@@ -305,7 +331,11 @@ struct SelectableReplyText: NSViewRepresentable {
         layout.ensureLayout(for: container)
         let used = layout.usedRect(for: container)
         // Hug a short reply rather than claiming the whole width offered.
-        return CGSize(width: min(width, ceil(used.width)), height: ceil(used.height))
+        let size = CGSize(width: min(width, ceil(used.width)), height: ceil(used.height))
+        // A few widths at most, unless the window is being dragged wider and narrower.
+        if sizes.byWidth.count > 8 { sizes.byWidth.removeAll() }
+        sizes.byWidth[key] = size
+        return size
     }
 }
 

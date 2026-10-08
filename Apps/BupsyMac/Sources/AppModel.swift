@@ -2656,10 +2656,16 @@ final class AppModel {
     /// and kept between runs, so anything the bot writes for itself is still there next time.
     func workingDirectory(for bot: Bot) -> URL {
         if let chosen = bot.workdir { return URL(fileURLWithPath: chosen) }
+        if let known = workspaceFolders[bot.id] { return known }
         let folder = Self.workspacesDirectory.appendingPathComponent(bot.id.rawValue, isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        workspaceFolders[bot.id] = folder
         return folder
     }
+
+    /// Bots' own folders, once made. Every tool line and reply in a chat asks for its bot's folder,
+    /// and each ask used to go to the disk to make sure it existed.
+    @ObservationIgnored private var workspaceFolders: [BotID: URL] = [:]
 
     static var workspacesDirectory: URL {
         AppHome.directory.appendingPathComponent("workspaces", isDirectory: true)

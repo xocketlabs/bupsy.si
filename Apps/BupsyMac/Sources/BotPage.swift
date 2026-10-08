@@ -888,9 +888,10 @@ struct BotPage: View {
     /// The first message from the bot that arrived after you last read it, or nil when there is
     /// none, nothing new, or a bot you are opening for the first time, where everything is new
     /// and a line above the first message would say nothing.
-    /// How many entries a chat opens with. Enough for a long working session; earlier ones are
-    /// a click away.
-    static let windowSize = 150
+    /// How many entries a chat opens with: the latest exchanges, tool lines included. Every one
+    /// is laid out when the chat opens, so this is what switching to a bot costs; earlier ones
+    /// are a click away.
+    static let windowSize = 80
 
     /// The first entry on screen: the last `windowSize`, reaching back to the first unread one
     /// when that is further up, so opening at "New" always has the divider to land on.
