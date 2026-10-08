@@ -58,8 +58,27 @@ struct Bubble: View {
         context ?? ThreadRowContext(isRunning: model.thread(for: bot.id).isRunning)
     }
 
+    /// Hides Reply and Copy a moment after the pointer leaves, not the instant it does.
+    @State private var hideActions: Task<Void, Never>?
+
     var body: some View {
-        content.onHover { hovering = $0 }
+        content
+            // The whole row, gaps and all. Hover only counted over drawn content, so the
+            // pointer crossing the gap from the words to Reply and Copy hid them on the way,
+            // and hidden they take no clicks: they could be seen but never reached.
+            .contentShape(.rect)
+            .onHover { inside in
+                hideActions?.cancel()
+                if inside {
+                    hovering = true
+                } else {
+                    // A short grace, so a quick move across an edge doesn't flicker them away.
+                    hideActions = Task {
+                        try? await Task.sleep(for: .milliseconds(250))
+                        if !Task.isCancelled { hovering = false }
+                    }
+                }
+            }
     }
 
     /// Your message with each real @mention in bold, so who you addressed stands out.
