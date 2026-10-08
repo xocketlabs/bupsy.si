@@ -164,6 +164,21 @@ jobs:
         working-directory: Tools/bupsy-run
         run: go build ./...
 
+      # Bupsy for Windows and Linux, built for every platform it is meant for. Seconds of work with
+      # no cgo, and the only check that the Windows-only files (process trees, batch-file shims)
+      # still compile, since no job runs on Windows. Built to /dev/null, so no copy of the app is
+      # left on the runner.
+      - name: Build the desktop app for every platform
+        working-directory: Tools/bupsy-run
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" go build -o /dev/null ./cmd/bupsy-desktop
+            echo "built $target"
+          done
+          GOOS=windows go vet ./...
+
       - name: Test
         working-directory: Tools/bupsy-run
         run: go test ./...
