@@ -83,6 +83,11 @@ final class Notifier {
         )
     }
 
+    /// Something a bot decided the person should know, sent with notify_person.
+    func fromBot(title: String, text: String, botID: BotID) {
+        post(id: "bot-\(botID.rawValue)-\(text.hashValue)", title: title, body: text, sound: true, botID: botID)
+    }
+
     func failed(bot: String, reason: String, botID: BotID? = nil) {
         post(id: "failed-\(bot)", title: "\(bot) stopped", body: reason, sound: false, botID: botID)
     }

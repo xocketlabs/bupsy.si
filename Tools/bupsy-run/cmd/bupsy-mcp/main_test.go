@@ -189,3 +189,88 @@ func TestListBotsShowsModels(t *testing.T) {
 		t.Fatalf("roster lines wrong: %q", text)
 	}
 }
+
+func TestAddRoutineDropsAndChecksTheSchedule(t *testing.T) {
+	outbox := t.TempDir()
+	result := callTool(t, outbox, "add_routine", map[string]any{
+		"bot": "Status", "name": "Start the day", "message": "start the day", "schedule": " 0  14 * * * "})
+	if result["isError"] == true {
+		t.Fatalf("unexpected error: %v", result)
+	}
+	files := dropped(t, outbox)
+	if len(files) != 1 || files[0]["kind"] != "add_routine" || files[0]["schedule"] != "0 14 * * *" ||
+		files[0]["when_closed"] != false {
+		t.Fatalf("wrong request dropped: %v", files)
+	}
+	for _, schedule := range []string{"*/5 * * * *", "0 14 * *", "daily"} {
+		outbox := t.TempDir()
+		r := callTool(t, outbox, "add_routine", map[string]any{"bot": "S", "name": "n", "message": "m", "schedule": schedule})
+		if r["isError"] != true || len(dropped(t, outbox)) != 0 {
+			t.Fatalf("schedule %q should be refused", schedule)
+		}
+	}
+}
+
+func TestStopNotifyAndRemoveDrop(t *testing.T) {
+	outbox := t.TempDir()
+	callTool(t, outbox, "stop_bot", map[string]any{"bot": "Lead"})
+	callTool(t, outbox, "notify_person", map[string]any{"text": "Batch done"})
+	callTool(t, outbox, "remove_routine", map[string]any{"bot": "Status", "name": "Start the day"})
+	kinds := map[any]bool{}
+	for _, file := range dropped(t, outbox) {
+		kinds[file["kind"]] = true
+	}
+	if !kinds["stop_bot"] || !kinds["notify"] || !kinds["remove_routine"] {
+		t.Fatalf("missing drops: %v", kinds)
+	}
+	if r := callTool(t, t.TempDir(), "notify_person", map[string]any{"text": " "}); r["isError"] != true {
+		t.Fatal("an empty notification should be refused")
+	}
+}
+
+func TestManageBotChecksTheEngine(t *testing.T) {
+	if r := callTool(t, t.TempDir(), "manage_bot", map[string]any{"bot": "Lead", "engine": "gpt"}); r["isError"] != true {
+		t.Fatal("an unknown engine should be refused")
+	}
+	outbox := t.TempDir()
+	callTool(t, outbox, "manage_bot", map[string]any{"bot": "Lead", "engine": "Codex"})
+	if files := dropped(t, outbox); len(files) != 1 || files[0]["engine"] != "codex" {
+		t.Fatalf("engine not passed on: %v", files)
+	}
+}
+
+func TestListBotsLeavesOutSelfAndShowsWorkAndRoutines(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "roster.json")
+	_ = os.WriteFile(file, []byte(`[
+		{"id":"bot-1","name":"Me","job":"x"},
+		{"id":"bot-2","name":"Lead","job":"Runs it","working":true,"queued":2,
+		 "routines":[{"name":"Start the day","schedule":"Every day at 2pm (0 14 * * *)","message":"start","enabled":true}]}]`), 0o600)
+	roster, self = file, "bot-1"
+	defer func() { roster, self = "", "" }()
+	text := listBots()["content"].([]any)[0].(map[string]any)["text"].(string)
+	if strings.Contains(text, "Me") || !strings.Contains(text, "[working now] [2 queued]: Runs it") ||
+		!strings.Contains(text, `routine "Start the day" Every day at 2pm (0 14 * * *): start`) {
+		t.Fatalf("roster lines wrong: %q", text)
+	}
+}
+
+func TestReadChatReadsTheSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "roster.json")
+	_ = os.WriteFile(file, []byte(`[{"id":"bot-2","name":"Lead"},{"id":"../x","name":"Sneaky"}]`), 0o600)
+	_ = os.MkdirAll(filepath.Join(dir, "chats"), 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "chats", "bot-2.json"), []byte(
+		`[{"who":"Person","text":"one","at":"9:00"},{"who":"Lead","text":"two","at":"9:01"},{"who":"Person","text":"three","at":"9:02"}]`), 0o600)
+	roster = file
+	defer func() { roster = "" }()
+	text := readChat("lead", 2)["content"].([]any)[0].(map[string]any)["text"].(string)
+	if strings.Contains(text, "one") || !strings.Contains(text, "[9:01] Lead: two") || !strings.Contains(text, "three") {
+		t.Fatalf("wrong chat: %q", text)
+	}
+	if r := readChat("Sneaky", 5); r["isError"] != true {
+		t.Fatal("an id that walks out of the folder must be refused")
+	}
+	if r := readChat("Nobody", 5); r["isError"] != true {
+		t.Fatal("an unknown bot must be refused")
+	}
+}

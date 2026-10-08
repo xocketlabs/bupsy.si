@@ -18,6 +18,15 @@ PR as the change; the release moves it under a version.
   a chat reaches 60% of its context window, before anything queued is sent. Off until you switch
   it on.
 
+**More for bots to do**
+- Schedule: a bot can set up a routine for itself or another bot ("every day at 2pm, tell Status
+  to start the day"), or remove one. It shows under the bot's Routines like any other.
+- Check on each other: the bot list now says who is working, what's queued and each bot's
+  routines, and a bot can read another bot's latest messages.
+- Stop a bot that's stuck, switch a bot between Claude Code and Codex, and send you a
+  notification when something's worth knowing.
+- Still yours alone: a bot's trust level, and deleting bots.
+
 **Bots can manage bots**
 - A bot can now change another bot's job, role tag or model, start it on a fresh chat, and send
   it a first message there, with a new `manage_bot` tool. Ask your lead or status bot to "switch
