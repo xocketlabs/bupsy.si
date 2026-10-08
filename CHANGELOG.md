@@ -15,6 +15,11 @@ PR as the change; the release moves it under a version.
   can: the new `move_bots` tool files bots into a section, making the section if it is new.
   The bot's chat notes what moved and names any bot it couldn't find.
 - `list_bots` now shows each bot's section.
+**Chat bubbles**
+- Messages sit in bubbles, so each one reads as its own: yours on the right in a pink tint, a
+  bot's on the left in grey beside its face. The first bubble of a run has a small tail and the
+  bot's name in its colour; every bubble has its time in the corner.
+- Code blocks inside a bubble stay a clear recess in light mode.
 
 **Your own browser, and replies you can copy**
 - A bot on this Mac can use your own browser: Claude through Claude in Chrome, Codex through its

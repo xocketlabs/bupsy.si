@@ -305,6 +305,7 @@ final class ReplyTextView: NSTextView {
 
 struct CodeBlock: View {
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     let language: String?
     let text: String
     @State private var copied = false
@@ -354,8 +355,10 @@ struct CodeBlock: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // Set into the rail's colour so a code block reads as a recess inside a lifted bubble.
-        .background(palette.sidebar, in: .rect(cornerRadius: Theme.Radius.control))
+        // A recess inside the grey bubble: the page's white in light, where the rail's colour is
+        // nearly the bubble's own and the block disappeared; the near-black rail in dark.
+        .background(colorScheme == .dark ? palette.sidebar : palette.background,
+                    in: .rect(cornerRadius: Theme.Radius.control))
     }
 
     private func copy() {

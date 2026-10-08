@@ -19,14 +19,16 @@ struct DaySeparator: View {
 
 /// One entry in a transcript.
 ///
-/// Yours sit on the right in a grey bubble. A bot's reply has no bubble at all, just its face,
-/// its name and the time, so a long answer reads like a document rather than a stack of balloons.
-/// Everything else the bot does (tool lines, cards) sits under its words, indented past the face.
+/// Messages sit in bubbles, the way a messaging app's do, so each one reads as its own: yours on
+/// the right in a pink tint, a bot's on the left in grey beside its face, its name in its colour
+/// at the top of the first in a run and the time in the corner of each. Everything else the bot
+/// does (tool lines, cards) sits under its words, outside the bubbles, indented past the face.
 ///
 /// A row never reads the whole thread: what it needs from its neighbours comes in `context`,
 /// built once for every row by `ThreadRowContext.rows(for:isRunning:)`.
 struct Bubble: View {
     @Environment(\.palette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(AppModel.self) private var model
     let entry: TranscriptEntry
     let bot: Bot
@@ -152,8 +154,23 @@ struct Bubble: View {
             .modifier(ReplyAccessibilityAction(enabled: onReply != nil) { onReply?(author, text) })
     }
 
-    /// Your words in their grey bubble, with what they reply to on top when they reply to something.
+    /// Your bubbles: the brand pink, light enough that text on it reads as plainly as on grey.
+    private var yourBubbleFill: Color {
+        palette.primary.opacity(colorScheme == .dark ? 0.26 : 0.14)
+    }
+
+    /// The time in a bubble's bottom corner.
+    private func stamp(_ date: Date) -> some View {
+        Text(Theme.stamp(date))
+            .font(.system(size: Theme.scaled(10.5)))
+            .monospacedDigit()
+            .foregroundStyle(palette.mutedForeground)
+    }
+
+    /// Your words in their bubble, with what they reply to on top when they reply to something,
+    /// and the time in the corner.
     private func userBubble(quote: String?, author: String?, body: String) -> some View {
+        VStack(alignment: .trailing, spacing: Theme.Space.xs) {
         VStack(alignment: .leading, spacing: Theme.Space.tight) {
             // What this was a reply to, inside the bubble, so the thread reads the way it was
             // meant: this answer, about that message.
@@ -182,9 +199,11 @@ struct Bubble: View {
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, Theme.Space.gutter)
-        .padding(.vertical, Theme.Space.compact)
-        .background(palette.card, in: .rect(cornerRadius: Theme.Radius.bubble))
+            stamp(entry.at)
+        }
+        .padding(.horizontal, ThreadLayout.bubblePadding.width)
+        .padding(.vertical, ThreadLayout.bubblePadding.height)
+        .background(yourBubbleFill, in: ChatBubbleShape(tail: .trailing))
         .accessibilityElement(children: .combine)
     }
 
@@ -207,6 +226,8 @@ struct Bubble: View {
                     }
                     .frame(maxWidth: 600, alignment: .trailing)
                 }
+                // Room for the tail, which is drawn past the bubble's edge.
+                .padding(.trailing, ChatBubbleShape.tailWidth)
                 // Under the last message still waiting for the bot, right-aligned with it: the
                 // message is in, and will be read, just not yet.
                 if row.showsQueuedNote {
@@ -364,19 +385,23 @@ struct Bubble: View {
             // The name beside it says who this is. Read aloud, the face only said "idle".
             .accessibilityHidden(true)
             messageActions(
-                VStack(alignment: .leading, spacing: Theme.Space.hairline) {
-                    if showsAvatar {
-                        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
+                VStack(alignment: .trailing, spacing: Theme.Space.xs) {
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        // Who is speaking, once per run, in their colour, as a group chat does.
+                        if showsAvatar {
                             Text(bot.name)
-                                .font(Theme.Typography.body.weight(.medium))
-                                .foregroundStyle(palette.foreground)
-                            Text(Theme.stamp(entry.at))
-                                .font(Theme.Typography.caption)
-                                .foregroundStyle(palette.mutedForeground)
+                                .font(Theme.Typography.caption.weight(.semibold))
+                                .foregroundStyle(BotFace.colour(of: bot))
                         }
+                        words()
                     }
-                    words()
+                    stamp(entry.at)
                 }
+                .padding(.horizontal, ThreadLayout.bubblePadding.width)
+                .padding(.vertical, ThreadLayout.bubblePadding.height)
+                // The fill before the width limit: a limit applied first would stretch every
+                // bubble to it, and a "Hi" would sit in a box the width of a paragraph.
+                .background(palette.card, in: ChatBubbleShape(tail: showsAvatar ? .leading : .none))
                 .frame(maxWidth: 720, alignment: .leading)
                 .accessibilityElement(children: .combine),
                 author: bot.name, text: actionText)

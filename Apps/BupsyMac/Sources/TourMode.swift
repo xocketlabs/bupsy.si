@@ -104,6 +104,47 @@ enum TourMode {
                     }
                 }
             },
+            // The same reply in dark, for the bubbles' contrast.
+            Step(name: "reply-dark", appearance: .dark) { m in
+                reset(m)
+                guard let bot else { return }
+                m.tourDestination = .bot(bot.id)
+                let thread = m.thread(for: bot.id)
+                thread.isRunning = false
+                thread.entries.append(TranscriptEntry(kind: .userMessage("What changed in the release?")))
+                thread.entries.append(TranscriptEntry(kind: .assistantText("""
+                    Three things shipped, and **one** needs you. I checked with @\(bot.name) first.
+
+                    ## What changed
+                    - Bots can drive *your own* Chrome when you allow it
+                    - Replies select across paragraphs, so a long answer copies whole, and a long \
+                    list item wraps under its own text instead of under the bullet
+                      - Nested items step in
+                    1. Run `make app`
+                    2. Open a [release note](https://github.com/xocketlabs/bupsy.si)
+
+                    ```sh
+                    make app
+                    ```
+
+                    That's it.
+                    """)))
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1))
+                    func all(in view: NSView) -> [ReplyTextView] {
+                        if let text = view as? ReplyTextView { return [text] }
+                        return view.subviews.flatMap(all(in:))
+                    }
+                    for window in NSApp.windows {
+                        // The longest is the run before the code block.
+                        guard let root = window.contentView,
+                              let text = all(in: root).max(by: { $0.string.count < $1.string.count })
+                        else { continue }
+                        window.makeFirstResponder(text)
+                        text.selectAll(nil)
+                    }
+                }
+            },
             Step(name: "panel-files", appearance: .light) { m in reset(m); m.tourDetails = .files },
             Step(name: "search", appearance: .light) { m in reset(m); m.tourDetails = nil; m.tourPalette = true },
             Step(name: "apps", appearance: .light) { m in reset(m); m.tourDestination = .connectors },
