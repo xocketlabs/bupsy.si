@@ -47,6 +47,21 @@ struct LocalHostTests {
         #expect(output.contains(.exit(code: 0)))
     }
 
+    /// Bots run below the person's own apps, and so does whatever they start: the headless
+    /// browsers and builds a bot launches are its grandchildren, and took seven cores when they
+    /// ran at normal priority.
+    @Test("runs the engine, and what it starts, at a lower priority")
+    func runsInTheBackground() async throws {
+        // A child that, after a moment, starts a grandchild which reports its own niceness.
+        let output = try await collect(EngineInvocation(
+            executable: "sh", arguments: ["-c", "sleep 0.3; sh -c 'ps -o nice= -p $$'"]))
+        let reported = output.compactMap { item -> Int? in
+            if case .stdout(let line) = item { return Int(line.trimmingCharacters(in: .whitespaces)) }
+            return nil
+        }
+        #expect(reported == [Int(ProcessBox.niceness)])
+    }
+
     @Test("writes provided stdin through before closing it")
     func forwardsStdin() async throws {
         let output = try await collect(
