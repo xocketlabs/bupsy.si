@@ -100,11 +100,36 @@ extension AppModel {
                     usage.context = context
                     thread.latestUsage = usage
                 }
-                if let limits = reading.limits { thread.latestLimits = limits }
+                if let limits = reading.limits { self.rememberLimits(limits, engine: .codex) }
                 self.rememberContext(bot.id, thread: thread)
             }
         } else {
+            if let limits = thread.latestLimits { rememberLimits(limits, engine: bot.engine) }
             rememberContext(bot.id, thread: thread)
+        }
+    }
+
+    // MARK: - Plan limits, which belong to the account rather than one bot
+
+    private static func limitsKey(_ engine: EngineID) -> String { "si.bupsy.planLimits.\(engine.rawValue)" }
+
+    /// The engine's latest report of the plan's limits, remembered so the bars are there after a
+    /// restart and on every bot of that engine, not only the one that last ran. A window whose
+    /// reset time has passed is left out: its figure is from before the reset.
+    func planLimits(for engine: EngineID, now: Date = Date()) -> RateLimit? {
+        guard let data = AppHome.defaults.data(forKey: Self.limitsKey(engine)),
+              var limits = try? JSONDecoder().decode(RateLimit.self, from: data) else { return nil }
+        limits.windows = limits.windows.filter { ($0.value.resetsAt ?? .distantFuture) > now }
+        return limits.windows.isEmpty ? nil : limits
+    }
+
+    /// Keeps a bot's newest limits for its whole engine, and shows them on that engine's other
+    /// bots straight away.
+    func rememberLimits(_ limits: RateLimit, engine: EngineID) {
+        guard !limits.windows.isEmpty, let data = try? JSONEncoder().encode(limits) else { return }
+        AppHome.defaults.set(data, forKey: Self.limitsKey(engine))
+        for bot in bots where bot.engine == engine && bot.remote == nil {
+            loadedThread(bot.id)?.latestLimits = limits
         }
     }
 

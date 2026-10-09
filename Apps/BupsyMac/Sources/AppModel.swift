@@ -1181,6 +1181,9 @@ final class AppModel {
 
     var selectedBot: Bot? { bots.first { $0.id == selectedBotID } }
 
+    /// A thread already loaded, without loading one: for updates that only matter on screen.
+    func loadedThread(_ botID: BotID) -> Thread? { threads[botID] }
+
     /// Returns a thread, hydrating it from storage the first time it is asked for.
     func thread(for botID: BotID) -> Thread {
         if let existing = threads[botID] { return existing }
@@ -1198,6 +1201,8 @@ final class AppModel {
                 // The meter as it was when the app last saw this conversation, until the next turn.
                 created.latestUsage = rememberedContext(botID, conversation: created.conversationID)
                     .map { Usage(context: $0) }
+                // The plan's limits are the account's: whichever bot of this engine last heard.
+                created.latestLimits = planLimits(for: engine)
             } catch {
                 storageProblem = error.localizedDescription
             }
