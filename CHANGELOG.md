@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Plan limits stay on screen**
+- Your weekly and 5-hour limits now show on every bot and stay after Bupsy restarts or updates,
+  instead of only on the bot that last ran, and only until the app quit. They're your account's
+  limits, so whichever bot heard last updates them all.
+- Usage has a "Your plan" section with each engine's limits at the top.
+
 **Slash commands**
 - Type `/` in a bot's message box for a menu of commands, narrowed as you type. Up and Down to
   choose, Return or Tab to pick, Esc to close; a click works too.

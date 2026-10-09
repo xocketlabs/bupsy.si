@@ -34,6 +34,29 @@ struct UsageSheet: View {
         var id: String { usage.botID }
     }
 
+    /// Each engine's plan limits as it last reported them: the account's weekly and 5-hour
+    /// windows, the same for every bot on that engine. Absent until an engine has said.
+    @ViewBuilder
+    private var planLimits: some View {
+        let engines = EngineID.supported.compactMap { engine -> (EngineID, Bot, RateLimit)? in
+            guard let bot = model.bots.first(where: { $0.engine == engine && $0.remote == nil }),
+                  let limits = model.planLimits(for: engine) else { return nil }
+            return (engine, bot, limits)
+        }
+        if !engines.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Space.gutter) {
+                SetupSectionHeader(
+                    icon: "gauge.with.dots.needle.33percent",
+                    title: "Your plan",
+                    description: "How much of each limit is used, as the engine last reported")
+                // The card names its engine itself ("Claude Code plan limits").
+                ForEach(engines, id: \.0) { _, bot, limits in
+                    AgentLimitsCard(bot: bot, usage: nil, limits: limits)
+                }
+            }
+        }
+    }
+
     var body: some View {
         let shown = self.shown
         let rows = shown.map(\.usage)
@@ -45,6 +68,8 @@ struct UsageSheet: View {
                 SetupPageHeader(title: "Usage", description: "What your bots spent of your plan") {
                     UsagePeriodPicker(period: $period)
                 }
+
+                planLimits
 
                 if !hasLoaded {
                     ProgressView()
