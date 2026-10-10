@@ -829,6 +829,10 @@ struct NavRail: View {
     }
 
     private var accountName: String {
+        #if DEBUG
+        // A recorded demo never shows whose Mac it was made on.
+        if DemoMode.isOn { return DemoMode.personName }
+        #endif
         let name = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? "You" : name
     }

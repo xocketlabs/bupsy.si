@@ -33,3 +33,6 @@ build/
 
 # Local wrangler state
 .wrangler/
+
+# Demo videos (scripts/record-demo.sh)
+demo-out/

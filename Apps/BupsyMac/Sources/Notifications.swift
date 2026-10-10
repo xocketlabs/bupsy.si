@@ -100,6 +100,10 @@ final class Notifier {
                       botID: BotID? = nil) {
         // You are looking at the app; a banner over it is noise.
         guard !NSApp.isActive else { return }
+        #if DEBUG
+        // A demo take posts nothing to the real Notification Centre.
+        if DemoMode.isOn { return }
+        #endif
         var info = info
         // Every banner says which bot it is about, so a click can open that bot.
         if let botID { info[ApprovalNotificationActions.botIDKey] = botID.rawValue }

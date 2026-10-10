@@ -125,6 +125,9 @@ struct BotPage: View {
         .onChange(of: model.tourDraft, initial: true) { _, new in
             if let new { draft = new }
         }
+        .onChange(of: model.tourRoutine, initial: true) { old, new in
+            if let new { openRoutineID = new } else if old != nil { openRoutineID = nil }
+        }
     }
 
     /// The page laid out for the width it has: details beside the chat when both fit, and
