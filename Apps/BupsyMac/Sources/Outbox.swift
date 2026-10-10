@@ -76,9 +76,17 @@ final class OutboxWatcher {
         // One second is well under the time anyone notices, and this reads an almost always empty
         // directory. A file-system event source would be tidier and is worth doing if this ever
         // sits on a network volume, where polling is the wrong shape.
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.drain() }
         }
+    }
+
+    private static var pollInterval: TimeInterval {
+        #if DEBUG
+        // A hand-off on camera lands without a visible pause.
+        if DemoMode.isOn { return 0.2 }
+        #endif
+        return 1
     }
 
     func stop() {

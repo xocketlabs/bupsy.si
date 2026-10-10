@@ -25,6 +25,10 @@ struct BupsyApp: App {
                 // Below this the chat column gets too narrow to read and pages overflow.
                 .frame(minWidth: 900, minHeight: 600)
                 .task {
+                    #if DEBUG
+                    // A staged, scripted Bupsy for recording; none of the real start-up below.
+                    if DemoMode.isOn { await DemoAutoplay.launch(model: model); return }
+                    #endif
                     // launchd starts us with this flag when a routine is due. Run it before
                     // anything slow, so a 7am briefing is not waiting on an auth probe.
                     if CommandLine.arguments.contains("--run-due-routines") {

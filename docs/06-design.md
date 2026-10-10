@@ -159,3 +159,13 @@ Bots are plush faces, never avatars of people. `BotFace` is ported from the desi
 
 `--tour` mode (debug builds) renders every screen in light and dark from demo data; see
 `TourMode.swift`. Never screenshot a real database.
+
+## Demo video
+
+`--demo` (debug builds, and only with `BUPSY_HOME` set) runs the real app on a seeded launch team,
+with runs answered by a scripted engine instead of the CLIs: the same parsing, outbox and
+hand-offs, no model calls, the same every take. `--demo --autoplay` plays the whole story by itself
+(a new bot names itself and hands work to Writer, then the lead's routine runs), and
+`scripts/record-demo.sh` builds it, records it and cuts the videos (`--check` saves frames instead
+of recording; `--dark` for a dark take). See `DemoMode.swift`. Typing into a demo yourself works
+too: anything off-script gets a short generic reply.

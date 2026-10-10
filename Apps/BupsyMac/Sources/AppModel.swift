@@ -77,6 +77,8 @@ final class AppModel {
     var tourSheet: String?
     /// Text put in the open bot's message box, to picture the slash command menu.
     var tourDraft: String?
+    /// A routine to open as a page on the bot page showing, for the demo (DemoAutoplay).
+    var tourRoutine: String?
 
     var needsOnboarding = !AppHome.defaults.bool(forKey: "si.bupsy.onboarded")
 
@@ -132,13 +134,26 @@ final class AppModel {
     /// Internal rather than private so the model's extensions in other files can write to it.
     let store: Store?
 
-    private let host: any ExecutionHost = LocalHost()
+    private let host: any ExecutionHost = AppModel.makeHost()
+
+    private static func makeHost() -> any ExecutionHost {
+        #if DEBUG
+        // A recorded demo answers runs from a script, never with the real CLIs. See DemoMode.
+        if DemoMode.isOn { return DemoHost() }
+        #endif
+        return LocalHost()
+    }
     private let adapters: [EngineID: any EngineAdapter] = [
         .claude: ClaudeAdapter(),
         .codex: CodexAdapter(),
     ]
 
     init(store: Store? = nil) {
+        #if DEBUG
+        // Before the database is opened: a demo on the real home stops here.
+        DemoMode.refuseWithoutThrowawayHome()
+        DemoMode.keepWindowStateToItself()
+        #endif
         if let store {
             self.store = store
         } else {
@@ -151,6 +166,13 @@ final class AppModel {
                 self.storageProblem = error.localizedDescription
             }
         }
+        #if DEBUG
+        if DemoMode.isOn, let store = self.store {
+            DemoWorld.seedIfNeeded(store)
+            needsOnboarding = false
+            appearance = DemoMode.appearance
+        }
+        #endif
         loadBots()
         loadSections()
         loadGroups()
@@ -1242,6 +1264,13 @@ final class AppModel {
     }
 
     func refreshEngineStatus() async {
+        #if DEBUG
+        // Signed in, as far as the demo is concerned, without asking the real CLIs anything.
+        if DemoMode.isOn {
+            for id in EngineID.supported { engineStatus[id] = .signedIn(method: .subscription) }
+            return
+        }
+        #endif
         for (id, adapter) in adapters {
             let status = await adapter.authStatus(on: host)
             engineStatus[id] = status
@@ -2950,6 +2979,13 @@ final class AppModel {
         guard !BotLinks.isSelfMessage(
             from: sender.id.rawValue, to: recipient.id.rawValue) else { return }
 
+        #if DEBUG
+        // A demo hand-off never stops for a first-contact card, even from a bot made on camera.
+        if DemoMode.isOn, links.decision(from: sender.id.rawValue, to: recipient.id.rawValue) == nil {
+            links.decide(from: sender.id.rawValue, to: recipient.id.rawValue, allowed: true)
+            if let link = links.decisions.last { try? store?.save(link) }
+        }
+        #endif
         switch links.decision(from: sender.id.rawValue, to: recipient.id.rawValue) {
         case .some(true):
             handOver(text, from: sender, to: recipient)
