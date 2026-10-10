@@ -5,6 +5,10 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Machines are marked Beta**
+- Cloud machines haven't been run end to end against boat.dev yet, so Machines now says "Beta" in
+  the sidebar and on its page.
+
 **Plan limits stay on screen**
 - Your weekly and 5-hour limits now show on every bot and stay after Bupsy restarts or updates,
   instead of only on the bot that last ran, and only until the app quit. They're your account's

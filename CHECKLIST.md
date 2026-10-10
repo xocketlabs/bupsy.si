@@ -5,9 +5,9 @@ as the change: a ticked box means it works, has tests where it can, and was chec
 
 ✅ done · 🟡 written but not proven, or partly done · ⬜ not started
 
-**Today (Oct 2026):** M0–M3 done in code; M4–M7 largely done. Launch is blocked only on things
-outside the code: an Apple Developer account (signed releases), a boat.dev key (cloud machines),
-and a Neon database (waitlist signups).
+**Today (Oct 2026):** M0–M6 done in code and in daily use; M7 nearly done. Launch is blocked only
+on things outside the code: an Apple Developer account (signed releases), a Neon database (waitlist
+signups), and a boat.dev key (cloud machines, which the app marks as Beta until then).
 
 ---
 
@@ -33,9 +33,18 @@ and a Neon database (waitlist signups).
 - ✅ Roster: faces, roles, jobs, folders, pins, hide, search
 - ✅ Per bot: engine (Claude Code / Codex), model (aliases, exact versions, custom ID)
 - ✅ History and resume, markdown, code blocks, attachments (+ or drop), reply to a message, copy
-- ✅ Usage per bot, and the limits card (context window + plan limits with reset times)
+- ✅ Chat bubbles, real tables, a Run button on shell commands in replies
+- ✅ Queued messages with Send now and Take back; fast switching between bots
+- ✅ Fresh chat: the bot writes hand-off notes and carries on in a new chat, by button or by itself
+  when a chat gets long
+- ✅ `/` commands: Bupsy's own, your Claude Code commands and skills, your Codex prompts
+- ✅ Continue a Claude Code conversation (VS Code or terminal) as a bot, copied or moved
+- ✅ Voice: talk to a bot and hear replies, with the Mac's own free speech
+- ✅ Usage per bot, and the limits card (context window + plan limits with reset times), for
+  Claude Code and Codex, kept across restarts; plan limits on the Usage page
 - ✅ Codex as a second engine
-- 🟡 Cloud machines: create / start / stop / assign — written, **not run against boat.dev yet**
+- 🟡 Cloud machines: create / start / stop / assign — written, **not run against boat.dev yet**;
+  marked Beta in the app
 - ⬜ Sign an engine in *on* a cloud machine; watch its screen and files
 
 ## M3 — Trust · first shippable build
@@ -51,9 +60,11 @@ and a Neon database (waitlist signups).
 - ✅ File-change triggers — a bot runs when files in a folder change
 - ✅ Attention tray, notifications, menu bar, keep-awake while working
 - ✅ Go core for Linux/Windows; installing a schedule on a cloud machine
-- 🟡 Work with the lid closed — needs a cloud machine (**boat.dev key**)
+- ✅ Work with the lid closed on your own Mac: Settings › Lid closed (uses Sleepless)
+- 🟡 Work with the lid closed on a cloud machine — **needs a boat.dev key**
 - ⬜ Email triggers — today: a routine that checks mail through Executor
-- — Webhook triggers: left out on purpose; 1.0 has zero inbound network surface
+- — Webhook triggers: left out on purpose; nothing in 1.0 listens on the internet (device access
+  is Tailscale-only and off until you turn it on)
 
 ## M5 — Objectives
 
@@ -69,6 +80,11 @@ and a Neon database (waitlist signups).
 - ✅ Group chats with a lead, @mentions, hand-offs (capped at six replies)
 - ✅ Bots message bots, create bots, and act on messages from other bots (looped pairs capped)
 - ✅ A busy bot replies in a group when it is free; messages typed while a bot works are queued
+- ✅ Bots manage bots: change a bot's job, role, model or engine, start it on a fresh chat, stop it,
+  read its latest messages, schedule or remove its routines, notify you — gated by trust
+- ✅ Use from your phone or another Mac over Tailscale (paired devices, never the internet)
+- ✅ Linked Macs: each other's bots in the same sections; "This Mac only" per bot
+- ✅ Move a bot or a whole section to another Mac (done for real between two Macs)
 - ⬜ Channels (Slack / Telegram) — after 1.0
 - ⬜ Computer use — after 1.0
 
@@ -81,7 +97,9 @@ and a Neon database (waitlist signups).
 - 🟡 Waitlist signups — **needs Neon `DATABASE_URL`**
 - 🟡 Signed, notarized, auto-updating releases — **needs an Apple Developer account**
 - ⬜ Freestyle as a second cloud host — after 1.0
-- ⬜ Custom domain, launch video, announcement
+- ✅ Reveal video (scripted demo mode, debug builds only: `scripts/record-demo.sh`)
+- ✅ Settings as a page in the main window
+- ⬜ Custom domain, announcement
 
 ---
 
@@ -102,7 +120,6 @@ and a Neon database (waitlist signups).
 
 ## Decided against, on purpose
 
-- **Voice**: not in 1.0
 - **Webhooks** — would need an inbound port; 1.0 has none
 - **Grok engine** — Claude Code and Codex cover 1.0
 

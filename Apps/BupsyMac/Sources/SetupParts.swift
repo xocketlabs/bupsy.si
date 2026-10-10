@@ -27,16 +27,21 @@ struct SetupPageScroll<Content: View>: View {
 struct SetupPageHeader<Trailing: View>: View {
     @Environment(\.palette) private var palette
     let title: String
+    /// A word beside the title, such as "Beta", for a page still being proven.
+    var badge: String?
     let description: String
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(alignment: .bottom, spacing: Theme.Space.gutter) {
             VStack(alignment: .leading, spacing: Theme.Space.snug) {
-                Text(title)
-                    .font(Theme.Typography.title)
-                    .tracking(-0.4)
-                    .foregroundStyle(palette.foreground)
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.compact) {
+                    Text(title)
+                        .font(Theme.Typography.title)
+                        .tracking(-0.4)
+                        .foregroundStyle(palette.foreground)
+                    if let badge { SetupBadge(text: badge, tone: .info) }
+                }
                 Text(description)
                     .font(Theme.Typography.lead)
                     .foregroundStyle(palette.mutedForeground)
@@ -49,8 +54,8 @@ struct SetupPageHeader<Trailing: View>: View {
 }
 
 extension SetupPageHeader where Trailing == EmptyView {
-    init(title: String, description: String) {
-        self.init(title: title, description: description) { EmptyView() }
+    init(title: String, badge: String? = nil, description: String) {
+        self.init(title: title, badge: badge, description: description) { EmptyView() }
     }
 }
 

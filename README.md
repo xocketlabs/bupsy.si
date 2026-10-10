@@ -13,9 +13,9 @@
 Each bot is a real agent: `claude` or `codex` running under **your own sign-in**, on your Mac or
 on a machine you rent. Give one a job, a schedule, or a standing goal. They ask before they act.
 
-> **Pre-alpha.** Not yet downloadable: the signed build needs an Apple Developer certificate.
-> Everything below works from source today. See [CHECKLIST.md](CHECKLIST.md) for exactly what is
-> and is not done.
+> **Early access.** In daily use, but not yet publicly downloadable: the signed build needs an Apple
+> Developer certificate. Everything below works from source today. See [CHECKLIST.md](CHECKLIST.md)
+> for exactly what is and is not done.
 
 ## Why this exists
 
@@ -34,12 +34,17 @@ work on their servers. bupsy is the opposite shape.
 
 | | |
 |---|---|
-| **Chat** | Claude Code or Codex, switchable per bot, each keeping its own thread |
-| **Routines** | "Brief me every weekday at 7am" — runs with the app closed |
+| **Chat** | Claude Code or Codex, switchable per bot, each keeping its own thread. Bubbles, tables, code with a Run button, attachments, replies, voice in and out |
+| **Teamwork** | Bots message each other, hand work on, create new bots, file bots into sections, and change each other's job, model or chat — within the trust you give them |
+| **Routines** | "Brief me every weekday at 7am" — runs with the app closed. Bots can schedule them too |
 | **Standing goals** | "My inbox has nothing older than a day" — it checks, and acts only when something is off |
-| **A computer** | Give a bot a cloud machine so its work survives a closed lid |
+| **Fresh chat** | A long chat moves on to a new one from the bot's own hand-off notes, by button or by itself, so each message costs far less |
+| **Commands** | Type `/` for Bupsy's own commands, your Claude Code commands and skills, or your Codex prompts |
 | **Your apps** | Any MCP server — GitHub, Slack, Notion, files |
 | **Ask first** | Four trust levels, from "ask me everything" to "never ask" |
+| **Carry on from Claude Code** | Pick a conversation from VS Code or the terminal and it becomes a bot that remembers it |
+| **Your other devices** | Use Bupsy from your phone or another Mac over Tailscale; link Macs to see their bots, and move a bot or a whole section to another Mac |
+| **A computer** *(beta)* | Give a bot a cloud machine so its work survives a closed lid |
 
 ## Credentials
 
@@ -60,7 +65,7 @@ authenticates. It quotes the vendor terms the design is built around.
 | Platform | Status |
 |---|---|
 | **Mac** (macOS 14+) | The app. Everything happens here. |
-| **Phone and other Macs** | In the browser, through your Mac over Tailscale: Settings › Use from other devices. |
+| **Phone and other Macs** | In the browser, through your Mac over Tailscale: Settings › Use from other devices. Linked Macs show each other's bots and can move bots between them. |
 | **iPhone app** | 🚧 In development. Not available to download yet. |
 | **Windows and Linux** | 🚧 In development. Not available to download yet. The Go core (`bupsy-run`) already runs there. |
 
@@ -71,7 +76,7 @@ Requires macOS 14+, Swift 6, and Xcode.
 ```bash
 brew install xcodegen
 make run      # build and launch
-make test     # 123 tests
+make test     # the BupsyKit tests
 make spike    # drive your real claude binary and watch the event stream
 ```
 

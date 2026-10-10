@@ -27,8 +27,9 @@ struct MachinesSheet: View {
     var body: some View {
         SetupPageScroll {
             // "New machine" lives in the topbar, as on the board. See NewMachineButton.
-            SetupPageHeader(title: "Machines",
-                            description: "A machine lets a bot keep working with your Mac closed")
+            // Beta until it has run end to end against boat.dev, so nobody counts on it unawares.
+            SetupPageHeader(title: "Machines", badge: "Beta",
+                            description: "A machine lets a bot keep working with your Mac closed. New, so tell us what breaks.")
 
             VStack(alignment: .leading, spacing: Theme.Space.gutter) {
                 SetupSectionHeader(
