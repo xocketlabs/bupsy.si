@@ -641,7 +641,8 @@ struct NavRail: View {
                 .frame(height: 1)
                 .padding(.bottom, Theme.Space.step)
             sectionHeader("Setup")
-            SidebarNavRow(icon: "display", label: "Machines",
+            // Beta until cloud machines have run end to end against boat.dev.
+            SidebarNavRow(icon: "display", label: "Machines", tag: "Beta",
                           selected: destination == .machines) { destination = .machines }
             SidebarNavRow(icon: "square.grid.2x2.fill", label: "Apps",
                           selected: destination == .connectors) { destination = .connectors }
@@ -884,6 +885,8 @@ struct SidebarNavRow: View {
     @Environment(\.palette) private var palette
     let icon: String
     let label: String
+    /// A word beside the label, such as "Beta", for a part of the app still being proven.
+    var tag: String?
     let selected: Bool
     var count: Int = 0
     /// Pink when the count is things waiting on a person; grey otherwise.
@@ -891,10 +894,11 @@ struct SidebarNavRow: View {
     let action: () -> Void
     @State private var hovering = false
 
-    init(icon: String, label: String, selected: Bool, count: Int = 0, countIsUrgent: Bool = false,
-         action: @escaping () -> Void) {
+    init(icon: String, label: String, tag: String? = nil, selected: Bool, count: Int = 0,
+         countIsUrgent: Bool = false, action: @escaping () -> Void) {
         self.icon = icon
         self.label = label
+        self.tag = tag
         self.selected = selected
         self.count = count
         self.countIsUrgent = countIsUrgent
@@ -912,6 +916,7 @@ struct SidebarNavRow: View {
                     .font(Theme.Typography.body)
                     .fontWeight(selected ? .medium : .regular)
                     .lineLimit(1)
+                if let tag { SetupBadge(text: tag, tone: .info) }
                 Spacer(minLength: 0)
                 if count > 0 {
                     SidebarCount(value: count, urgent: countIsUrgent)
