@@ -5,11 +5,31 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-12
+
+### Highlights
+
+- **Bots run the team.** A bot can make other bots, give them jobs, switch their model or engine,
+  start them on a fresh chat, stop them, read their latest messages, schedule routines and notify
+  you, all within the trust you give it.
+- **Fresh chat.** One click, or automatically when a chat gets long: the bot writes itself notes and
+  carries on in a new chat, so each message costs far less.
+- **`/` commands.** Bupsy's own, your Claude Code commands and skills, and your Codex prompts.
+- **Carry on a Claude Code chat** from VS Code or the terminal as a bot that remembers it.
+- **Your other devices.** Use Bupsy from your phone or another Mac over Tailscale, see your other
+  Macs' bots in one sidebar, and move a bot or a whole section to another Mac.
+- **Voice.** Talk to a bot and hear it answer, with your Mac's own free speech.
+- **A nicer chat.** Bubbles, real tables, a Run button on commands, Send now for queued messages,
+  faster switching between bots, and Settings as a page in the window.
+- **Know your limits.** Context window and plan limits for Claude Code and Codex, kept across
+  restarts.
+
+<!-- full changes below -->
+
 **An API agents can read**
 - The site's API is described in an OpenAPI 3.1 document at bupsy.pages.dev/openapi.json.
 - API errors are now structured JSON with a code and what to do next, and unknown API addresses
   answer in JSON instead of the HTML error page.
-- A `bupsy` command-line tool for the site's API is ready in `cli/`, waiting to be published.
 
 **The website speaks to agents**
 - A public MCP server at bupsy.pages.dev/mcp: agents can learn what Bupsy is, read any page, and

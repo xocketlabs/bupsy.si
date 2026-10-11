@@ -1,9 +1,15 @@
 name: CI
 
-# Private repos pay for Actions by the minute, and macOS minutes count ten times. So CI runs on
-# pull requests only — a squash merge puts exactly the tested code on main, and running it all
-# again there doubled the bill for no new information — and skips changes that cannot break a
-# build. Run it by hand from the Actions tab for a dev DMG, ticking "portable" for the Linux check.
+# CI runs on pull requests only: a squash merge puts exactly the tested code on main, so running it
+# again there would add no information. Changes that cannot break a build (the site's pages, docs,
+# images) are skipped. Run it by hand from the Actions tab for a dev DMG, ticking "portable" for the
+# Linux check.
+#
+# Every job runs on GitHub's own machines, never a self-hosted runner. This repository is public, so
+# anyone can open a pull request, and a pull request runs whatever code it contains: on a
+# self-hosted runner that would be someone's own Mac. GitHub's runners are throwaway and free for
+# public repositories. `runs-on` is written out in each job rather than read from a variable, so no
+# setting can point a pull request at a private machine.
 on:
   pull_request:
     paths-ignore:
@@ -16,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       portable:
-        description: "Also try the Linux build (informational; stops at GRDB, uses paid minutes)"
+        description: "Also try the Linux build (informational; stops at GRDB)"
         type: boolean
         default: false
 
@@ -26,17 +32,14 @@ concurrency:
 
 # Every `uses:` is pinned to a full commit SHA, with the release it came from in a comment. A tag
 # is a pointer the action's owner (or whoever compromises them) can move, and these steps run with
-# this repository's token on our own Mac. Dependabot understands SHA pins and keeps them current,
+# this repository's token. Dependabot understands SHA pins and keeps them current,
 # so pinning costs nothing but a reviewed diff per bump.
 #
-# Jobs that can land on the self-hosted runner (MAC_RUNNER) skip pull requests opened by
-# Dependabot. A dependency bump executes new upstream code — a new action, a new Swift package
-# with its build plugins and tests — and that must not run unattended on someone's personal
-# machine. Review the diff, then run CI by hand (Actions → CI → Run workflow, on the Dependabot
-# branch); a manual run is started by a person, so it is not skipped. The repository is private,
-# so other pull requests come only from collaborators, who are trusted to run code here anyway.
-# A skipped job reports as passing to branch protection, which is why the manual run before
-# merging is the rule rather than a nicety.
+# Workflows get a read-only token: nothing here pushes, comments or publishes. Pull requests from
+# forks get a read-only token and no secrets whatever this says; this keeps our own branches the same.
+permissions:
+  contents: read
+
 jobs:
   # The package tests and the app build share one macOS machine. Two jobs meant paying twice for
   # checkout, toolchain start-up and minute rounding, at ten times the Linux rate.
@@ -47,13 +50,9 @@ jobs:
   # a stale checked-in project silently omits new files.
   mac:
     name: Test BupsyKit and build the app
-    # A hung test must not hold the one self-hosted runner — and every PR behind it — for hours.
-    timeout-minutes: 20
-    # MAC_RUNNER picks the machine: unset → GitHub's macos-15; set to ["self-hosted","bupsy-mac"]
-    # → the runner on our own Mac, which costs no Actions minutes.
-    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"macos-15"') }}
-    # Not for Dependabot: see the note above `jobs:`.
-    if: github.actor != 'dependabot[bot]'
+    # A hung test must not hold a runner, and every PR behind it, for hours.
+    timeout-minutes: 30
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -127,20 +126,6 @@ jobs:
             build/Bupsy-*.dmg.sha256
           retention-days: 30
 
-      # Leave no Bupsy.app behind on the runner, built or packaged, and tell macOS they are gone:
-      # this runner is a Mac someone uses, and they should only ever find the Bupsy they installed.
-      - name: Remove built copies of the app
-        if: always()
-        run: |
-          LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-          for app in "$GITHUB_WORKSPACE"/../bupsy-dd/Build/Products/*/Bupsy.app \
-                     "$GITHUB_WORKSPACE"/build/dd/Build/Products/*/Bupsy.app \
-                     "$GITHUB_WORKSPACE"/build/staging/Bupsy.app; do
-            [ -e "$app" ] || continue
-            "$LSR" -u "$app" 2>/dev/null || true
-            rm -rf "$app"
-          done
-
   # The headless core. Runs on Linux because that is the point of it existing — the Swift core's
   # SQLite layer does not link there, and cloud machines do.
   #
@@ -149,10 +134,8 @@ jobs:
   # failure from a test going red, and the log should say which happened without anyone opening it.
   core:
     name: Headless core (Go)
-    # Plain Go with no cgo, so it runs anywhere; on the Mac runner when that is set.
-    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
-    # Not for Dependabot: see the note above `jobs:`.
-    if: github.actor != 'dependabot[bot]'
+    # Plain Go with no cgo, so it runs anywhere.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -219,9 +202,8 @@ jobs:
   portable:
     name: Core builds without Apple frameworks
     runs-on: ubuntu-latest
-    # Informational, and it always stops at GRDB. It is also the one job on GitHub's own
-    # machines, billed by the minute, so a manual run for a dev DMG skips it unless the box is
-    # ticked: a known failure is not worth paid minutes or a red run.
+    # Informational, and it always stops at GRDB, so a manual run for a dev DMG skips it unless
+    # the box is ticked: a known failure is not worth a red run.
     if: github.event_name == 'workflow_dispatch' && inputs.portable
     continue-on-error: true   # informational until a port is actually committed to
     steps:
@@ -238,9 +220,7 @@ jobs:
   # machine-readable files, with Node's own test runner: no dependencies to install.
   site:
     name: Website functions
-    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
-    # Not for Dependabot: see the note above `jobs:`.
-    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Test
@@ -248,9 +228,7 @@ jobs:
 
   boundaries:
     name: Credential boundary
-    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
-    # Not for Dependabot: see the note above `jobs:`.
-    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
