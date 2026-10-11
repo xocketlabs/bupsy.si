@@ -56,6 +56,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The runner image holds several Xcodes and defaults to an older one; Bupsy is built with
+      # the current Swift, so use the newest released (non-beta) Xcode there is.
+      - name: Use the newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          XCODE=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          swift --version
+
       - name: Show toolchain
         run: swift --version
 
