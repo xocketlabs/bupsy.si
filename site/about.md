@@ -17,7 +17,7 @@ We wanted that without a new account, without buying credits, and without anyone
 
 ## Who makes it
 
-Bupsy is made by Xocket Labs Inc., a Delaware corporation. The app is source-available under the Business Source License 1.1, which converts to Apache-2.0 four years after each release.
+Bupsy is made by Xocket Labs Inc., a Delaware corporation, and is part of [Xocket Foundry](https://xocket.sh/foundry), from the team behind Xocket and Watermelon UI. Contact: [remotevansh@gmail.com](mailto:remotevansh@gmail.com) or the [contact page](https://bupsy.pages.dev/contact); on X, [@xocket](https://x.com/xocket). The app is source-available under the Business Source License 1.1, which converts to Apache-2.0 four years after each release.
 
 Bupsy is not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI or any other model vendor. Product names belong to their owners and are used only to say which tools Bupsy runs.
 

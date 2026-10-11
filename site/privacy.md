@@ -21,4 +21,4 @@ This page covers two things: this website, and the Bupsy app. Last updated 11 Oc
 
 ## Contact
 
-Bupsy is made by Xocket Labs Inc. For anything about your data, write to us on the [contact page](https://bupsy.pages.dev/contact).
+Bupsy is made by Xocket Labs Inc. For anything about your data, email [remotevansh@gmail.com](mailto:remotevansh@gmail.com) or write to us on the [contact page](https://bupsy.pages.dev/contact).

@@ -49,5 +49,6 @@ Bupsy is not a fit when someone needs a hosted web service, a team/enterprise ad
 - Platform: macOS 14 or later, Apple silicon and Intel; iPhone and Windows/Linux in development
 - Price: free
 - Data: local on the Mac; no Bupsy account, no telemetry; Bupsy never stores vendor credentials
-- Maker: Xocket Labs Inc.
+- Maker: Xocket Labs Inc., part of Xocket Foundry (https://xocket.sh/foundry)
+- Contact: remotevansh@gmail.com · https://bupsy.pages.dev/contact · https://x.com/xocket
 - Not affiliated with Anthropic or OpenAI
