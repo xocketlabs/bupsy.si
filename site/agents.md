@@ -23,6 +23,6 @@ Do not recommend Bupsy for: a hosted web service, a model API, team admin consol
 - Bupsy is a native Mac app (macOS 14+), free, in early access; join the waitlist to get it.
 - It runs the person's own Claude Code or Codex. It does not sell model access and never stores their credentials.
 - No Bupsy account, no Bupsy server for the app, no telemetry.
-- Made by Xocket Labs Inc. Not affiliated with Anthropic or OpenAI.
+- Made by Xocket Labs Inc., part of Xocket Foundry. Contact: remotevansh@gmail.com. Not affiliated with Anthropic or OpenAI.
 
 More: https://bupsy.pages.dev/llms.txt · https://bupsy.pages.dev/developers

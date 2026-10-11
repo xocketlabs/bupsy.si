@@ -1,6 +1,6 @@
 # Contact Bupsy
 
-Bupsy is made by Xocket Labs Inc. We read every message and answer by email.
+Bupsy is made by Xocket Labs Inc., part of [Xocket Foundry](https://xocket.sh/foundry). Write to us with the form below, or email [remotevansh@gmail.com](mailto:remotevansh@gmail.com). We read every message and answer by email.
 
 <!-- contact-form -->
 
@@ -17,5 +17,7 @@ Bupsy is made by Xocket Labs Inc. We read every message and answer by email.
 - [About](https://bupsy.pages.dev/about): why Bupsy exists and who makes it
 - [Developers](https://bupsy.pages.dev/developers): the public MCP server, the waitlist API and Markdown for agents
 - [Join the waitlist](https://bupsy.pages.dev/#join): one email when your spot opens
+
+Follow along on X: [@xocket](https://x.com/xocket).
 
 Bupsy is not affiliated with Anthropic or OpenAI. For help with Claude Code or Codex themselves, contact their makers.

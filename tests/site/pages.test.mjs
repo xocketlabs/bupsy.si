@@ -77,5 +77,7 @@ test("the homepage's JSON-LD parses and names the product and its maker", async 
   const types = items.map((item) => item["@type"]);
   assert.deepEqual(types, ["SoftwareApplication", "Organization", "WebSite"]);
   assert.equal(items[1].contactPoint.url, "https://bupsy.pages.dev/contact");
+  assert.match(items[1].contactPoint.email, /@/);
+  assert.equal(items[1].address["@type"], "PostalAddress");
   assert.match(page, /<link rel="canonical" href="https:\/\/bupsy.pages.dev\/">/);
 });
