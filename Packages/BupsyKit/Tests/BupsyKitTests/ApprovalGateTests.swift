@@ -144,7 +144,11 @@ struct ApprovalGateTests {
     @Test("reports a request the script gave up on")
     func reportsExpiry() async throws {
         let gate = try ApprovalGate.temporary()
-        _ = try GateInstaller.install(gateDirectory: gate.directory, timeoutSeconds: 1)
+        // Three seconds, not one: the request must be on disk long enough for the gate's poll to
+        // see it before the script gives up and removes it. With one second, a busy CI machine
+        // running every suite in parallel could schedule the poll too late, so only the expiry was
+        // seen. Real requests wait far longer than either.
+        _ = try GateInstaller.install(gateDirectory: gate.directory, timeoutSeconds: 3)
         let expiries = await gate.expirations()
         // Held for the whole test: the stream going away stops the gate's poll.
         let requests = await gate.requests()
@@ -169,7 +173,7 @@ struct ApprovalGateTests {
         #expect(output.contains("\"permissionDecision\":\"deny\""))
 
         let timeout = Task {
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(8))
             await gate.stop()
         }
         var expiredID: String?
