@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Bupsy</title>
+<meta name="description" content="What the Bupsy website and app keep, and what they never see: no tracking, no Bupsy account, no telemetry, and your AI sign-in stays with the CLI.">
+<link rel="canonical" href="https://bupsy.pages.dev/privacy">
+<meta property="og:title" content="Privacy · Bupsy">
+<meta property="og:description" content="What the Bupsy website and app keep, and what they never see: no tracking, no Bupsy account, no telemetry, and your AI sign-in stays with the CLI.">
+<meta property="og:url" content="https://bupsy.pages.dev/privacy">
+<meta property="og:site_name" content="Bupsy">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://bupsy.pages.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Bupsy: Your AI already has a subscription. Give it a job.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://bupsy.pages.dev/og.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/markdown" href="/privacy.md">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@700;800&display=swap">
+<style>
+  :root { --bg:#fff; --card:#f5f5f5; --ink:#0a0a0a; --muted:#737373; --line:#e5e5e5; --primary:#d76abf;
+    --display:"Funnel Display",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#101010; --card:#202020; --ink:#fafafa; --muted:#a1a1a1; --line:#ffffff17; --primary:#e075c8; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.65 var(--ui); -webkit-font-smoothing:antialiased; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+  nav { display:flex; align-items:center; justify-content:space-between; padding:20px 0 8px; }
+  nav a { color:inherit; text-decoration:none; }
+  .brand { display:flex; align-items:center; gap:10px; font:800 22px var(--display); letter-spacing:-.03em; }
+  .brand img { width:30px; height:30px; }
+  .cta { font-weight:600; font-size:15px; padding:9px 16px; border-radius:999px; background:var(--ink); color:var(--bg) !important; }
+  main { padding: 40px 0 64px; }
+  h1 { font: 800 clamp(36px,6vw,52px)/1.05 var(--display); letter-spacing:-.03em; margin:0 0 16px; }
+  h2 { font: 700 24px/1.2 var(--display); letter-spacing:-.02em; margin:40px 0 10px; }
+  p, li { color: var(--ink); } .muted { color: var(--muted); }
+  a { color: var(--primary); }
+  ul { padding-left: 1.2em; } li { margin: 6px 0; }
+  footer { border-top:1px solid var(--line); padding:24px 0 40px; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; gap:8px 20px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#join">Join the waitlist</a></nav>
+<main>
+<h1>Privacy</h1>
+<p>This page covers two things: this website, and the Bupsy app. Last updated 11 October 2026.</p>
+<h2>This website</h2>
+<ul>
+<li><b>No tracking.</b> No analytics, no advertising pixels and no cookies.</li>
+<li><b>The waitlist.</b> If you join, we keep your email address, which signup form you used, the country Cloudflare saw the request come from, and the time. That is all. It is stored in a database in our Cloudflare account and used only to email you when Bupsy is ready for you. We do not sell or share it.</li>
+<li><b>Hosting.</b> The site runs on Cloudflare Pages. Cloudflare processes requests to serve the site, as any host does.</li>
+<li><b>Leaving the list.</b> Reply to any email from us and we will delete your address.</li>
+</ul>
+<h2>The Bupsy app</h2>
+<ul>
+<li><b>No Bupsy account and no Bupsy server.</b> Your bots, chats, routines and settings are stored on your Mac.</li>
+<li><b>No telemetry.</b> The app does not report what you do.</li>
+<li><b>Your AI sign-in stays with the CLI.</b> Claude Code and Codex keep their own credentials. Bupsy starts them, but never reads or stores those credentials.</li>
+<li><b>Your prompts go to your AI provider.</b> When a bot works, the CLI you chose sends your messages and the files it reads to Anthropic or OpenAI under your own account and their terms, exactly as it would if you ran it yourself.</li>
+<li><b>Your other devices.</b> Using Bupsy from your phone or another Mac is off until you turn it on. It works only over your own private Tailscale network, never the public internet, and every device must be paired on your Mac first.</li>
+<li><b>Connected tools.</b> Apps you connect, such as Gmail or Notion, are reached through tools you set up. Their keys stay with those tools.</li>
+</ul>
+<h2>Contact</h2>
+<p>Bupsy is made by Xocket Labs Inc. For anything about your data, reply to any email from us.</p>
+</main>
+<footer><span>© 2026 Xocket Labs Inc.</span><a href="/">Home</a><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/llms.txt">llms.txt</a><span>Not affiliated with Anthropic or OpenAI.</span></footer>
+</div>
+</body>
+</html>
