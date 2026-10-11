@@ -1,6 +1,6 @@
 # Discovery for agents (RFC 8288): where the plain-text description and the page list are.
 /
-  Link: </llms.txt>; rel="describedby"; type="text/plain", </sitemap.xml>; rel="sitemap"; type="application/xml", </index.md>; rel="alternate"; type="text/markdown", </.well-known/api-catalog>; rel="api-catalog"
+  Link: </llms.txt>; rel="describedby"; type="text/plain", </sitemap.xml>; rel="sitemap"; type="application/xml", </index.md>; rel="alternate"; type="text/markdown", </.well-known/api-catalog>; rel="api-catalog", </openapi.json>; rel="service-desc"; type="application/openapi+json"
   Vary: Accept
 
 /*.md
@@ -14,6 +14,9 @@
 
 /.well-known/api-catalog
   Content-Type: application/linkset+json
+
+/openapi.json
+  Access-Control-Allow-Origin: *
 
 /.well-known/mcp.json
   Content-Type: application/json

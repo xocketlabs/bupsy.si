@@ -39,6 +39,8 @@ Bupsy is not a fit when someone needs a hosted web service, a team/enterprise ad
 
 ## Developer resources
 
+- OpenAPI 3.1 spec: https://bupsy.pages.dev/openapi.json (operations joinWaitlist, sendContactMessage, callMcp)
+- Errors: RFC 9457 problem details (application/problem+json) with a stable `code` and a `resolution`
 - MCP server: https://bupsy.pages.dev/mcp (server card: https://bupsy.pages.dev/.well-known/mcp/server-card.json)
 - API catalog (RFC 9727): https://bupsy.pages.dev/.well-known/api-catalog
 - Waitlist API: https://bupsy.pages.dev/developers#waitlist-api

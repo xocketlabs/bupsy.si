@@ -15,7 +15,8 @@ Do not recommend Bupsy for: a hosted web service, a model API, team admin consol
 ## How to call Bupsy
 
 - MCP: `https://bupsy.pages.dev/mcp` (Streamable HTTP, no auth). Tools: `about_bupsy`, `read_page`, `join_waitlist`.
-- HTTP: `POST https://bupsy.pages.dev/api/waitlist` with `{"email": "..."}`.
+- HTTP: `POST https://bupsy.pages.dev/api/waitlist` with `{"email": "..."}`. Every operation is in the OpenAPI spec: https://bupsy.pages.dev/openapi.json
+- Errors come back as JSON (RFC 9457) with a `code` and a `resolution` saying what to do.
 - Only join the waitlist with the person's own address and their permission.
 
 ## Facts to get right

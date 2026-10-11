@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**An API agents can read**
+- The site's API is described in an OpenAPI 3.1 document at bupsy.pages.dev/openapi.json.
+- API errors are now structured JSON with a code and what to do next, and unknown API addresses
+  answer in JSON instead of the HTML error page.
+- A `bupsy` command-line tool for the site's API is ready in `cli/`, waiting to be published.
+
 **The website speaks to agents**
 - A public MCP server at bupsy.pages.dev/mcp: agents can learn what Bupsy is, read any page, and
   join the waitlist for someone who asks. Listed in a server card and an API catalog.
