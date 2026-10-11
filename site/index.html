@@ -315,6 +315,103 @@
   footer .brand { font-size: 17px; color: var(--ink); }
   footer .small { display: flex; flex-wrap: wrap; gap: 6px 20px; }
 
+  /* ---- Highlight: make your bot ---- */
+  .maker { display: grid; gap: 24px; grid-template-columns: 1fr; border-radius: 24px; background: var(--raised); border: 1px solid var(--line); padding: 16px; }
+  @media (min-width: 900px) { .maker { grid-template-columns: 1.05fr 1fr; padding: 20px; } }
+  .maker .stage { position: relative; display: grid; place-items: center; align-content: center; gap: 8px; min-height: 420px; border-radius: 18px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+  .maker .stage::before { content: ""; position: absolute; inset: 0; background: radial-gradient(60% 50% at 50% 46%, color-mix(in oklab, var(--me) 16%, transparent), transparent 70%); transition: background .4s; }
+  .maker .stage > * { position: relative; }
+  .maker .me { width: 220px; height: 220px; }
+  .maker .me svg { width: 100%; height: 100%; }
+  .maker .plate { display: grid; justify-items: center; gap: 2px; }
+  .maker .plate b { font: 800 34px var(--display); letter-spacing: -.03em; line-height: 1.1; max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .maker .plate span { color: var(--muted); font-size: 14px; }
+  .maker .controls { display: grid; gap: 22px; align-content: start; padding: 8px 4px; }
+  .ctl { display: grid; gap: 10px; }
+  .ctl > label, .ctl > .lbl { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .ctl input[type=text] { height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); font: 500 16px var(--ui); outline: none; }
+  .ctl input[type=text]:focus { border-color: var(--ink); }
+  .shapes { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  @media (max-width: 520px) { .shapes { grid-template-columns: repeat(4, 1fr); } }
+  .shapes button { aspect-ratio: 1; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; display: grid; place-items: center; padding: 4px; transition: border-color .15s, transform .15s; }
+  .shapes button:hover { transform: translateY(-2px); }
+  .shapes button[aria-pressed=true] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+  .shapes svg { width: 100%; height: 100%; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .swatches button { width: 32px; height: 32px; border-radius: 50%; border: 0; cursor: pointer; background: var(--c); box-shadow: 0 0 0 2px var(--raised), 0 0 0 3px transparent; transition: box-shadow .15s, transform .15s; }
+  .swatches button:hover { transform: scale(1.08); }
+  .swatches button[aria-pressed=true] { box-shadow: 0 0 0 3px var(--raised), 0 0 0 5px var(--ink); }
+  .seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: var(--card); }
+  .seg button { flex: 1 1 auto; height: 34px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: 500 13px var(--ui); cursor: pointer; }
+  .seg button[aria-pressed=true] { background: var(--bg); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .maker .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+  .maker .foot small { color: var(--muted); font-size: 13px; }
+
+  /* ---- Highlight: a day on your roster ---- */
+  .day24 { border-radius: 24px; border: 1px solid var(--line); background: var(--bg); box-shadow: var(--shadow-lg); overflow: hidden; }
+  .mbar { display: flex; align-items: center; gap: 18px; height: 34px; padding: 0 14px; background: var(--raised); border-bottom: 1px solid var(--line); font-size: 13px; }
+  .mbar .apple { font-weight: 700; }
+  .mbar .menus { display: flex; gap: 16px; color: var(--muted); }
+  @media (max-width: 640px) { .mbar .menus { display: none; } }
+  .mbar .right { margin-left: auto; display: flex; align-items: center; gap: 14px; font-variant-numeric: tabular-nums; }
+  .mbar .bicon { position: relative; width: 22px; height: 22px; }
+  .mbar .bicon svg { width: 100%; height: 100%; }
+  .mbar .bicon em { position: absolute; top: -3px; right: -6px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--primary); color: var(--on-primary); font: 700 10px/15px var(--ui); font-style: normal; text-align: center; transform: scale(0); transition: transform .25s cubic-bezier(.3,1.6,.5,1); }
+  .mbar .bicon.on em { transform: scale(1); }
+  .d-body { display: grid; grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .d-body { grid-template-columns: 1.15fr 1fr; } }
+  .d-roster { padding: 24px; display: grid; gap: 4px; align-content: start; }
+  @media (min-width: 900px) { .d-roster { border-right: 1px solid var(--line); } }
+  .clock { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+  .clock b { font: 800 64px/1 var(--display); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+  .clock span { color: var(--muted); }
+  .d-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; transition: background .25s; }
+  .d-row.hot { background: var(--primary-soft); }
+  .d-row [data-bot] { width: 44px; height: 44px; }
+  .d-row b { display: block; font-weight: 600; }
+  .d-row small { display: block; color: var(--muted); font-size: 13px; }
+  .d-row .st { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .d-row.hot .st { color: color-mix(in oklab, var(--primary) 75%, var(--ink)); }
+  .d-feed { padding: 24px; display: flex; flex-direction: column; gap: 10px; min-height: 300px; background: var(--raised); }
+  .d-feed h3 { font: 600 13px var(--ui); color: var(--muted); letter-spacing: 0; }
+  .ev { display: grid; grid-template-columns: 52px 22px 1fr; gap: 10px; align-items: start; font-size: 14px; }
+  .ev time { color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+  .ev [data-bot] { width: 22px; height: 22px; }
+  .ev.empty { display: block; color: var(--muted); }
+  .scrub { padding: 18px 24px 22px; border-top: 1px solid var(--line); }
+  .track { position: relative; height: 44px; --night: color-mix(in oklab, var(--ink) 14%, var(--bg)); }
+  .track .marks { position: absolute; left: 0; right: 0; top: 8px; height: 12px; z-index: 1; pointer-events: none; }
+  .track .marks i { position: absolute; top: 0; width: 3px; height: 12px; margin-left: -1.5px; border-radius: 2px; background: var(--line-strong); }
+  .track .marks i.needs { background: var(--primary); }
+  .track input { position: absolute; left: 0; right: 0; top: 0; height: 28px; width: 100%; margin: 0; -webkit-appearance: none; appearance: none; background: transparent; cursor: grab; }
+  .track input:active { cursor: grabbing; }
+  .track input::-webkit-slider-runnable-track { height: 28px; border-radius: 8px; background: linear-gradient(90deg, var(--night) 0 25%, var(--card) 25% 75%, var(--night) 75%); }
+  .track input::-moz-range-track { height: 28px; border-radius: 8px; background: linear-gradient(90deg, var(--night) 0 25%, var(--card) 25% 75%, var(--night) 75%); }
+  .track input::-webkit-slider-thumb { -webkit-appearance: none; position: relative; z-index: 2; width: 6px; height: 40px; margin-top: -6px; border-radius: 3px; background: var(--ink); box-shadow: 0 0 0 3px var(--bg); }
+  .track input::-moz-range-thumb { width: 6px; height: 40px; border: 0; border-radius: 3px; background: var(--ink); box-shadow: 0 0 0 3px var(--bg); }
+  .ticks { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .scrub .help { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .scrub .help button { border: 0; background: none; color: var(--ink); font: 600 13px var(--ui); cursor: pointer; padding: 0; }
+
+  /* ---- Highlight: slash commands ---- */
+  .slash { display: grid; gap: 48px; align-items: center; }
+  @media (min-width: 960px) { .slash { grid-template-columns: 1fr 1.05fr; gap: 72px; } }
+  .sl-win { border-radius: 14px; border: 1px solid var(--line); background: var(--bg); box-shadow: var(--shadow-lg); overflow: visible; font-size: 14px; }
+  .sl-win .top { border-radius: 14px 14px 0 0; }
+  .sl-chat { min-height: 230px; padding: 20px; display: flex; flex-direction: column; justify-content: flex-end; gap: 14px; }
+  .sl-chat .hint2 { align-self: center; color: var(--muted); font-size: 13px; margin-bottom: auto; padding-top: 30px; text-align: center; }
+  .sl-box { position: relative; margin: 0 20px 20px; }
+  .sl-box input { width: 100%; height: 52px; padding: 0 16px; border-radius: 14px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); font: 500 15px var(--ui); outline: none; }
+  .sl-box input:focus { border-color: var(--ink); box-shadow: 0 0 0 4px color-mix(in oklab, var(--ink) 8%, transparent); }
+  .sl-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); max-height: 300px; overflow: auto; padding: 6px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); box-shadow: var(--shadow-lg); z-index: 5; }
+  .sl-menu .grp { padding: 8px 10px 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .sl-menu button { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
+  .sl-menu button code { font: 600 13px var(--mono); }
+  .sl-menu button span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sl-menu button.sel { background: var(--card-hover); }
+  .sl-menu .none { padding: 10px; color: var(--muted); font-size: 13px; }
+  .cmdpill { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--card); font: 600 13px var(--mono); }
+
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
     .bm, .bm * { animation: none !important; }
@@ -332,10 +429,10 @@
     <a class="brand" href="#top"><span data-bot="bup" data-color="1" data-size="30" data-no-shadow></span>Bupsy</a>
     <div class="nav-links">
       <a href="#app">The app</a>
-      <a href="#moods">Faces</a>
+      <a href="#make">Make a bot</a>
+      <a href="#day">A day</a>
       <a href="#team">Teamwork</a>
-      <a href="#platforms">Platforms</a>
-      <a class="btn btn-ink" href="#join">Join the waitlist</a>
+            <a class="btn btn-ink" href="#join">Join the waitlist</a>
     </div>
   </div>
 </nav>
@@ -426,6 +523,53 @@
     </div>
   </section>
 
+  <section id="make">
+    <div class="wrap">
+      <div class="head2 split">
+        <h2>Make a bot. Right here.</h2>
+        <p class="lead">Every bot gets a face of its own: eight shapes, eight colours, six moods. Make one now and it'll wait for you on the sign-up field.</p>
+      </div>
+      <div class="maker" style="--me: var(--bot-1)">
+        <div class="stage">
+          <div class="me" id="me" data-bot="bup" data-color="1" data-size="220"></div>
+          <div class="plate"><b id="me-name">Pixel</b><span id="me-role">Bup, ready for a job</span></div>
+        </div>
+        <div class="controls">
+          <div class="ctl"><label for="me-input">Name</label><input type="text" id="me-input" value="Pixel" maxlength="16" autocomplete="off" spellcheck="false"></div>
+          <div class="ctl"><span class="lbl" id="shape-lbl">Shape</span><div class="shapes" id="shapes" role="group" aria-labelledby="shape-lbl"></div></div>
+          <div class="ctl"><span class="lbl" id="color-lbl">Colour</span><div class="swatches" id="swatches" role="group" aria-labelledby="color-lbl"></div></div>
+          <div class="ctl"><span class="lbl" id="mood-lbl">Try a mood</span><div class="seg" id="moodseg" role="group" aria-labelledby="mood-lbl"></div></div>
+          <div class="foot"><button class="btn btn-quiet" type="button" id="shuffle">Shuffle</button><a class="btn btn-ink" href="#join"><span>Take <b id="me-take" style="font-weight:inherit">Pixel</b> to the waitlist</span></a><small>Same drawing as the app.</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="day">
+    <div class="wrap">
+      <div class="head2 split">
+        <h2>A day on your roster.</h2>
+        <p class="lead">Routines run on a schedule, goals check themselves, and bots sleep in between. Drag the clock. When one needs you, your menu bar says so.</p>
+      </div>
+      <div class="day24">
+        <div class="mbar" aria-hidden="true"><div class="menus"><b style="color:var(--ink)">Bupsy</b><span>File</span><span>Edit</span><span>View</span><span>Window</span></div>
+          <div class="right"><span class="bicon" id="bicon"><span data-bot="bup" data-color="1" data-size="22" data-still data-no-shadow></span><em id="bcount">1</em></span><span id="mclock">Mon 07:00</span></div></div>
+        <div class="d-body">
+          <div class="d-roster">
+            <div class="clock"><b id="dclock">07:00</b><span id="dlabel">Morning</span></div>
+            <div id="drows"></div>
+          </div>
+          <div class="d-feed" aria-live="polite"><h3>What happened so far today</h3><div id="dfeed" style="display:grid;gap:10px"></div></div>
+        </div>
+        <div class="scrub">
+          <div class="track"><div class="marks" id="dmarks"></div><input type="range" id="drange" min="0" max="1439" step="1" value="420" aria-label="Time of day"></div>
+          <div class="ticks"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+          <div class="help"><span>Pink marks are moments a bot needs you.</span><button type="button" id="dplay">Play the day</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="team">
     <div class="wrap team">
       <div>
@@ -452,6 +596,27 @@
     </div>
   </section>
 
+  <section id="slash">
+    <div class="wrap slash">
+      <div>
+        <h2>Your commands come too.</h2>
+        <p class="lead" style="margin-top:16px">Type <span class="cmdpill">/</span> in any chat for your Claude Code commands and skills, your Codex prompts, or Bupsy's own. Pick up any VS Code chat as a bot.</p>
+        <div class="points">
+          <div class="point"><span data-bot="pill" data-color="5" data-size="40" data-still></span><div><b>Long chats stay cheap</b><span>One click, or automatically: the bot writes itself notes and carries on in a fresh chat, so each message costs a fraction.</span></div></div>
+          <div class="point"><span data-bot="bear" data-color="7" data-size="40" data-still></span><div><b>Talk to it</b><span>Speak to a bot and hear it answer, with your Mac's own voices. Free, and on your Mac when your language allows.</span></div></div>
+        </div>
+      </div>
+      <div class="sl-win">
+        <div class="top"><div class="crumbs"><span>Bupsy</span><span>/</span><b>Builder</b></div><span class="badge" style="margin-left:auto">Example commands</span></div>
+        <div class="sl-chat" id="slchat"><p class="hint2">Click the box and type <span class="cmdpill">/</span></p></div>
+        <div class="sl-box">
+          <div class="sl-menu" id="slmenu" role="listbox" aria-label="Commands" hidden></div>
+          <input type="text" id="slin" placeholder="Message Builder, or type / for commands" autocomplete="off" spellcheck="false" aria-controls="slmenu">
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="features">
     <div class="wrap">
       <div class="head2 split">
@@ -465,9 +630,6 @@
         <div class="feature"><h3>Connect any tool</h3><p>Gmail, Notion, Linear, any API, through Executor, which keeps the keys. Bupsy never sees them.</p></div>
         <div class="feature"><h3>See what it changed</h3><p>Every file a bot wrote, every action it took, and what it would have cost, shown plainly.</p></div>
         <div class="feature"><h3>Every bot a character</h3><p>Eight shapes, eight colours. Faces that look around, bounce while they work and wave when they need you.</p></div>
-        <div class="feature"><h3>Long chats stay cheap</h3><p>One click, or automatically: the bot writes itself notes and carries on in a fresh chat, so each message costs a fraction.</p></div>
-        <div class="feature"><h3>Your commands come too</h3><p>Type <kbd>/</kbd> for your Claude Code commands and skills, your Codex prompts, or Bupsy's own. Pick up any VS Code chat as a bot.</p></div>
-        <div class="feature"><h3>Talk to it</h3><p>Speak to a bot and hear it answer, with your Mac's own voices. Free, and on your Mac when your language allows.</p></div>
       </div>
     </div>
   </section>
@@ -549,6 +711,195 @@
 <script src="mascot.js"></script>
 <script>
   Bupsy.mountAll();
+
+  // ---- Make your bot ----
+  (function () {
+    var SHAPES = [['bup', 'Bup'], ['blob', 'Blob'], ['pill', 'Pill'], ['cat', 'Cat'], ['bunny', 'Bunny'], ['bear', 'Bear'], ['ghost', 'Ghost'], ['horns', 'Imp']];
+    var MOODS = [['idle', 'Ready', 'ready for a job'], ['working', 'Working', 'working on it'], ['needs', 'Needs you', 'needs you'], ['done', 'Done', 'done, and pleased'], ['sleeping', 'Asleep', 'asleep until its routine'], ['error', 'Stuck', 'stuck, and saying why']];
+    var me = { name: 'Pixel', shape: 'bup', color: 1, mood: 'idle' };
+    try { var saved = JSON.parse(localStorage.getItem('bupsy.me') || 'null'); if (saved && saved.shape) me = saved; } catch (e) {}
+    var face = document.getElementById('me'), maker = document.querySelector('.maker');
+    var shapes = document.getElementById('shapes'), sw = document.getElementById('swatches'), seg = document.getElementById('moodseg');
+    var input = document.getElementById('me-input');
+    shapes.innerHTML = SHAPES.map(function (s) { return '<button type="button" data-v="' + s[0] + '" aria-label="' + s[1] + '"></button>'; }).join('');
+    sw.innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(function (c) { return '<button type="button" data-v="' + c + '" style="--c: var(--bot-' + c + ')" aria-label="Colour ' + c + '"></button>'; }).join('');
+    seg.innerHTML = MOODS.map(function (m) { return '<button type="button" data-v="' + m[0] + '">' + m[1] + '</button>'; }).join('');
+    function save() { try { localStorage.setItem('bupsy.me', JSON.stringify(me)); } catch (e) {} }
+    function crew() {
+      // Your bot takes the middle seat on both sign-up fields.
+      document.querySelectorAll('form.waitlist').forEach(function (f) {
+        var mates = f.querySelectorAll('.mate [data-bot]'), grips = f.querySelectorAll('.grips span');
+        var i = Math.floor(mates.length / 2), b = mates[i];
+        b.dataset.bot = me.shape; b.dataset.color = me.color; Bupsy.render(b);
+        grips[i].style.setProperty('--paw', 'var(--bot-' + me.color + ')');
+      });
+    }
+    function draw() {
+      var name = (me.name || '').trim() || 'Your bot';
+      face.dataset.bot = me.shape; face.dataset.color = me.color; face.dataset.mood = me.mood; Bupsy.render(face);
+      maker.style.setProperty('--me', 'var(--bot-' + me.color + ')');
+      document.getElementById('me-name').textContent = name;
+      document.getElementById('me-take').textContent = name;
+      var shapeName = SHAPES.filter(function (s) { return s[0] === me.shape; })[0][1];
+      var moodText = MOODS.filter(function (m) { return m[0] === me.mood; })[0][2];
+      document.getElementById('me-role').textContent = shapeName + ', ' + moodText;
+      shapes.querySelectorAll('button').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.dataset.v === me.shape);
+        b.innerHTML = Bupsy.svg({ shape: b.dataset.v, color: me.color, size: 40, still: true });
+      });
+      sw.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', +b.dataset.v === +me.color); });
+      seg.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.v === me.mood); });
+      crew(); save();
+    }
+    input.value = me.name;
+    input.addEventListener('input', function () { me.name = input.value; draw(); });
+    shapes.addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) { me.shape = b.dataset.v; draw(); } });
+    sw.addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) { me.color = +b.dataset.v; draw(); } });
+    seg.addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) { me.mood = b.dataset.v; draw(); } });
+    var NAMES = ['Pixel', 'Mochi', 'Scout', 'Biscuit', 'Nova', 'Pip', 'Tofu', 'Juno', 'Sprout', 'Ziggy'];
+    document.getElementById('shuffle').addEventListener('click', function () {
+      function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+      me = { name: pick(NAMES), shape: pick(SHAPES)[0], color: 1 + Math.floor(Math.random() * 8), mood: pick(MOODS)[0] };
+      input.value = me.name; draw();
+    });
+    draw();
+  })();
+
+  // ---- A day on your roster ----
+  (function () {
+    // Minutes since midnight. Each bot's mood is a function of the time, like its real schedule.
+    function between(t, a, b) { return t >= a && t < b; }
+    var H = function (h, m) { return h * 60 + (m || 0); };
+    var BOTS = [
+      { name: 'Night owl', shape: 'ghost', color: 4, job: 'Checks dependencies nightly at 02:00', mood: function (t) { return between(t, H(2), H(2, 25)) ? 'working' : between(t, H(2, 25), H(2, 50)) ? 'done' : 'sleeping'; } },
+      { name: 'Planner', shape: 'bunny', color: 5, job: 'Morning brief, weekdays at 07:00', mood: function (t) { return between(t, H(7), H(7, 12)) ? 'working' : between(t, H(7, 12), H(7, 40)) ? 'done' : between(t, H(8), H(20)) ? 'idle' : 'sleeping'; } },
+      { name: 'Inbox', shape: 'bear', color: 7, job: 'Goal: inbox under a day old, checks hourly', mood: function (t) { if (!between(t, H(9), H(18, 30))) return 'sleeping'; return (t % 60) < 9 ? 'working' : 'idle'; } },
+      { name: 'Builder', shape: 'cat', color: 3, job: 'Fixing the login bug you asked about', mood: function (t) { return between(t, H(10), H(11, 30)) ? 'working' : between(t, H(11, 30), H(12)) ? 'done' : between(t, H(8), H(22)) ? 'idle' : 'sleeping'; } },
+      { name: 'Scout', shape: 'bup', color: 1, job: 'Shipping the migration', mood: function (t) { return between(t, H(14), H(14, 40)) ? 'needs' : between(t, H(14, 40), H(15, 12)) ? 'working' : between(t, H(15, 12), H(15, 40)) ? 'done' : between(t, H(8), H(22)) ? 'idle' : 'sleeping'; } }
+    ];
+    var EVENTS = [
+      [H(2), 0, 'Night owl started the dependency check.'],
+      [H(2, 25), 0, 'Night owl: all 41 packages up to date. Back to sleep.'],
+      [H(7), 1, 'Planner is writing your morning brief.'],
+      [H(7, 12), 1, 'Planner sent the brief: 3 meetings, 2 PRs waiting on you.'],
+      [H(9), 2, 'Inbox triaged 12 new emails, 2 need a reply.'],
+      [H(10), 3, 'Builder started on the login bug.'],
+      [H(11, 30), 3, 'Builder: fix pushed, tests green, PR is up.'],
+      [H(13), 2, 'Inbox drafted replies for you to check.'],
+      [H(14), 4, 'Scout needs you: "Can I run the database migration?"', true],
+      [H(14, 40), 4, 'You allowed it from the menu bar.'],
+      [H(15, 12), 4, 'Scout: migration done, nothing lost.'],
+      [H(18), 2, 'Inbox: last check of the day. Under a day old.']
+    ];
+    var rows = document.getElementById('drows'), feed = document.getElementById('dfeed'), range = document.getElementById('drange');
+    rows.innerHTML = BOTS.map(function (b, i) {
+      return '<div class="d-row" id="dr' + i + '"><span data-bot="' + b.shape + '" data-color="' + b.color + '" data-size="44" data-no-shadow></span><div><b>' + b.name + '</b><small>' + b.job + '</small></div><span class="st"></span></div>';
+    }).join('');
+    Bupsy.mountAll(rows);
+    document.getElementById('dmarks').innerHTML = EVENTS.map(function (e) { return '<i class="' + (e[3] ? 'needs' : '') + '" style="left:' + (e[0] / 1440 * 100) + '%"></i>'; }).join('');
+    var LABEL = { idle: 'Ready', working: 'Working', needs: 'Needs you', done: 'Done', sleeping: 'Asleep', error: 'Stuck' };
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    var lastFeed = -1;
+    function show(t) {
+      t = Math.max(0, Math.min(1439, Math.round(t)));
+      var hh = pad(Math.floor(t / 60)) + ':' + pad(t % 60);
+      document.getElementById('dclock').textContent = hh;
+      document.getElementById('mclock').textContent = 'Mon ' + hh;
+      document.getElementById('dlabel').textContent = t < H(5) ? 'Night' : t < H(12) ? 'Morning' : t < H(17) ? 'Afternoon' : t < H(21) ? 'Evening' : 'Night';
+      var needs = 0;
+      BOTS.forEach(function (b, i) {
+        var m = b.mood(t), row = document.getElementById('dr' + i);
+        Bupsy.setMood(row.querySelector('[data-bot]'), m);
+        row.querySelector('.st').textContent = LABEL[m];
+        row.classList.toggle('hot', m === 'needs');
+        if (m === 'needs') needs++;
+      });
+      document.getElementById('bicon').classList.toggle('on', needs > 0);
+      var past = EVENTS.filter(function (e) { return e[0] <= t; });
+      if (past.length !== lastFeed) {
+        lastFeed = past.length;
+        feed.innerHTML = past.length ? past.slice(-5).map(function (e) {
+          var b = BOTS[e[1]];
+          return '<div class="ev appear"><time>' + pad(Math.floor(e[0] / 60)) + ':' + pad(e[0] % 60) + '</time><span data-bot="' + b.shape + '" data-color="' + b.color + '" data-size="22" data-still data-no-shadow></span><span>' + e[2] + '</span></div>';
+        }).join('') : '<p class="ev empty">Quiet so far. Everyone is asleep.</p>';
+        Bupsy.mountAll(feed);
+      }
+    }
+    var playing = null;
+    function stop() { if (playing) { cancelAnimationFrame(playing); playing = null; } }
+    function play() {
+      stop();
+      var from = +range.value >= 1400 ? 0 : +range.value, start = performance.now(), dur = (1440 - from) / 1440 * 16000;
+      function step(now) {
+        var t = from + (1440 - from) * Math.min(1, (now - start) / dur);
+        range.value = Math.min(1439, t); show(t);
+        if (t < 1439) playing = requestAnimationFrame(step); else playing = null;
+      }
+      playing = requestAnimationFrame(step);
+    }
+    range.addEventListener('input', function () { stop(); show(+range.value); });
+    document.getElementById('dplay').addEventListener('click', play);
+    var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    show(reduce ? H(14, 10) : +range.value);
+    if (!reduce && 'IntersectionObserver' in window) {
+      var seen = false;
+      new IntersectionObserver(function (es, o) { if (!seen && es[0].isIntersecting) { seen = true; o.disconnect(); range.value = 0; play(); } }, { threshold: .45 }).observe(document.querySelector('.day24'));
+    }
+  })();
+
+  // ---- Slash commands ----
+  (function () {
+    var CMDS = [
+      ['Your Claude Code skills', '/review-pr', 'Review the open pull request', 'Reviewed PR #42: two nits and one real bug in the token refresh. Comments are on the PR.'],
+      ['Your Claude Code skills', '/deploy-check', 'Check the build before a deploy', 'Build is clean, migrations are in order, nothing blocks the deploy.'],
+      ['Your Codex prompts', '/explain', 'Explain the selected code', 'This retries the request with backoff, but it never resets the counter. That is why the third call always fails.'],
+      ['Bupsy', '/compact', 'Write notes, carry on in a fresh chat', 'Notes written. I’m carrying on in a fresh chat, so the next message costs a fraction of this one.'],
+      ['Bupsy', '/routine', 'Run this on a schedule', 'Done. I’ll run this every weekday at 09:00 and tell you only if something changes.'],
+      ['Bupsy', '/voice', 'Talk to this bot out loud', 'Listening. Go ahead and talk, I’ll answer with your Mac’s voice.']
+    ];
+    var input = document.getElementById('slin'), menu = document.getElementById('slmenu'), chat = document.getElementById('slchat');
+    var list = [], sel = 0;
+    function esc(s) { return s.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function render() {
+      var q = input.value;
+      if (q.charAt(0) !== '/') { menu.hidden = true; return; }
+      q = q.slice(1).toLowerCase();
+      list = CMDS.filter(function (c) { return c[1].slice(1).indexOf(q) === 0; });
+      if (!list.length) list = CMDS.filter(function (c) { return c[2].toLowerCase().indexOf(q) >= 0; });
+      sel = Math.min(sel, Math.max(0, list.length - 1));
+      var html = '', grp = '';
+      list.forEach(function (c, i) {
+        if (c[0] !== grp) { grp = c[0]; html += '<div class="grp">' + grp + '</div>'; }
+        html += '<button type="button" role="option" data-i="' + i + '" class="' + (i === sel ? 'sel' : '') + '" aria-selected="' + (i === sel) + '"><code>' + c[1] + '</code><span>' + c[2] + '</span></button>';
+      });
+      menu.innerHTML = html || '<div class="none">No command starts with that.</div>';
+      menu.hidden = false;
+    }
+    function run(c) {
+      menu.hidden = true; input.value = '';
+      var hint = chat.querySelector('.hint2'); if (hint) hint.remove();
+      chat.querySelectorAll('.you, .msg, .thinking').forEach(function (n, i, all) { if (all.length > 4 && i < 2) n.remove(); });
+      var you = document.createElement('div'); you.className = 'you appear'; you.innerHTML = c[0] ? '<span class="cmdpill">' + c[1] + '</span>' : esc(c[1]); chat.appendChild(you);
+      var th = document.createElement('div'); th.className = 'thinking appear'; th.innerHTML = '<span data-bot="cat" data-color="3" data-mood="working" data-size="28"></span>Builder is on it'; chat.appendChild(th); Bupsy.mountAll(th);
+      setTimeout(function () {
+        th.remove();
+        var m = document.createElement('div'); m.className = 'msg appear';
+        m.innerHTML = '<span data-bot="cat" data-color="3" data-mood="done" data-size="28"></span><div><div class="who">Builder</div><p>' + esc(c[3]) + '</p></div>';
+        chat.appendChild(m); Bupsy.mountAll(m);
+      }, 1100);
+    }
+    input.addEventListener('input', function () { sel = 0; render(); });
+    input.addEventListener('focus', function () { if (!input.value) { input.value = '/'; sel = 0; render(); } });
+    input.addEventListener('blur', function () { setTimeout(function () { menu.hidden = true; if (input.value === '/') input.value = ''; }, 150); });
+    input.addEventListener('keydown', function (e) {
+      if (menu.hidden) { if (e.key === 'Enter' && input.value.trim()) { e.preventDefault(); run(['', input.value.trim(), '', 'Got it. In the app I’d start on that now.']); } return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = (sel + 1) % Math.max(1, list.length); render(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = (sel - 1 + list.length) % Math.max(1, list.length); render(); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (list[sel]) run(list[sel]); }
+      else if (e.key === 'Escape') { menu.hidden = true; }
+    });
+    menu.addEventListener('mousedown', function (e) { var b = e.target.closest('button'); if (b) { e.preventDefault(); run(list[+b.dataset.i]); } });
+  })();
 
   var nav = document.querySelector('nav');
   addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
