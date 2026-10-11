@@ -1,0 +1,12 @@
+# The landing page (site/) and its waitlist function (functions/), on Cloudflare Pages.
+# Deployed by scripts/deploy-site.sh. The waitlist lives in D1 beside it: no secret to set, and the
+# address of every signup stays in this Cloudflare account.
+name = "bupsy"
+pages_build_output_dir = "site"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "WAITLIST"
+database_name = "bupsy-waitlist"
+database_id = "978ecf1e-c67f-4f84-b136-489148c067bb"
+migrations_dir = "migrations"
