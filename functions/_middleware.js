@@ -1,3 +1,5 @@
+import { problem } from "../lib/errors.js";
+
 // Markdown for agents that ask for it, HTML for everyone else.
 //
 // An agent sending `Accept: text/markdown` gets the page's Markdown twin (index.md, about.md…)
@@ -9,6 +11,11 @@ export const PAGES = {
   "/": "/index.md", "/index.html": "/index.md", "/about": "/about.md", "/privacy": "/privacy.md",
   "/developers": "/developers.md", "/contact": "/contact.md",
 };
+
+export function wantsJson(request) {
+  const accept = request.headers.get("accept") || "";
+  return /application\/(problem\+)?json/i.test(accept.split(",")[0]);
+}
 
 export function wantsMarkdown(request) {
   const accept = request.headers.get("accept") || "";
@@ -38,6 +45,10 @@ export async function onRequest(context) {
   const response = await next();
   if (markdownWanted && response.status === 404) {
     return (await markdown(env, request, "/404.md", 404)) || response;
+  }
+  // An agent asking for JSON gets its 404 as JSON too, never the HTML page.
+  if (response.status === 404 && wantsJson(request) && !markdownWanted) {
+    return problem("not_found", `There is nothing at ${url.pathname}.`, { instance: url.pathname });
   }
   // The same address answers differently by Accept, so caches must keep them apart.
   if (PAGES[path] && (response.headers.get("content-type") || "").includes("text/html")) {

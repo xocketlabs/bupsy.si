@@ -1,0 +1,513 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Bupsy website API",
+    "version": "1.0.0",
+    "summary": "Join the Bupsy waitlist, send a message, or talk MCP to bupsy.pages.dev.",
+    "description": "The public API of bupsy.pages.dev, the website of Bupsy, a native Mac app for a team of AI bots that run on the person's own Claude Code or Codex subscription. The Bupsy app itself runs on the person's Mac and has no public API; these endpoints are for the website: joining the waitlist, contacting the makers, and the site's MCP server. No authentication. Errors are RFC 9457 problem details with a stable `code`. No rate limit is published; send one request per action a person asked for.",
+    "contact": {
+      "name": "Bupsy (Xocket Labs Inc.)",
+      "email": "remotevansh@gmail.com",
+      "url": "https://bupsy.pages.dev/contact"
+    },
+    "license": {
+      "name": "Business Source License 1.1",
+      "identifier": "BUSL-1.1"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://bupsy.pages.dev",
+      "description": "Production"
+    }
+  ],
+  "security": [],
+  "externalDocs": {
+    "description": "Bupsy for developers",
+    "url": "https://bupsy.pages.dev/developers"
+  },
+  "tags": [
+    {
+      "name": "Waitlist",
+      "description": "Early access to the Bupsy Mac app."
+    },
+    {
+      "name": "Contact",
+      "description": "Messages to the people who make Bupsy."
+    },
+    {
+      "name": "MCP",
+      "description": "The site's Model Context Protocol server (Streamable HTTP)."
+    }
+  ],
+  "paths": {
+    "/api/waitlist": {
+      "post": {
+        "operationId": "joinWaitlist",
+        "tags": [
+          "Waitlist"
+        ],
+        "summary": "Add an email address to the Bupsy waitlist",
+        "description": "Adds the person's email address to the Bupsy waitlist. Bupsy sends one email when their spot opens. Only call this when the person asked to join, with their own address. Joining twice is harmless: the second call returns `already: true`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WaitlistRequest"
+              },
+              "example": {
+                "email": "name@example.com",
+                "source": "my-agent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Added, or already on the list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistResult"
+                },
+                "example": {
+                  "ok": true,
+                  "already": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body or the email address is invalid (codes: invalid_json, invalid_body, invalid_email).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "https://bupsy.pages.dev/developers#errors-invalid-email",
+                  "title": "Invalid email address",
+                  "status": 400,
+                  "detail": "That doesn't look like an email address.",
+                  "code": "invalid_email",
+                  "error": "That doesn't look like an email address.",
+                  "resolution": "Send the person's email address in the `email` field, e.g. name@example.com.",
+                  "documentation_url": "https://bupsy.pages.dev/developers#errors"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/contact": {
+      "post": {
+        "operationId": "sendContactMessage",
+        "tags": [
+          "Contact"
+        ],
+        "summary": "Send a message to the people who make Bupsy",
+        "description": "Sends a message to Xocket Labs, who answer by email at the address given. Use it for questions, early access requests, data requests, press or security reports, when the person asked you to write to Bupsy.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactRequest"
+              },
+              "example": {
+                "name": "Sam",
+                "email": "sam@example.com",
+                "message": "Can I try Bupsy before my waitlist spot opens?"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message received.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body, email or message is invalid (codes: invalid_json, invalid_body, invalid_email, empty_message, message_too_long).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "https://bupsy.pages.dev/developers#errors-empty-message",
+                  "title": "Empty message",
+                  "status": 400,
+                  "detail": "Write a message first.",
+                  "code": "empty_message",
+                  "error": "Write a message first.",
+                  "resolution": "Put the message text in the `message` field.",
+                  "documentation_url": "https://bupsy.pages.dev/developers#errors"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "operationId": "callMcp",
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Send one MCP JSON-RPC message",
+        "description": "Bupsy's MCP server over Streamable HTTP (MCP 2025-11-25; also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC 2.0 message per POST, a JSON answer, no session ID. Methods: initialize, ping, tools/list, tools/call. Tools: about_bupsy (what Bupsy is and when to use it), read_page (a site page as Markdown), join_waitlist (the person's own email, with their permission). Server card: https://bupsy.pages.dev/.well-known/mcp/server-card.json. Most clients should use an MCP client library rather than calling this directly.",
+        "parameters": [
+          {
+            "name": "MCP-Protocol-Version",
+            "in": "header",
+            "required": false,
+            "description": "The negotiated MCP protocol version, sent after initialize.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "2025-11-25",
+                "2025-06-18",
+                "2025-03-26"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JsonRpcMessage"
+              },
+              "example": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The JSON-RPC response to a request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonRpcResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "A notification or response was accepted. No body."
+          },
+          "400": {
+            "description": "Not one valid JSON-RPC 2.0 message, or an unsupported MCP-Protocol-Version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonRpcResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The Origin header is not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonRpcResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "WaitlistRequest": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "description": "The person's own email address."
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "Where the signup came from, e.g. your app's name. Optional."
+          }
+        }
+      },
+      "WaitlistResult": {
+        "type": "object",
+        "required": [
+          "ok",
+          "already"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "already": {
+            "type": "boolean",
+            "description": "True when the address was already on the list."
+          }
+        }
+      },
+      "ContactRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "The sender's name. Optional."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "description": "Where to send the answer."
+          },
+          "message": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 4000,
+            "description": "The message."
+          }
+        }
+      },
+      "Ok": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          }
+        }
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "invalid_json",
+          "invalid_body",
+          "invalid_email",
+          "empty_message",
+          "message_too_long",
+          "not_found",
+          "method_not_allowed",
+          "unavailable",
+          "server_error"
+        ],
+        "description": "A stable, machine-readable error code."
+      },
+      "Problem": {
+        "type": "object",
+        "description": "An RFC 9457 problem details object, with Bupsy's extension members.",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "code",
+          "resolution"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri",
+            "description": "A URI for this kind of error."
+          },
+          "title": {
+            "type": "string",
+            "description": "A short summary of the kind of error."
+          },
+          "status": {
+            "type": "integer",
+            "description": "The HTTP status code."
+          },
+          "detail": {
+            "type": "string",
+            "description": "What went wrong, for a person to read."
+          },
+          "instance": {
+            "type": "string",
+            "description": "The path that was called."
+          },
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "error": {
+            "type": "string",
+            "description": "The same as detail, for older clients."
+          },
+          "resolution": {
+            "type": "string",
+            "description": "What to do next."
+          },
+          "documentation_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      },
+      "JsonRpcMessage": {
+        "type": "object",
+        "required": [
+          "jsonrpc"
+        ],
+        "description": "One JSON-RPC 2.0 request, notification or response.",
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "const": "2.0"
+          },
+          "id": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "description": "Present on requests; absent on notifications."
+          },
+          "method": {
+            "type": "string",
+            "examples": [
+              "initialize",
+              "ping",
+              "tools/list",
+              "tools/call"
+            ]
+          },
+          "params": {
+            "type": "object"
+          }
+        }
+      },
+      "JsonRpcResponse": {
+        "type": "object",
+        "required": [
+          "jsonrpc"
+        ],
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "const": "2.0"
+          },
+          "id": {
+            "type": [
+              "string",
+              "integer",
+              "null"
+            ]
+          },
+          "result": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "MethodNotAllowed": {
+        "description": "Only POST is allowed.",
+        "headers": {
+          "Allow": {
+            "schema": {
+              "type": "string"
+            },
+            "description": "The allowed method."
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Something went wrong on the server (code: server_error).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "Temporarily unavailable (code: unavailable).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    }
+  }
+}

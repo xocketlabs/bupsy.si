@@ -50,6 +50,6 @@ for (const [name, api, body] of [
 
     assert.equal((await api.onRequestPost({ request: post(`https://x/api/${name}`, "{nope"), env })).status, 400);
     assert.equal((await api.onRequestPost({ request: post(`https://x/api/${name}`, "null"), env })).status, 400);
-    assert.equal(api.onRequest().status, 405);
+    assert.equal(api.onRequest({ request: new Request(`https://x/api/${name}`) }).status, 405);
   });
 }

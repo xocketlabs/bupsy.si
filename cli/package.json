@@ -1,0 +1,13 @@
+{
+  "name": "bupsy",
+  "version": "0.1.0",
+  "description": "Command line for bupsy.pages.dev: what Bupsy is, its pages as Markdown, the waitlist, and its MCP server. Bupsy is a Mac app for a team of AI bots on your own Claude Code or Codex subscription.",
+  "type": "module",
+  "bin": { "bupsy": "bin/bupsy.js" },
+  "files": ["bin/", "README.md"],
+  "engines": { "node": ">=18" },
+  "keywords": ["bupsy", "ai-agents", "claude-code", "codex", "mcp", "mac"],
+  "homepage": "https://bupsy.pages.dev/developers",
+  "author": "Xocket Labs Inc. <remotevansh@gmail.com>",
+  "license": "BUSL-1.1"
+}

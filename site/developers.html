@@ -79,11 +79,29 @@
 <li><code>join_waitlist</code>: adds the person's own email address to the waitlist. Only with their permission.</li>
 </ul>
 <p>Add it to Claude Code with <code>claude mcp add --transport http bupsy https://bupsy.pages.dev/mcp</code>.</p>
+<h2 id="bupsy-api-reference">Bupsy API reference</h2>
+<p>The whole API is described in an OpenAPI 3.1 document: <a href="/openapi.json">openapi.json</a>. Every operation has an <code>operationId</code>, typed request and response schemas and a description, so it works as-is for function calling. No authentication.</p>
+<ul>
+<li><code>joinWaitlist</code>: <code>POST /api/waitlist</code></li>
+<li><code>sendContactMessage</code>: <code>POST /api/contact</code></li>
+<li><code>callMcp</code>: <code>POST /mcp</code> (MCP JSON-RPC)</li>
+</ul>
 <h2 id="waitlist-api">Waitlist API</h2>
 <p><code>POST https://bupsy.pages.dev/api/waitlist</code> with JSON <code>{"email": "you@example.com", "source": "your-app"}</code>.</p>
 <ul>
 <li><code>200 {"ok": true, "already": false}</code> when added, <code>"already": true</code> when the address was on the list.</li>
-<li><code>400 {"error": "..."}</code> for an address that isn't one; the error is written for a person to read.</li>
+<li>Only with the person's own address and their permission.</li>
+</ul>
+<h2 id="contact-api">Contact API</h2>
+<p><code>POST https://bupsy.pages.dev/api/contact</code> with JSON <code>{"name": "Sam", "email": "sam@example.com", "message": "..."}</code>. <code>200 {"ok": true}</code>; we answer by email.</p>
+<h2 id="errors">Errors</h2>
+<p>Errors are RFC 9457 problem details (<code>application/problem+json</code>): <code>type</code>, <code>title</code>, <code>status</code>, <code>detail</code> for people, a stable <code>code</code> to branch on, and a <code>resolution</code> saying what to do next. Unknown <code>/api/</code> addresses answer a JSON 404.</p>
+<ul>
+<li><code>invalid_json</code>, <code>invalid_body</code>: the body isn't a JSON object.</li>
+<li><code>invalid_email</code>: the <code>email</code> field isn't an address.</li>
+<li><code>empty_message</code>, <code>message_too_long</code>: the contact <code>message</code> is missing or over 4,000 characters.</li>
+<li><code>not_found</code>, <code>method_not_allowed</code>: no such endpoint, or not POST.</li>
+<li><code>unavailable</code>, <code>server_error</code>: try again shortly.</li>
 </ul>
 <h2 id="markdown-for-agents">Markdown for agents</h2>
 <p>Every page answers <code>Accept: text/markdown</code> with its Markdown version and <code>Vary: Accept</code>; browsers get HTML. The Markdown is also at <code>/index.md</code>, <code>/about.md</code>, <code>/privacy.md</code>, <code>/developers.md</code> and <code>/contact.md</code>. Unknown paths answer 404, in Markdown when asked.</p>
@@ -92,7 +110,8 @@
 <li><a href="/llms.txt">llms.txt</a>: what Bupsy is, and when to use it</li>
 <li><a href="/agents.md">agents.md</a>: instructions for agents</li>
 <li><a href="/sitemap.xml">sitemap.xml</a> and <a href="/robots.txt">robots.txt</a></li>
-<li><code>/.well-known/api-catalog</code> (RFC 9727) lists the MCP server and the waitlist API</li>
+<li><a href="/openapi.json">openapi.json</a>: the OpenAPI 3.1 spec</li>
+<li><code>/.well-known/api-catalog</code> (RFC 9727) lists the MCP server, the waitlist API and the contact API</li>
 </ul>
 <h2 id="how-the-bupsy-app-works-with-mcp">How the Bupsy app works with MCP</h2>
 <ul>
