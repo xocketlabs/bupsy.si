@@ -28,7 +28,8 @@
 <style>
   :root { --bg:#fff; --card:#f5f5f5; --ink:#0a0a0a; --muted:#737373; --line:#e5e5e5; --primary:#d76abf;
     --display:"Funnel Display",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
-    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif; color-scheme: light dark; }
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace; color-scheme: light dark; }
   @media (prefers-color-scheme: dark) { :root { --bg:#101010; --card:#202020; --ink:#fafafa; --muted:#a1a1a1; --line:#ffffff17; --primary:#e075c8; } }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.65 var(--ui); -webkit-font-smoothing:antialiased; }
@@ -41,9 +42,18 @@
   main { padding: 40px 0 64px; }
   h1 { font: 800 clamp(36px,6vw,52px)/1.05 var(--display); letter-spacing:-.03em; margin:0 0 16px; }
   h2 { font: 700 24px/1.2 var(--display); letter-spacing:-.02em; margin:40px 0 10px; }
-  p, li { color: var(--ink); } .muted { color: var(--muted); }
+  .muted { color: var(--muted); }
   a { color: var(--primary); }
+  code { font: 14px var(--mono); background: var(--card); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
   ul { padding-left: 1.2em; } li { margin: 6px 0; }
+  form.contact { display:grid; gap:14px; margin: 28px 0 8px; padding: 20px; background: var(--card); border-radius: 18px; }
+  form.contact label { display:grid; gap:6px; font-weight:600; font-size:15px; }
+  form.contact input, form.contact textarea { font: 16px var(--ui); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
+  form.contact textarea { resize: vertical; }
+  form.contact button { justify-self: start; font: 600 15px var(--ui); padding: 10px 22px; border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); cursor: pointer; }
+  form.contact button[disabled] { opacity: .6; cursor: default; }
+  .hp { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; }
+  .form-msg { margin:0; font-size:15px; color: var(--muted); } .form-msg.ok { color: var(--primary); font-weight:600; } .form-msg.err { color:#d93b5c; }
   footer { border-top:1px solid var(--line); padding:24px 0 40px; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; gap:8px 20px; }
   footer a { color: inherit; }
 </style>
@@ -54,14 +64,15 @@
 <main>
 <h1>Privacy</h1>
 <p>This page covers two things: this website, and the Bupsy app. Last updated 11 October 2026.</p>
-<h2>This website</h2>
+<h2 id="this-website">This website</h2>
 <ul>
 <li><b>No tracking.</b> No analytics, no advertising pixels and no cookies.</li>
 <li><b>The waitlist.</b> If you join, we keep your email address, which signup form you used, the country Cloudflare saw the request come from, and the time. That is all. It is stored in a database in our Cloudflare account and used only to email you when Bupsy is ready for you. We do not sell or share it.</li>
 <li><b>Hosting.</b> The site runs on Cloudflare Pages. Cloudflare processes requests to serve the site, as any host does.</li>
-<li><b>Leaving the list.</b> Reply to any email from us and we will delete your address.</li>
+<li><b>Messages.</b> If you write to us on the <a href="/contact">contact page</a>, we keep your name if you give it, your email address, your message, the country and the time, to answer you by email.</li>
+<li><b>Leaving the list.</b> Write to us on the <a href="/contact">contact page</a>, or reply to any email from us, and we will delete your address.</li>
 </ul>
-<h2>The Bupsy app</h2>
+<h2 id="the-bupsy-app">The Bupsy app</h2>
 <ul>
 <li><b>No Bupsy account and no Bupsy server.</b> Your bots, chats, routines and settings are stored on your Mac.</li>
 <li><b>No telemetry.</b> The app does not report what you do.</li>
@@ -70,10 +81,10 @@
 <li><b>Your other devices.</b> Using Bupsy from your phone or another Mac is off until you turn it on. It works only over your own private Tailscale network, never the public internet, and every device must be paired on your Mac first.</li>
 <li><b>Connected tools.</b> Apps you connect, such as Gmail or Notion, are reached through tools you set up. Their keys stay with those tools.</li>
 </ul>
-<h2>Contact</h2>
-<p>Bupsy is made by Xocket Labs Inc. For anything about your data, reply to any email from us.</p>
+<h2 id="contact">Contact</h2>
+<p>Bupsy is made by Xocket Labs Inc. For anything about your data, write to us on the <a href="/contact">contact page</a>.</p>
 </main>
-<footer><span>© 2026 Xocket Labs Inc.</span><a href="/">Home</a><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/llms.txt">llms.txt</a><span>Not affiliated with Anthropic or OpenAI.</span></footer>
+<footer><span>© 2026 Xocket Labs Inc.</span><a href="/">Home</a><a href="/about">About</a><a href="/developers">Developers</a><a href="/contact">Contact</a><a href="/privacy">Privacy</a><a href="/llms.txt">llms.txt</a><span>Not affiliated with Anthropic or OpenAI.</span></footer>
 </div>
 </body>
 </html>

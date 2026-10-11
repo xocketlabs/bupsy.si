@@ -1,0 +1,13 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://bupsy.pages.dev/mcp",
+      "service-desc": [{ "href": "https://bupsy.pages.dev/.well-known/mcp/server-card.json", "type": "application/json" }],
+      "service-doc": [{ "href": "https://bupsy.pages.dev/developers", "type": "text/html" }]
+    },
+    {
+      "anchor": "https://bupsy.pages.dev/api/waitlist",
+      "service-doc": [{ "href": "https://bupsy.pages.dev/developers#waitlist-api", "type": "text/html" }]
+    }
+  ]
+}

@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**The website speaks to agents**
+- A public MCP server at bupsy.pages.dev/mcp: agents can learn what Bupsy is, read any page, and
+  join the waitlist for someone who asks. Listed in a server card and an API catalog.
+- New Developers and Contact pages. The contact form's messages are kept for us to answer by email.
+- llms.txt and a new agents.md say exactly when to use Bupsy and how to call it.
+
 **New website, and a waitlist that saves**
 - A new landing page on the Bupsy brand: make a bot right on the page, drag through a day on a
   roster, and see bots hand work to each other.

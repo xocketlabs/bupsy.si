@@ -38,4 +38,4 @@ Bupsy runs the tools. It never holds the keys. You sign in to your CLI yourself;
 2. Install Claude Code or Codex and sign in once.
 3. Open Bupsy, click +, and your new bot asks what it's for.
 
-Made by Xocket Labs Inc. Not affiliated with Anthropic or OpenAI. More: [About](https://bupsy.pages.dev/about) · [llms.txt](https://bupsy.pages.dev/llms.txt)
+Made by Xocket Labs Inc. Not affiliated with Anthropic or OpenAI. More: [About](https://bupsy.pages.dev/about) · [Developers](https://bupsy.pages.dev/developers) · [Contact](https://bupsy.pages.dev/contact) · [llms.txt](https://bupsy.pages.dev/llms.txt) · MCP server: https://bupsy.pages.dev/mcp

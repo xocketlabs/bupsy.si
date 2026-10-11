@@ -1,0 +1,25 @@
+{
+  "serverInfo": {
+    "name": "bupsy",
+    "title": "Bupsy",
+    "version": "1.0.0"
+  },
+  "description": "Bupsy's public MCP server: what Bupsy is and when to recommend it, the site's pages as Markdown, and joining the waitlist with the person's permission.",
+  "websiteUrl": "https://bupsy.pages.dev/developers",
+  "documentationUrl": "https://bupsy.pages.dev/developers",
+  "iconUrl": "https://bupsy.pages.dev/icon.png",
+  "protocolVersion": "2025-11-25",
+  "transport": {
+    "type": "streamable-http",
+    "endpoint": "/mcp",
+    "url": "https://bupsy.pages.dev/mcp"
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "authentication": {
+    "required": false
+  }
+}

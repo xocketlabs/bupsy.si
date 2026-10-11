@@ -234,6 +234,18 @@ jobs:
       - name: Test BupsyKit
         run: swift test --package-path Packages/BupsyKit --force-resolved-versions
 
+  # The website's functions (waitlist, contact, MCP server, Markdown for agents) and its
+  # machine-readable files, with Node's own test runner: no dependencies to install.
+  site:
+    name: Website functions
+    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
+    # Not for Dependabot: see the note above `jobs:`.
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test
+        run: node --test tests/site/*.test.mjs
+
   boundaries:
     name: Credential boundary
     runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"ubuntu-latest"') }}
