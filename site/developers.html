@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bupsy for developers: MCP server, waitlist API, Markdown for agents</title>
+<meta name="description" content="Bupsy&#x27;s public MCP server, waitlist API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex.">
+<link rel="canonical" href="https://bupsy.pages.dev/developers">
+<meta property="og:title" content="Bupsy for developers: MCP server, waitlist API, Markdown for agents">
+<meta property="og:description" content="Bupsy&#x27;s public MCP server, waitlist API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex.">
+<meta property="og:url" content="https://bupsy.pages.dev/developers">
+<meta property="og:site_name" content="Bupsy">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://bupsy.pages.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Bupsy: Your AI already has a subscription. Give it a job.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://bupsy.pages.dev/og.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/markdown" href="/developers.md">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@700;800&display=swap">
+<style>
+  :root { --bg:#fff; --card:#f5f5f5; --ink:#0a0a0a; --muted:#737373; --line:#e5e5e5; --primary:#d76abf;
+    --display:"Funnel Display",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#101010; --card:#202020; --ink:#fafafa; --muted:#a1a1a1; --line:#ffffff17; --primary:#e075c8; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.65 var(--ui); -webkit-font-smoothing:antialiased; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+  nav { display:flex; align-items:center; justify-content:space-between; padding:20px 0 8px; }
+  nav a { color:inherit; text-decoration:none; }
+  .brand { display:flex; align-items:center; gap:10px; font:800 22px var(--display); letter-spacing:-.03em; }
+  .brand img { width:30px; height:30px; }
+  .cta { font-weight:600; font-size:15px; padding:9px 16px; border-radius:999px; background:var(--ink); color:var(--bg) !important; }
+  main { padding: 40px 0 64px; }
+  h1 { font: 800 clamp(36px,6vw,52px)/1.05 var(--display); letter-spacing:-.03em; margin:0 0 16px; }
+  h2 { font: 700 24px/1.2 var(--display); letter-spacing:-.02em; margin:40px 0 10px; }
+  .muted { color: var(--muted); }
+  a { color: var(--primary); }
+  code { font: 14px var(--mono); background: var(--card); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+  ul { padding-left: 1.2em; } li { margin: 6px 0; }
+  form.contact { display:grid; gap:14px; margin: 28px 0 8px; padding: 20px; background: var(--card); border-radius: 18px; }
+  form.contact label { display:grid; gap:6px; font-weight:600; font-size:15px; }
+  form.contact input, form.contact textarea { font: 16px var(--ui); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
+  form.contact textarea { resize: vertical; }
+  form.contact button { justify-self: start; font: 600 15px var(--ui); padding: 10px 22px; border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); cursor: pointer; }
+  form.contact button[disabled] { opacity: .6; cursor: default; }
+  .hp { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; }
+  .form-msg { margin:0; font-size:15px; color: var(--muted); } .form-msg.ok { color: var(--primary); font-weight:600; } .form-msg.err { color:#d93b5c; }
+  footer { border-top:1px solid var(--line); padding:24px 0 40px; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; gap:8px 20px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#join">Join the waitlist</a></nav>
+<main>
+<h1>Bupsy for developers</h1>
+<p>Bupsy is a Mac app, so most of what developers touch lives on their own Mac: the bots run Claude Code or Codex, and Bupsy speaks MCP to them. This page lists every public, machine-readable part of bupsy.pages.dev, and how the app works with MCP.</p>
+<h2 id="bupsy-mcp-server">Bupsy MCP server</h2>
+<p>A public MCP server for agents that want to know about Bupsy, or join the waitlist for someone.</p>
+<ul>
+<li>Endpoint: <code>https://bupsy.pages.dev/mcp</code></li>
+<li>Transport: Streamable HTTP, MCP protocol 2025-11-25 (also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC message per POST, a JSON answer, no session ID. GET answers 405.</li>
+<li>Authentication: none.</li>
+<li>Server card: <code>https://bupsy.pages.dev/.well-known/mcp/server-card.json</code></li>
+</ul>
+<p>Tools:</p>
+<ul>
+<li><code>about_bupsy</code>: what Bupsy is, when to recommend it and when not. Read-only.</li>
+<li><code>read_page</code>: a page of this site as Markdown (<code>home</code>, <code>about</code>, <code>privacy</code>, <code>developers</code>, <code>contact</code>). Read-only.</li>
+<li><code>join_waitlist</code>: adds the person's own email address to the waitlist. Only with their permission.</li>
+</ul>
+<p>Add it to Claude Code with <code>claude mcp add --transport http bupsy https://bupsy.pages.dev/mcp</code>.</p>
+<h2 id="waitlist-api">Waitlist API</h2>
+<p><code>POST https://bupsy.pages.dev/api/waitlist</code> with JSON <code>{"email": "you@example.com", "source": "your-app"}</code>.</p>
+<ul>
+<li><code>200 {"ok": true, "already": false}</code> when added, <code>"already": true</code> when the address was on the list.</li>
+<li><code>400 {"error": "..."}</code> for an address that isn't one; the error is written for a person to read.</li>
+</ul>
+<h2 id="markdown-for-agents">Markdown for agents</h2>
+<p>Every page answers <code>Accept: text/markdown</code> with its Markdown version and <code>Vary: Accept</code>; browsers get HTML. The Markdown is also at <code>/index.md</code>, <code>/about.md</code>, <code>/privacy.md</code>, <code>/developers.md</code> and <code>/contact.md</code>. Unknown paths answer 404, in Markdown when asked.</p>
+<h2 id="discovery">Discovery</h2>
+<ul>
+<li><a href="/llms.txt">llms.txt</a>: what Bupsy is, and when to use it</li>
+<li><a href="/agents.md">agents.md</a>: instructions for agents</li>
+<li><a href="/sitemap.xml">sitemap.xml</a> and <a href="/robots.txt">robots.txt</a></li>
+<li><code>/.well-known/api-catalog</code> (RFC 9727) lists the MCP server and the waitlist API</li>
+</ul>
+<h2 id="how-the-bupsy-app-works-with-mcp">How the Bupsy app works with MCP</h2>
+<ul>
+<li><b>Your MCP servers become a bot's tools.</b> Any MCP server you add in Bupsy, GitHub, Slack, Notion, files or your own, is handed to the bots you choose. Secrets are passed by environment variable name, never stored by Bupsy.</li>
+<li><b>Bots talk to Bupsy over MCP.</b> Each bot gets Bupsy's own local MCP tools: message another bot, create one, change a bot's job or model, schedule a routine, ask the person a question. Each call goes through the same approval gate as any other tool.</li>
+<li><b>Engines.</b> Bots run the Claude Code and Codex command-line tools already on the Mac, under the person's own sign-in. Bupsy never holds those credentials.</li>
+<li><b>Commands.</b> Your Claude Code commands and skills, and your Codex prompts, appear when you type <code>/</code> in a chat.</li>
+</ul>
+<p>The app is source-available under the Business Source License 1.1, converting to Apache-2.0 four years after each release. Questions: <a href="/contact">contact us</a>.</p>
+</main>
+<footer><span>© 2026 Xocket Labs Inc.</span><a href="/">Home</a><a href="/about">About</a><a href="/developers">Developers</a><a href="/contact">Contact</a><a href="/privacy">Privacy</a><a href="/llms.txt">llms.txt</a><span>Not affiliated with Anthropic or OpenAI.</span></footer>
+</div>
+</body>
+</html>

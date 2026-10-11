@@ -5,9 +5,12 @@
 // that header, so people always get the page. Unknown paths answer 404 either way, with a Markdown
 // body pointing at llms.txt and the sitemap when Markdown was asked for.
 
-const PAGES = { "/": "/index.md", "/index.html": "/index.md", "/about": "/about.md", "/privacy": "/privacy.md" };
+export const PAGES = {
+  "/": "/index.md", "/index.html": "/index.md", "/about": "/about.md", "/privacy": "/privacy.md",
+  "/developers": "/developers.md", "/contact": "/contact.md",
+};
 
-function wantsMarkdown(request) {
+export function wantsMarkdown(request) {
   const accept = request.headers.get("accept") || "";
   return /text\/markdown/i.test(accept) && !/text\/html/i.test(accept.split(",")[0]);
 }
@@ -25,7 +28,7 @@ export async function onRequest(context) {
   const { request, env, next } = context;
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "") || "/";
-  const markdownWanted = request.method === "GET" && wantsMarkdown(request) && !path.startsWith("/api/");
+  const markdownWanted = request.method === "GET" && wantsMarkdown(request) && !path.startsWith("/api/") && path !== "/mcp";
 
   if (markdownWanted && PAGES[path]) {
     const page = await markdown(env, request, PAGES[path], 200);

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contact Bupsy</title>
+<meta name="description" content="Write to the people who make Bupsy: early access, questions, your data, press and security. We answer by email.">
+<link rel="canonical" href="https://bupsy.pages.dev/contact">
+<meta property="og:title" content="Contact Bupsy">
+<meta property="og:description" content="Write to the people who make Bupsy: early access, questions, your data, press and security. We answer by email.">
+<meta property="og:url" content="https://bupsy.pages.dev/contact">
+<meta property="og:site_name" content="Bupsy">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://bupsy.pages.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Bupsy: Your AI already has a subscription. Give it a job.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://bupsy.pages.dev/og.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/markdown" href="/contact.md">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@700;800&display=swap">
+<style>
+  :root { --bg:#fff; --card:#f5f5f5; --ink:#0a0a0a; --muted:#737373; --line:#e5e5e5; --primary:#d76abf;
+    --display:"Funnel Display",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#101010; --card:#202020; --ink:#fafafa; --muted:#a1a1a1; --line:#ffffff17; --primary:#e075c8; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.65 var(--ui); -webkit-font-smoothing:antialiased; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+  nav { display:flex; align-items:center; justify-content:space-between; padding:20px 0 8px; }
+  nav a { color:inherit; text-decoration:none; }
+  .brand { display:flex; align-items:center; gap:10px; font:800 22px var(--display); letter-spacing:-.03em; }
+  .brand img { width:30px; height:30px; }
+  .cta { font-weight:600; font-size:15px; padding:9px 16px; border-radius:999px; background:var(--ink); color:var(--bg) !important; }
+  main { padding: 40px 0 64px; }
+  h1 { font: 800 clamp(36px,6vw,52px)/1.05 var(--display); letter-spacing:-.03em; margin:0 0 16px; }
+  h2 { font: 700 24px/1.2 var(--display); letter-spacing:-.02em; margin:40px 0 10px; }
+  .muted { color: var(--muted); }
+  a { color: var(--primary); }
+  code { font: 14px var(--mono); background: var(--card); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+  ul { padding-left: 1.2em; } li { margin: 6px 0; }
+  form.contact { display:grid; gap:14px; margin: 28px 0 8px; padding: 20px; background: var(--card); border-radius: 18px; }
+  form.contact label { display:grid; gap:6px; font-weight:600; font-size:15px; }
+  form.contact input, form.contact textarea { font: 16px var(--ui); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
+  form.contact textarea { resize: vertical; }
+  form.contact button { justify-self: start; font: 600 15px var(--ui); padding: 10px 22px; border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); cursor: pointer; }
+  form.contact button[disabled] { opacity: .6; cursor: default; }
+  .hp { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; }
+  .form-msg { margin:0; font-size:15px; color: var(--muted); } .form-msg.ok { color: var(--primary); font-weight:600; } .form-msg.err { color:#d93b5c; }
+  footer { border-top:1px solid var(--line); padding:24px 0 40px; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; gap:8px 20px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#join">Join the waitlist</a></nav>
+<main>
+<h1>Contact Bupsy</h1>
+<p>Bupsy is made by Xocket Labs Inc. We read every message and answer by email.</p>
+<form class="contact" novalidate>
+  <label><span>Your name <span class="muted">(optional)</span></span><input name="name" autocomplete="name" maxlength="100"></label>
+  <label>Your email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
+  <label>Message<textarea name="message" rows="6" required maxlength="4000"></textarea></label>
+  <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+  <button type="submit">Send</button>
+  <p class="form-msg" role="status" aria-live="polite"></p>
+</form>
+<script>
+  // Posts to /api/contact beside this page; the message is kept for us to answer by email.
+  document.querySelector('form.contact').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var form = e.target, msg = form.querySelector('.form-msg'), button = form.querySelector('button');
+    msg.className = 'form-msg'; button.disabled = true; msg.textContent = 'Sending…';
+    try {
+      var res = await fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: form.name.value, email: form.email.value, message: form.message.value, company: form.company.value }) });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.error || 'Something went wrong — please try again.');
+      msg.textContent = 'Sent. We’ll reply by email.'; msg.classList.add('ok'); form.reset();
+    } catch (err) { msg.textContent = err.message; msg.classList.add('err'); }
+    finally { button.disabled = false; }
+  });
+</script>
+<h2 id="what-to-write-to-us-about">What to write to us about</h2>
+<ul>
+<li><b>Early access.</b> If you'd like to try Bupsy before your waitlist spot opens, tell us what you'd use it for. We let people in a few at a time.</li>
+<li><b>Questions about Bupsy.</b> How it works with Claude Code or Codex, what your bots can and can't do, how approvals and routines work.</li>
+<li><b>Your data.</b> To remove your address from the waitlist, or to ask what we hold about you. The answer is short: see <a href="/privacy">Privacy</a>.</li>
+<li><b>Press and partnerships.</b> Writing about Bupsy, or building something that works with it.</li>
+<li><b>Security.</b> If you've found a problem, write here with the details, and please give us time to fix it before making it public.</li>
+</ul>
+<h2 id="other-ways-to-learn-about-bupsy">Other ways to learn about Bupsy</h2>
+<ul>
+<li><a href="/about">About</a>: why Bupsy exists and who makes it</li>
+<li><a href="/developers">Developers</a>: the public MCP server, the waitlist API and Markdown for agents</li>
+<li><a href="/#join">Join the waitlist</a>: one email when your spot opens</li>
+</ul>
+<p>Bupsy is not affiliated with Anthropic or OpenAI. For help with Claude Code or Codex themselves, contact their makers.</p>
+</main>
+<footer><span>© 2026 Xocket Labs Inc.</span><a href="/">Home</a><a href="/about">About</a><a href="/developers">Developers</a><a href="/contact">Contact</a><a href="/privacy">Privacy</a><a href="/llms.txt">llms.txt</a><span>Not affiliated with Anthropic or OpenAI.</span></footer>
+</div>
+</body>
+</html>

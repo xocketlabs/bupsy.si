@@ -7,7 +7,8 @@ This page covers two things: this website, and the Bupsy app. Last updated 11 Oc
 - **No tracking.** No analytics, no advertising pixels and no cookies.
 - **The waitlist.** If you join, we keep your email address, which signup form you used, the country Cloudflare saw the request come from, and the time. That is all. It is stored in a database in our Cloudflare account and used only to email you when Bupsy is ready for you. We do not sell or share it.
 - **Hosting.** The site runs on Cloudflare Pages. Cloudflare processes requests to serve the site, as any host does.
-- **Leaving the list.** Reply to any email from us and we will delete your address.
+- **Messages.** If you write to us on the [contact page](https://bupsy.pages.dev/contact), we keep your name if you give it, your email address, your message, the country and the time, to answer you by email.
+- **Leaving the list.** Write to us on the [contact page](https://bupsy.pages.dev/contact), or reply to any email from us, and we will delete your address.
 
 ## The Bupsy app
 
@@ -20,4 +21,4 @@ This page covers two things: this website, and the Bupsy app. Last updated 11 Oc
 
 ## Contact
 
-Bupsy is made by Xocket Labs Inc. For anything about your data, reply to any email from us.
+Bupsy is made by Xocket Labs Inc. For anything about your data, write to us on the [contact page](https://bupsy.pages.dev/contact).

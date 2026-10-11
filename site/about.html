@@ -28,7 +28,8 @@
 <style>
   :root { --bg:#fff; --card:#f5f5f5; --ink:#0a0a0a; --muted:#737373; --line:#e5e5e5; --primary:#d76abf;
     --display:"Funnel Display",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
-    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif; color-scheme: light dark; }
+    --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace; color-scheme: light dark; }
   @media (prefers-color-scheme: dark) { :root { --bg:#101010; --card:#202020; --ink:#fafafa; --muted:#a1a1a1; --line:#ffffff17; --primary:#e075c8; } }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.65 var(--ui); -webkit-font-smoothing:antialiased; }
@@ -41,9 +42,18 @@
   main { padding: 40px 0 64px; }
   h1 { font: 800 clamp(36px,6vw,52px)/1.05 var(--display); letter-spacing:-.03em; margin:0 0 16px; }
   h2 { font: 700 24px/1.2 var(--display); letter-spacing:-.02em; margin:40px 0 10px; }
-  p, li { color: var(--ink); } .muted { color: var(--muted); }
+  .muted { color: var(--muted); }
   a { color: var(--primary); }
+  code { font: 14px var(--mono); background: var(--card); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
   ul { padding-left: 1.2em; } li { margin: 6px 0; }
+  form.contact { display:grid; gap:14px; margin: 28px 0 8px; padding: 20px; background: var(--card); border-radius: 18px; }
+  form.contact label { display:grid; gap:6px; font-weight:600; font-size:15px; }
+  form.contact input, form.contact textarea { font: 16px var(--ui); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
+  form.contact textarea { resize: vertical; }
+  form.contact button { justify-self: start; font: 600 15px var(--ui); padding: 10px 22px; border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); cursor: pointer; }
+  form.contact button[disabled] { opacity: .6; cursor: default; }
+  .hp { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; }
+  .form-msg { margin:0; font-size:15px; color: var(--muted); } .form-msg.ok { color: var(--primary); font-weight:600; } .form-msg.err { color:#d93b5c; }
   footer { border-top:1px solid var(--line); padding:24px 0 40px; color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; gap:8px 20px; }
   footer a { color: inherit; }
 </style>
@@ -54,23 +64,23 @@
 <main>
 <h1>About Bupsy</h1>
 <p>Bupsy is a native Mac app where a small team of AI bots lives and works for you. Each bot runs <b>Claude Code</b> or <b>Codex</b>, the command-line agents from Anthropic and OpenAI, under your own sign-in and on the subscription you already pay for.</p>
-<h2>Why we built it</h2>
+<h2 id="why-we-built-it">Why we built it</h2>
 <p>AI subscriptions are paid for every month and used in short bursts: a question here, a chat there. Meanwhile the agents behind them, Claude Code and Codex, can already read files, run commands and do real work. Bupsy gives that subscription a job. You make a bot, tell it what it is for, and it gets on with it: on a schedule, when files change, or when another bot hands it work.</p>
 <p>We wanted that without a new account, without buying credits, and without anyone's server sitting between you and your own tools. So Bupsy has none of those. It is a Mac app that starts the CLIs already on your Mac, shows you what they are doing, and asks you before anything risky.</p>
-<h2>What makes it different</h2>
+<h2 id="what-makes-it-different">What makes it different</h2>
 <ul>
 <li><b>Your subscription, not ours.</b> Bupsy never sells model access. It runs the Claude Code or Codex you already have.</li>
 <li><b>Nothing in the middle.</b> There is no Bupsy account and no Bupsy server. Conversations are files on your disk.</li>
 <li><b>It asks first.</b> Anything beyond reading waits for your OK, with four trust levels per bot and an audit log of every action.</li>
 <li><b>A team, not a chat box.</b> Bots have jobs, faces and routines, and they hand work to each other.</li>
 </ul>
-<h2>Who makes it</h2>
+<h2 id="who-makes-it">Who makes it</h2>
 <p>Bupsy is made by Xocket Labs Inc., a Delaware corporation. The app is source-available under the Business Source License 1.1, which converts to Apache-2.0 four years after each release.</p>
 <p>Bupsy is not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI or any other model vendor. Product names belong to their owners and are used only to say which tools Bupsy runs.</p>
-<h2>Status</h2>
+<h2 id="status">Status</h2>
 <p>Bupsy is in early access for macOS 14 and later. The iPhone app and Windows and Linux versions are in development. <a href="/#join">Join the waitlist</a> to get the download when your spot opens.</p>
 </main>
-<footer><span>© 2026 Xocket Labs Inc.</span><a href="/">Home</a><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/llms.txt">llms.txt</a><span>Not affiliated with Anthropic or OpenAI.</span></footer>
+<footer><span>© 2026 Xocket Labs Inc.</span><a href="/">Home</a><a href="/about">About</a><a href="/developers">Developers</a><a href="/contact">Contact</a><a href="/privacy">Privacy</a><a href="/llms.txt">llms.txt</a><span>Not affiliated with Anthropic or OpenAI.</span></footer>
 </div>
 </body>
 </html>
