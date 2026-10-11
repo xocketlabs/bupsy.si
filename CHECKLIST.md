@@ -6,8 +6,8 @@ as the change: a ticked box means it works, has tests where it can, and was chec
 ✅ done · 🟡 written but not proven, or partly done · ⬜ not started
 
 **Today (Oct 2026):** M0–M6 done in code and in daily use; M7 nearly done. Launch is blocked only
-on things outside the code: an Apple Developer account (signed releases), a Neon database (waitlist
-signups), and a boat.dev key (cloud machines, which the app marks as Beta until then).
+on things outside the code: an Apple Developer account (signed releases) and a boat.dev key (cloud
+machines, which the app marks as Beta until then).
 
 ---
 
@@ -94,7 +94,7 @@ signups), and a boat.dev key (cloud machines, which the app marks as Beta until 
 - ✅ Spotlight-style search and new; design notes in [docs/06-design.md](docs/06-design.md)
 - ✅ Landing page live at bupsy.pages.dev (white, waitlist form)
 - ✅ Release pipeline: tag → DMG on GitHub; CHANGELOG, issue templates, release checklist
-- 🟡 Waitlist signups — **needs Neon `DATABASE_URL`**
+- ✅ Waitlist signups, in Cloudflare D1 beside the site (`scripts/waitlist.sh` lists them)
 - 🟡 Signed, notarized, auto-updating releases — **needs an Apple Developer account**
 - ⬜ Freestyle as a second cloud host — after 1.0
 - ✅ Reveal video (scripted demo mode, debug builds only: `scripts/record-demo.sh`)
@@ -109,7 +109,6 @@ signups), and a boat.dev key (cloud machines, which the app marks as Beta until 
 |---|---|
 | **Apple Developer account** ($99/yr) | Signed DMG that opens with a double-click; auto-updates |
 | **boat.dev key** | Cloud machines, lid-closed work, M0's open spikes |
-| **Neon `DATABASE_URL`** | Waitlist signups — `wrangler pages secret put DATABASE_URL --project-name bupsy` |
 | **Connect tools in Executor** | Gmail, Notion, Linear… for every bot |
 
 ## In development (not downloadable yet)

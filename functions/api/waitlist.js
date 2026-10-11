@@ -1,10 +1,8 @@
-// POST /api/waitlist — adds an email to the waitlist in Neon Postgres.
+// POST /api/waitlist — adds an email to the waitlist in Cloudflare D1.
 //
-// Runs as a Cloudflare Pages Function beside the landing page. The database connection string is
-// a Pages secret (DATABASE_URL); it never reaches the browser. Neon's SQL-over-HTTP endpoint means
-// no driver and no npm dependency — one fetch per signup.
-//
-// The table is created on first use, so there is no separate migration step to forget.
+// Runs as a Cloudflare Pages Function beside the landing page, with the D1 database bound as
+// WAITLIST (see wrangler.toml). The table comes from migrations/, applied by deploy-site.sh, so a
+// signup is one insert and nothing else.
 
 // Deliberately loose about what an address may be, strict about what it may not contain: no
 // whitespace, and none of < > " ' — characters a real address almost never has and markup or a
@@ -19,19 +17,8 @@ function json(body, status = 200) {
   });
 }
 
-async function sql(connection, query, params = []) {
-  const host = new URL(connection.replace(/^postgres(ql)?:/, "https:")).hostname;
-  const res = await fetch(`https://${host}/sql`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "Neon-Connection-String": connection },
-    body: JSON.stringify({ query, params }),
-  });
-  if (!res.ok) throw new Error(`neon ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return res.json();
-}
-
 export async function onRequestPost({ request, env }) {
-  if (!env.DATABASE_URL) return json({ error: "The waitlist isn't open yet — try again soon." }, 503);
+  if (!env.WAITLIST) return json({ error: "The waitlist isn't open yet — try again soon." }, 503);
 
   let body;
   try { body = await request.json(); } catch { return json({ error: "Bad request." }, 400); }
@@ -52,19 +39,11 @@ export async function onRequestPost({ request, env }) {
   const country = request.cf?.country || null;
 
   try {
-    await sql(env.DATABASE_URL, `
-      CREATE TABLE IF NOT EXISTS waitlist (
-        id bigserial PRIMARY KEY,
-        email text NOT NULL UNIQUE,
-        source text,
-        country text,
-        created_at timestamptz NOT NULL DEFAULT now()
-      )`);
-    const result = await sql(env.DATABASE_URL,
-      `INSERT INTO waitlist (email, source, country) VALUES ($1, $2, $3)
-       ON CONFLICT (email) DO NOTHING RETURNING id`,
-      [email, source, country]);
-    return json({ ok: true, already: (result.rows || []).length === 0 });
+    const result = await env.WAITLIST
+      .prepare("INSERT INTO waitlist (email, source, country) VALUES (?1, ?2, ?3) ON CONFLICT (email) DO NOTHING")
+      .bind(email, source, country)
+      .run();
+    return json({ ok: true, already: result.meta.changes === 0 });
   } catch (err) {
     console.error(err);
     return json({ error: "Couldn't save that just now — please try again." }, 500);

@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**New website, and a waitlist that saves**
+- A new landing page on the Bupsy brand: make a bot right on the page, drag through a day on a
+  roster, and see bots hand work to each other.
+- Waitlist signups are now kept, in a Cloudflare D1 database beside the site. Before, the form had
+  no database behind it.
+
 **Machines are marked Beta**
 - Cloud machines haven't been run end to end against boat.dev yet, so Machines now says "Beta" in
   the sidebar and on its page.
