@@ -265,6 +265,7 @@
   .build a { color: var(--ink); font-weight: 500; text-underline-offset: 3px; }
   .form-msg.ok { color: var(--ink); font-weight: 600; }
   .form-msg.err { color: var(--destructive); }
+  .form-msg .suggest { font: inherit; font-weight: 600; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
   .meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; font-size: 13px; color: var(--muted); }
   .meta span { display: inline-flex; align-items: center; gap: 6px; }
   .meta span::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--line-strong); }
@@ -1013,6 +1014,62 @@
   // steps under the download then go away.
   var NOTARIZED = false;
 
+  // "Did you mean …@gmail.com?": a nudge, never a block. Domains one or two letters away from a
+  // common provider, and the usual slips at the end (.con, .cmo), are offered a fix; submitting the
+  // same address again sends it as typed. Built with text nodes only, so nothing typed becomes markup.
+  // Where suggestions point.
+  var PROVIDERS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'live.com',
+    'aol.com', 'proton.me', 'protonmail.com', 'me.com', 'msn.com', 'rediffmail.com'];
+  // Real providers that sit close to those, and must never be "corrected".
+  var KNOWN = PROVIDERS.concat(['mail.com', 'gmx.com', 'gmx.net', 'zoho.com', 'yandex.com', 'hey.com',
+    'fastmail.com', 'pm.me', 'mac.com', 'ymail.com', 'hotmail.co.uk', 'yahoo.co.uk', 'yahoo.co.in',
+    'outlook.in', 'live.co.uk', 'email.com', 'inbox.com']);
+  var TLD_FIXES = { con: 'com', cmo: 'com', ocm: 'com', vom: 'com', comm: 'com', cim: 'com', co: 'com' };
+  // Edits between two strings, counting a swap of neighbours as one (gmial → gmail).
+  function distance(a, b) {
+    var d = [], i, j;
+    for (i = 0; i <= a.length; i++) { d[i] = [i]; }
+    for (j = 0; j <= b.length; j++) { d[0][j] = j; }
+    for (i = 1; i <= a.length; i++) {
+      for (j = 1; j <= b.length; j++) {
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+    return d[a.length][b.length];
+  }
+  function suggestEmail(email) {
+    var at = email.lastIndexOf('@');
+    if (at < 1) return null;
+    var name = email.slice(0, at), domain = email.slice(at + 1).toLowerCase();
+    if (!domain || KNOWN.indexOf(domain) !== -1) return null;
+    var best = null, bestScore = 3;
+    PROVIDERS.forEach(function (p) {
+      var d = distance(domain, p);
+      // Short names (me.com, aol.com) sit too close to real domains to guess at; longer ones get
+      // one slip, or two once they're past nine letters.
+      if (p.length < 8) return;
+      if (d > 0 && d < bestScore && d <= (p.length > 9 ? 2 : 1)) { best = p; bestScore = d; }
+    });
+    if (best) return name + '@' + best;
+    var dot = domain.lastIndexOf('.');
+    // ".co" is a real ending (co.uk, many sites); only fix it on a known provider's name.
+    if (dot > 0) {
+      var tld = domain.slice(dot + 1), fix = TLD_FIXES[tld], base = domain.slice(0, dot);
+      if (fix && (tld !== 'co' || PROVIDERS.indexOf(base + '.com') !== -1)) return name + '@' + base + '.' + fix;
+    }
+    return null;
+  }
+  function showSuggestion(msg, input, suggestion) {
+    msg.className = 'form-msg';
+    msg.textContent = 'Did you mean ';
+    var use = document.createElement('button');
+    use.type = 'button'; use.className = 'suggest'; use.textContent = suggestion;
+    use.addEventListener('click', function () { input.value = suggestion; msg.textContent = ''; input.focus(); });
+    msg.appendChild(use);
+    msg.appendChild(document.createTextNode('?'));
+  }
+
   document.querySelectorAll('form.waitlist').forEach(function (form) {
     var input = form.querySelector('input[type=email]');
     var msg = form.querySelector('.form-msg');
@@ -1020,7 +1077,12 @@
     var typing = null, settled = false;
 
     input.addEventListener('focus', function () { form.classList.add('awake'); });
-    input.addEventListener('blur', function () { if (!input.value) form.classList.remove('awake'); });
+    input.addEventListener('blur', function () {
+      if (!input.value) { form.classList.remove('awake'); return; }
+      var suggestion = suggestEmail(input.value.trim());
+      if (suggestion && !settled) showSuggestion(msg, input, suggestion);
+    });
+    var nudged = null;
     input.addEventListener('input', function () {
       if (settled) return;
       var crew = crewOf(form);
@@ -1039,6 +1101,14 @@
         msg.textContent = 'That doesn’t look like an email address.';
         msg.classList.add('err'); input.focus();
         setAll(form, 'idle'); Bupsy.setMood(mid(crewOf(form)), 'error');
+        return;
+      }
+      // Once per address: a second submit of the same spelling means they meant it.
+      var suggestion = suggestEmail(email);
+      if (suggestion && nudged !== email) {
+        nudged = email;
+        showSuggestion(msg, input, suggestion);
+        msg.appendChild(document.createTextNode(' Or press the button again to use yours.'));
         return;
       }
       button.disabled = true; msg.textContent = 'Getting your download…'; setAll(form, 'working');
