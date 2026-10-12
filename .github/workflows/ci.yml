@@ -67,6 +67,13 @@ jobs:
           xcodebuild -version
           swift --version
 
+      # Go builds bupsy-mcp, the tool bots use to talk to Bupsy, inside the app build. On GitHub's
+      # Macs Go is installed but not on the PATH the build sees, so put it there explicitly.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.24"
+          cache: false
+
       - name: Show toolchain
         run: swift --version
 
@@ -108,6 +115,17 @@ jobs:
       # would notice it breaking. Built for the simulator, unsigned; its tests need a simulator
       # runtime, so they run locally (xcodebuild test -scheme BupsyiOS) rather than on every PR.
       # Same build folder as the Mac app, so the clean-up step below removes this copy too.
+      # The same check the release makes: an app built without bupsy-mcp runs, but its bots
+      # cannot message, create or manage other bots, and nothing on screen says why.
+      - name: Check bupsy-mcp is in the app
+        run: |
+          MCP="$GITHUB_WORKSPACE/../bupsy-dd/Build/Products/Debug/Bupsy.app/Contents/MacOS/bupsy-mcp"
+          if [ ! -x "$MCP" ]; then
+            echo "::error::bupsy-mcp is missing from the app build."
+            exit 1
+          fi
+          lipo -info "$MCP"
+
       - name: Build the iPhone app
         run: |
           set -o pipefail
