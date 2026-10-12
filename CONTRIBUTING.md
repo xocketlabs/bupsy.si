@@ -78,6 +78,9 @@ Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
    update `NOTICE`.
 5. Squash-merge once review passes.
 
+AI agents working on the repo also follow [AGENTS.md](AGENTS.md): how issues, milestones and the
+project board are kept up to date.
+
 ## Licence and the CLA
 
 bupsy.si is source-available under the [PolyForm Shield License 1.0.0](LICENSE): free to use, read,
