@@ -96,21 +96,53 @@ struct BotPage: View {
     }
 
     private func withSheets(_ content: some View) -> some View {
-        content
-            // Each sheet on its own view: two sheets on one view and SwiftUI silently shows only
-            // one. The panel already lists routines and goals, so "New" opens the form itself
-            // rather than a second list with its own New button.
-            .background { Color.clear.sheet(isPresented: $showsRoutines) { NewRoutineSheet(bot: bot) } }
-            .background { Color.clear.sheet(isPresented: $showsObjectives) { NewObjectiveSheet(bot: bot) } }
-            .background { Color.clear.sheet(item: $editingRoutine) { NewRoutineSheet(bot: bot, editing: $0) } }
-            .background { Color.clear.sheet(item: $editingBot) { BotCreatorSheet(editing: $0) } }
-            // The folder watch form is the new-routine sheet opened on its Folder watch tab.
-            .background { Color.clear.sheet(isPresented: $showsNewWatch) { NewRoutineSheet(bot: bot, kind: .folderWatch) } }
-            .background { Color.clear.sheet(item: $editingWatch) { NewFolderWatchSheet(bot: bot, editing: $0) } }
-            .background {
-                Color.clear.confirmsObjectiveDeletion($deletingObjective) { model.deleteObjective($0) }
-            }
-            .background { folderWatchDeletion }
+        content.background { sheetHosts }
+    }
+
+    /// Each sheet on its own view: two sheets on one view and SwiftUI silently shows only one.
+    /// Every host is its own small property, because a single expression holding all of them was
+    /// more than Swift 6.2's type checker would take. The panel already lists routines and goals,
+    /// so "New" opens the form itself rather than a second list with its own New button.
+    private var sheetHosts: some View {
+        ZStack {
+            newRoutineHost
+            newObjectiveHost
+            editRoutineHost
+            editBotHost
+            newWatchHost
+            editWatchHost
+            objectiveDeletionHost
+            folderWatchDeletion
+        }
+    }
+
+    private var newRoutineHost: some View {
+        Color.clear.sheet(isPresented: $showsRoutines) { NewRoutineSheet(bot: bot) }
+    }
+
+    private var newObjectiveHost: some View {
+        Color.clear.sheet(isPresented: $showsObjectives) { NewObjectiveSheet(bot: bot) }
+    }
+
+    private var editRoutineHost: some View {
+        Color.clear.sheet(item: $editingRoutine) { (routine: Routine) in NewRoutineSheet(bot: bot, editing: routine) }
+    }
+
+    private var editBotHost: some View {
+        Color.clear.sheet(item: $editingBot) { (editing: Bot) in BotCreatorSheet(editing: editing) }
+    }
+
+    /// The folder watch form is the new-routine sheet opened on its Folder watch tab.
+    private var newWatchHost: some View {
+        Color.clear.sheet(isPresented: $showsNewWatch) { NewRoutineSheet(bot: bot, kind: .folderWatch) }
+    }
+
+    private var editWatchHost: some View {
+        Color.clear.sheet(item: $editingWatch) { (watch: FolderWatch) in NewFolderWatchSheet(bot: bot, editing: watch) }
+    }
+
+    private var objectiveDeletionHost: some View {
+        Color.clear.confirmsObjectiveDeletion($deletingObjective) { model.deleteObjective($0) }
     }
 
     private var folderWatchDeletion: some View {
