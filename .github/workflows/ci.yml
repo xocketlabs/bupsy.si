@@ -93,9 +93,7 @@ jobs:
           # that is someone's Mac, a Bupsy.app there shows up in Spotlight and Open With next to
           # the real one, and every run put it back. Beside the checkout so it survives the
           # checkout's clean and builds stay incremental.
-          # -continueBuildingAfterErrors: every file that fails is reported in one run, rather
-          # than the first one per run.
-          xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac -continueBuildingAfterErrors \
+          xcodebuild -project Bupsy.xcodeproj -scheme BupsyMac \
             -configuration Debug -destination 'platform=macOS' \
             -derivedDataPath "$GITHUB_WORKSPACE/../bupsy-dd" \
             CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | tail -20 || {
