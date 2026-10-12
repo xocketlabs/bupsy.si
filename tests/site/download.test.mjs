@@ -112,7 +112,12 @@ function realD1() {
     prepare(sql) {
       return {
         bind(...args) {
-          const statement = db.prepare(sql);
+          // D1 numbers its parameters (?1, ?2); some node:sqlite versions reject that with
+          // positional values, so number them by order of appearance instead.
+          const ordered = [];
+          const plain = sql.replace(/\?(\d+)/g, (_, n) => { ordered.push(args[Number(n) - 1]); return "?"; });
+          args = ordered.length ? ordered : args;
+          const statement = db.prepare(plain);
           return {
             async first() { return statement.get(...args) ?? null; },
             async run() { return { meta: { changes: Number(statement.run(...args).changes) } }; },
