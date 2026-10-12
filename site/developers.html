@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bupsy for developers: MCP server, download API, Markdown for agents</title>
 <meta name="description" content="Bupsy&#x27;s public MCP server, download API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex.">
-<link rel="canonical" href="https://bupsy.pages.dev/developers">
+<link rel="canonical" href="https://bupsy.si/developers">
 <meta property="og:title" content="Bupsy for developers: MCP server, download API, Markdown for agents">
 <meta property="og:description" content="Bupsy&#x27;s public MCP server, download API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex.">
-<meta property="og:url" content="https://bupsy.pages.dev/developers">
+<meta property="og:url" content="https://bupsy.si/developers">
 <meta property="og:site_name" content="Bupsy">
 <meta property="og:type" content="website">
-<meta property="og:image" content="https://bupsy.pages.dev/og.png">
+<meta property="og:image" content="https://bupsy.si/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Bupsy: Your AI already has a subscription. Give it a job.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://bupsy.pages.dev/og.png">
+<meta name="twitter:image" content="https://bupsy.si/og.png">
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -63,14 +63,14 @@
 <nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#download">Download</a></nav>
 <main>
 <h1>Bupsy for developers</h1>
-<p>Bupsy is a Mac app, so most of what developers touch lives on their own Mac: the bots run Claude Code or Codex, and Bupsy speaks MCP to them. This page lists every public, machine-readable part of bupsy.pages.dev, and how the app works with MCP.</p>
+<p>Bupsy is a Mac app, so most of what developers touch lives on their own Mac: the bots run Claude Code or Codex, and Bupsy speaks MCP to them. This page lists every public, machine-readable part of bupsy.si, and how the app works with MCP.</p>
 <h2 id="bupsy-mcp-server">Bupsy MCP server</h2>
 <p>A public MCP server for agents that want to know about Bupsy, or help someone get it.</p>
 <ul>
-<li>Endpoint: <code>https://bupsy.pages.dev/mcp</code></li>
+<li>Endpoint: <code>https://bupsy.si/mcp</code></li>
 <li>Transport: Streamable HTTP, MCP protocol 2025-11-25 (also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC message per POST, a JSON answer, no session ID. GET answers 405.</li>
 <li>Authentication: none.</li>
-<li>Server card: <code>https://bupsy.pages.dev/.well-known/mcp/server-card.json</code></li>
+<li>Server card: <code>https://bupsy.si/.well-known/mcp/server-card.json</code></li>
 </ul>
 <p>Tools:</p>
 <ul>
@@ -79,7 +79,7 @@
 <li><code>get_download</code>: where and how to download Bupsy. It points to the download page, which asks for the person's own email address; it takes no address and downloads nothing. Read-only.</li>
 <li><code>join_waitlist</code>: adds the person's own email address to the older "keep me posted" list, without a download. Kept for agents that already use it. Only with their permission.</li>
 </ul>
-<p>Add it to Claude Code with <code>claude mcp add --transport http bupsy https://bupsy.pages.dev/mcp</code>.</p>
+<p>Add it to Claude Code with <code>claude mcp add --transport http bupsy https://bupsy.si/mcp</code>.</p>
 <h2 id="bupsy-api-reference">Bupsy API reference</h2>
 <p>The whole API is described in an OpenAPI 3.1 document: <a href="/openapi.json">openapi.json</a>. Every operation has an <code>operationId</code>, typed request and response schemas and a description, so it works as-is for function calling. No authentication.</p>
 <ul>
@@ -89,7 +89,7 @@
 <li><code>callMcp</code>: <code>POST /mcp</code> (MCP JSON-RPC)</li>
 </ul>
 <h2 id="download-api">Download API</h2>
-<p><code>POST https://bupsy.pages.dev/api/download</code> with JSON <code>{"email": "you@example.com", "updates": false, "source": "your-app"}</code>.</p>
+<p><code>POST https://bupsy.si/api/download</code> with JSON <code>{"email": "you@example.com", "updates": false, "source": "your-app"}</code>.</p>
 <ul>
 <li><code>200 {"ok": true, "url": "https://github.com/xocketlabs/bupsy.si/releases/latest/download/Bupsy.dmg", "already": false}</code>. <code>url</code> is always the newest Bupsy.dmg; <code>already</code> is true when the address had downloaded or joined the list before.</li>
 <li><code>updates</code> is optional and false unless sent. <code>true</code> means the person asked for one email a month about what's new; without it Bupsy sends them nothing. A later download can turn it on, never off.</li>
@@ -98,14 +98,14 @@
 </ul>
 <h2 id="waitlist-api">Waitlist API</h2>
 <p>The older "keep me posted" list, still supported so existing agents and scripts keep working. For the app itself, use the download API above.</p>
-<p><code>POST https://bupsy.pages.dev/api/waitlist</code> with JSON <code>{"email": "you@example.com", "source": "your-app"}</code>.</p>
+<p><code>POST https://bupsy.si/api/waitlist</code> with JSON <code>{"email": "you@example.com", "source": "your-app"}</code>.</p>
 <ul>
 <li><code>200 {"ok": true, "already": false}</code> when added, <code>"already": true</code> when the address was on the list.</li>
 <li>It doesn't start a download or sign anyone up for the monthly email.</li>
 <li>Only with the person's own address and their permission.</li>
 </ul>
 <h2 id="contact-api">Contact API</h2>
-<p><code>POST https://bupsy.pages.dev/api/contact</code> with JSON <code>{"name": "Sam", "email": "sam@example.com", "message": "..."}</code>. <code>200 {"ok": true}</code>; we answer by email.</p>
+<p><code>POST https://bupsy.si/api/contact</code> with JSON <code>{"name": "Sam", "email": "sam@example.com", "message": "..."}</code>. <code>200 {"ok": true}</code>; we answer by email.</p>
 <h2 id="errors">Errors</h2>
 <p>Errors are RFC 9457 problem details (<code>application/problem+json</code>): <code>type</code>, <code>title</code>, <code>status</code>, <code>detail</code> for people, a stable <code>code</code> to branch on, and a <code>resolution</code> saying what to do next. Unknown <code>/api/</code> addresses answer a JSON 404.</p>
 <ul>

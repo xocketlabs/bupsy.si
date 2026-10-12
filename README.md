@@ -10,7 +10,7 @@
 [![Licence: PolyForm Shield 1.0.0](https://img.shields.io/badge/licence-PolyForm%20Shield%201.0.0-blue)](LICENSE)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
 
-[Website](https://bupsy.pages.dev) · [Download](https://github.com/xocketlabs/bupsy.si/releases/latest) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Website](https://bupsy.si) · [Download](https://github.com/xocketlabs/bupsy.si/releases/latest) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 </div>
 
@@ -113,7 +113,7 @@ You will need `claude` or `codex` installed and signed in. Bupsy detects whichev
 | [`Packages/BupsyKit`](Packages/BupsyKit) | The core: engines, hosts, approval gate, store, remote access |
 | [`Tools/bupsy-run`](Tools/bupsy-run) | The headless core in Go, for Linux and Windows, plus `bupsy-mcp`, the tools bots use to talk to Bupsy |
 | [`conformance`](conformance) | Shared test cases both cores must agree on |
-| [`site`](site), [`functions`](functions) | bupsy.pages.dev: the landing page, download form and MCP server |
+| [`site`](site), [`functions`](functions) | bupsy.si: the landing page, download form and MCP server |
 | [`docs`](docs) | Compliance, decisions, design, release process |
 
 ## How it works

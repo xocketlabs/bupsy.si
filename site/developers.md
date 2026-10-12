@@ -1,15 +1,15 @@
 # Bupsy for developers
 
-Bupsy is a Mac app, so most of what developers touch lives on their own Mac: the bots run Claude Code or Codex, and Bupsy speaks MCP to them. This page lists every public, machine-readable part of bupsy.pages.dev, and how the app works with MCP.
+Bupsy is a Mac app, so most of what developers touch lives on their own Mac: the bots run Claude Code or Codex, and Bupsy speaks MCP to them. This page lists every public, machine-readable part of bupsy.si, and how the app works with MCP.
 
 ## Bupsy MCP server
 
 A public MCP server for agents that want to know about Bupsy, or help someone get it.
 
-- Endpoint: `https://bupsy.pages.dev/mcp`
+- Endpoint: `https://bupsy.si/mcp`
 - Transport: Streamable HTTP, MCP protocol 2025-11-25 (also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC message per POST, a JSON answer, no session ID. GET answers 405.
 - Authentication: none.
-- Server card: `https://bupsy.pages.dev/.well-known/mcp/server-card.json`
+- Server card: `https://bupsy.si/.well-known/mcp/server-card.json`
 
 Tools:
 
@@ -18,11 +18,11 @@ Tools:
 - `get_download`: where and how to download Bupsy. It points to the download page, which asks for the person's own email address; it takes no address and downloads nothing. Read-only.
 - `join_waitlist`: adds the person's own email address to the older "keep me posted" list, without a download. Kept for agents that already use it. Only with their permission.
 
-Add it to Claude Code with `claude mcp add --transport http bupsy https://bupsy.pages.dev/mcp`.
+Add it to Claude Code with `claude mcp add --transport http bupsy https://bupsy.si/mcp`.
 
 ## Bupsy API reference
 
-The whole API is described in an OpenAPI 3.1 document: [openapi.json](https://bupsy.pages.dev/openapi.json). Every operation has an `operationId`, typed request and response schemas and a description, so it works as-is for function calling. No authentication.
+The whole API is described in an OpenAPI 3.1 document: [openapi.json](https://bupsy.si/openapi.json). Every operation has an `operationId`, typed request and response schemas and a description, so it works as-is for function calling. No authentication.
 
 - `startDownload`: `POST /api/download`
 - `joinWaitlist`: `POST /api/waitlist` (older, still supported)
@@ -31,18 +31,18 @@ The whole API is described in an OpenAPI 3.1 document: [openapi.json](https://bu
 
 ## Download API
 
-`POST https://bupsy.pages.dev/api/download` with JSON `{"email": "you@example.com", "updates": false, "source": "your-app"}`.
+`POST https://bupsy.si/api/download` with JSON `{"email": "you@example.com", "updates": false, "source": "your-app"}`.
 
 - `200 {"ok": true, "url": "https://github.com/xocketlabs/bupsy.si/releases/latest/download/Bupsy.dmg", "already": false}`. `url` is always the newest Bupsy.dmg; `already` is true when the address had downloaded or joined the list before.
 - `updates` is optional and false unless sent. `true` means the person asked for one email a month about what's new; without it Bupsy sends them nothing. A later download can turn it on, never off.
-- No account and no verification. Only with the person's own address and their permission; usually it's simpler to send them to [the download page](https://bupsy.pages.dev/#download).
+- No account and no verification. Only with the person's own address and their permission; usually it's simpler to send them to [the download page](https://bupsy.si/#download).
 - Builds may not be Apple-signed yet, so the first open needs System Settings, Privacy & Security, Open Anyway. The [source is on GitHub](https://github.com/xocketlabs/bupsy.si) for anyone who'd rather build it.
 
 ## Waitlist API
 
 The older "keep me posted" list, still supported so existing agents and scripts keep working. For the app itself, use the download API above.
 
-`POST https://bupsy.pages.dev/api/waitlist` with JSON `{"email": "you@example.com", "source": "your-app"}`.
+`POST https://bupsy.si/api/waitlist` with JSON `{"email": "you@example.com", "source": "your-app"}`.
 
 - `200 {"ok": true, "already": false}` when added, `"already": true` when the address was on the list.
 - It doesn't start a download or sign anyone up for the monthly email.
@@ -50,7 +50,7 @@ The older "keep me posted" list, still supported so existing agents and scripts 
 
 ## Contact API
 
-`POST https://bupsy.pages.dev/api/contact` with JSON `{"name": "Sam", "email": "sam@example.com", "message": "..."}`. `200 {"ok": true}`; we answer by email.
+`POST https://bupsy.si/api/contact` with JSON `{"name": "Sam", "email": "sam@example.com", "message": "..."}`. `200 {"ok": true}`; we answer by email.
 
 ## Errors
 
@@ -68,10 +68,10 @@ Every page answers `Accept: text/markdown` with its Markdown version and `Vary: 
 
 ## Discovery
 
-- [llms.txt](https://bupsy.pages.dev/llms.txt): what Bupsy is, and when to use it
-- [agents.md](https://bupsy.pages.dev/agents.md): instructions for agents
-- [sitemap.xml](https://bupsy.pages.dev/sitemap.xml) and [robots.txt](https://bupsy.pages.dev/robots.txt)
-- [openapi.json](https://bupsy.pages.dev/openapi.json): the OpenAPI 3.1 spec
+- [llms.txt](https://bupsy.si/llms.txt): what Bupsy is, and when to use it
+- [agents.md](https://bupsy.si/agents.md): instructions for agents
+- [sitemap.xml](https://bupsy.si/sitemap.xml) and [robots.txt](https://bupsy.si/robots.txt)
+- [openapi.json](https://bupsy.si/openapi.json): the OpenAPI 3.1 spec
 - `/.well-known/api-catalog` (RFC 9727) lists the MCP server, the download API, the waitlist API and the contact API
 
 ## How the Bupsy app works with MCP
@@ -81,4 +81,4 @@ Every page answers `Accept: text/markdown` with its Markdown version and `Vary: 
 - **Engines.** Bots run the Claude Code and Codex command-line tools already on the Mac, under the person's own sign-in. Bupsy never holds those credentials.
 - **Commands.** Your Claude Code commands and skills, and your Codex prompts, appear when you type `/` in a chat.
 
-The app is source-available under the PolyForm Shield License 1.0.0: free to use, read and change, but not to build a competing product. Questions: [contact us](https://bupsy.pages.dev/contact).
+The app is source-available under the PolyForm Shield License 1.0.0: free to use, read and change, but not to build a competing product. Questions: [contact us](https://bupsy.si/contact).

@@ -4,7 +4,7 @@ contact_links:
     url: https://github.com/xocketlabs/bupsy.si/security/advisories/new
     about: Privately, so it can be fixed before anyone else knows. Please don't open a public issue.
   - name: Ask a question or write to us
-    url: https://bupsy.pages.dev/contact
+    url: https://bupsy.si/contact
     about: Questions, early access, your data, press. We answer by email.
   - name: Getting help
     url: https://github.com/xocketlabs/bupsy.si/blob/main/SUPPORT.md

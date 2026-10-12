@@ -33,4 +33,4 @@ Allow: /
 User-agent: Applebot-Extended
 Allow: /
 
-Sitemap: https://bupsy.pages.dev/sitemap.xml
+Sitemap: https://bupsy.si/sitemap.xml

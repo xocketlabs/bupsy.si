@@ -5,6 +5,12 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**bupsy.si**
+- The website has its own address: https://bupsy.si. Every page, llms.txt, agents.md, the sitemap,
+  openapi.json, the MCP server card and the CLI now point there.
+- bupsy.pages.dev and www.bupsy.si send pages to the same address on bupsy.si (301). The API and
+  the MCP server keep answering on bupsy.pages.dev too, so nothing that already calls them breaks.
+
 **Licence**
 - From the next release, Bupsy is source-available under the PolyForm Shield License 1.0.0: free to
   use, read, change and share, but not to build a competing product, with no expiry. 0.2.0 and

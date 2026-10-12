@@ -4,7 +4,7 @@
   with your macOS version, Bupsy version (Settings › About) and what you did.
 - **An idea?** [Suggest a feature](https://github.com/xocketlabs/bupsy.si/issues/new?template=feature.yml).
 - **A security problem?** Please don't open an issue: see [SECURITY.md](SECURITY.md).
-- **Anything else, or private?** Write to us at [bupsy.pages.dev/contact](https://bupsy.pages.dev/contact)
+- **Anything else, or private?** Write to us at [bupsy.si/contact](https://bupsy.si/contact)
   or remotevansh@gmail.com.
 
 Before you ask, these answer most questions:
@@ -16,5 +16,5 @@ Before you ask, these answer most questions:
 - **Where is my data?** On your Mac, in `~/Library/Application Support/si.bupsy`. There is no Bupsy
   account and no server.
 - **How do I update?** Download the newest version from
-  [bupsy.pages.dev](https://bupsy.pages.dev) or [Releases](https://github.com/xocketlabs/bupsy.si/releases/latest)
+  [bupsy.si](https://bupsy.si) or [Releases](https://github.com/xocketlabs/bupsy.si/releases/latest)
   and drag it into Applications over the old one. Your bots and chats stay.
