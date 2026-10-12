@@ -81,4 +81,4 @@ Every page answers `Accept: text/markdown` with its Markdown version and `Vary: 
 - **Engines.** Bots run the Claude Code and Codex command-line tools already on the Mac, under the person's own sign-in. Bupsy never holds those credentials.
 - **Commands.** Your Claude Code commands and skills, and your Codex prompts, appear when you type `/` in a chat.
 
-The app is source-available under the Business Source License 1.1, converting to Apache-2.0 four years after each release. Questions: [contact us](https://bupsy.pages.dev/contact).
+The app is source-available under the PolyForm Shield License 1.0.0: free to use, read and change, but not to build a competing product. Questions: [contact us](https://bupsy.pages.dev/contact).

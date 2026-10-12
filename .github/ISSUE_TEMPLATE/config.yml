@@ -1,1 +1,11 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/xocketlabs/bupsy.si/security/advisories/new
+    about: Privately, so it can be fixed before anyone else knows. Please don't open a public issue.
+  - name: Ask a question or write to us
+    url: https://bupsy.pages.dev/contact
+    about: Questions, early access, your data, press. We answer by email.
+  - name: Getting help
+    url: https://github.com/xocketlabs/bupsy.si/blob/main/SUPPORT.md
+    about: Answers to the common questions (opening the app the first time, signing in, updating).

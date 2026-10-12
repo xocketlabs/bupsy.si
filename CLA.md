@@ -4,10 +4,10 @@ Thank you for contributing to Bupsy. This agreement is between you and Xocket La
 corporation ("Xocket Labs"), the maker of Bupsy. It applies to everything you submit to this
 repository: code, documentation, designs, tests and other material ("Contributions").
 
-**Why it exists.** Bupsy is published under the Business Source License 1.1, and each version
-converts to the Apache License 2.0 four years after release. For that conversion to happen, and for
-the project to be relicensed in future, Xocket Labs must be able to license your Contributions on
-the same terms as the rest of the code. See [CONTRIBUTING.md](CONTRIBUTING.md#licence-and-the-cla).
+**Why it exists.** Bupsy is published under the PolyForm Shield License 1.0.0. Xocket Labs must be
+able to license your Contributions on the same terms as the rest of the code, today and if the
+project's licence changes in future; without an agreement, a contribution would be code we cannot
+relicense. See [CONTRIBUTING.md](CONTRIBUTING.md#licence-and-the-cla).
 
 By submitting a Contribution, you agree that:
 
@@ -15,8 +15,8 @@ By submitting a Contribution, you agree that:
 2. **Copyright licence.** You grant Xocket Labs and recipients of software it distributes a
    perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable licence to reproduce,
    prepare derivative works of, publicly display, publicly perform, sublicense and distribute your
-   Contributions and such derivative works, under any licence, including the Business Source
-   License and the Apache License 2.0.
+   Contributions and such derivative works, under any licence, including the PolyForm Shield
+   License and any licence Xocket Labs chooses for the project in future.
 3. **Patent licence.** You grant Xocket Labs and recipients of software it distributes a perpetual,
    worldwide, non-exclusive, no-charge, royalty-free, irrevocable patent licence to make, have made,
    use, sell, offer to sell, import and otherwise transfer your Contribution, for any patent claims

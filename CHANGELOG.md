@@ -5,6 +5,11 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Licence**
+- From the next release, Bupsy is source-available under the PolyForm Shield License 1.0.0: free to
+  use, read, change and share, but not to build a competing product, with no expiry. 0.2.0 and
+  earlier stay under the Business Source License 1.1.
+
 **Download Bupsy from the website**
 - Bupsy is out: the website now offers the download, free, for your email address, instead of a
   waitlist. No account and no verification.

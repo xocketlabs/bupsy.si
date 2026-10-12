@@ -7,7 +7,7 @@ own personality, model, cloud computer, and connected apps. Talk to them. Give t
 They keep working with the lid closed.
 
 Decisions taken: build fresh (no fork), chat-first UI, full Grokbot **and** Dots parity, **native
-macOS first** (Swift/SwiftUI, not Electron), source-available under BSL 1.1. Greenfield — nothing written yet.
+macOS first** (Swift/SwiftUI, not Electron), source-available (BSL 1.1 at first; PolyForm Shield 1.0.0 since after 0.2.0). Greenfield — nothing written yet.
 
 ---
 
@@ -18,7 +18,7 @@ macOS first** (Swift/SwiftUI, not Electron), source-available under BSL 1.1. Gre
 | Shape | chat roster | background goals | chat roster | **both** |
 | Model access | xAI sub | $500/mo tier | BYO CLI | **BYO CLI** |
 | Client | native | native | Electron | **native Swift** |
-| Source | closed | closed | open-core (`enterprise/` proprietary) | source-available, BSL 1.1 → Apache-2.0 |
+| Source | closed | closed | open-core (`enterprise/` proprietary) | source-available, PolyForm Shield 1.0.0 |
 | Always-on when laptop sleeps | yes (cloud) | yes (cloud) | no — local harness | **yes (VM-side scheduler)** |
 | Price | sub | $500/mo tier | free + sponsors | **free** |
 
@@ -639,7 +639,7 @@ three parallel tracks (§9).
    for long-tail reach? Recommend MCP-only through 1.0.
 2. **`bupsy-run` language** — Swift static binary (one language) or Go (smaller, trivially
    cross-compiled for the Linux VM)? Lean Go for the VM side.
-3. ~~**Licence**~~ — *settled: BSL 1.1 converting to Apache-2.0 after four years, licensed by
+3. ~~**Licence**~~ — *settled, then changed after 0.2.0 to PolyForm Shield 1.0.0 (no conversion). First: BSL 1.1 converting to Apache-2.0 after four years, licensed by
    **Xocket Labs Inc., a Delaware corporation**. See docs/02-licence.md.*
 4. **Windows/Linux** — never, community-maintained, or post-1.0? Say it publicly either way.
 

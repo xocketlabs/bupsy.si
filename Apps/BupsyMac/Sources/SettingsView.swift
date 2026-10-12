@@ -363,7 +363,7 @@ private struct AboutSettingsSection: View {
                     Text(Self.versionLine)
                         .font(Theme.Typography.caption)
                         .foregroundStyle(palette.mutedForeground)
-                    Text("Source-available under BSL 1.1. No telemetry.")
+                    Text("Source-available under PolyForm Shield 1.0.0. No telemetry.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(palette.mutedForeground)
                     // The bundled libraries' licences require their notices to travel with the

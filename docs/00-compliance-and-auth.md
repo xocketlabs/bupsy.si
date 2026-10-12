@@ -161,8 +161,7 @@ first-class fallback, and why no feature may depend on exactly one vendor.
 
 ## Our own licence, and the clean-room rule
 
-bupsy is **source-available under BSL 1.1**, converting to Apache-2.0 four years after each version
-is published. It is not an open-source licence by the OSI definition and we never call it one — see
+bupsy is **source-available under the PolyForm Shield License 1.0.0** (0.2.0 and earlier: BSL 1.1). It is not an open-source licence by the OSI definition and we never call it one — see
 [02-licence.md](02-licence.md) for the reasoning and the copy rules.
 
 **Do not read OpenMausBot's source code while writing ours.** Its README, docs, screenshots and

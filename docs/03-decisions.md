@@ -12,7 +12,7 @@ Reversing one is fine. Reversing one without reading why it was made is not.
 | 1 | Relationship to OpenMausBot | Build fresh, no fork | Clean-room rule in CONTRIBUTING.md §2 |
 | 2 | Product shape | Chat-first, Grokbot-like | Dots-style objectives layer on top at M5 |
 | 3 | Platform | **Native macOS first** (SwiftUI) | Not Electron. The primary differentiator |
-| 4 | Licence | **BSL 1.1 → Apache-2.0 after 4 years** | Licensor: Xocket Labs Inc. (Delaware). [02-licence.md](02-licence.md) |
+| 4 | Licence | **PolyForm Shield 1.0.0** (was BSL 1.1 → Apache-2.0 after 4 years, until 0.2.0) | Licensor: Xocket Labs Inc. (Delaware). [02-licence.md](02-licence.md) |
 | 5 | Differentiators | **Three**, not four | Openness claim retired with the licence change |
 | 6 | Team | 3–5 → three parallel tracks | Core / App / VM, PLAN.md §9 |
 | 7 | Region | EU-only compute is fine | Freestyle stays a hedge at M7, not pulled forward |
@@ -103,7 +103,8 @@ is the signal to revisit, and skipping it now is how we find out cheaply rather 
 Native rather than Electron · lid-closed always-on · MCP-native connectors.
 
 The fourth was "actually all open", aimed at OpenMausBot's proprietary `enterprise/` folder. BSL
-forecloses it, because Apache-2.0 would let anyone rebrand and ship bupsy. Retired rather than
+forecloses it, because Apache-2.0 would let anyone rebrand and ship bupsy (the same holds under
+PolyForm Shield, which replaced BSL after 0.2.0). Retired rather than
 softened — a padded list of four reads weaker than a tight list of three.
 
 ### Cross-platform: a core, not a second app (#28)
@@ -173,7 +174,7 @@ fail *before* any event exists — is now two case kinds, `command` and `stderr`
 | **Developer ID certificate** ($99/yr) | notarized releases **and** the tier 2b wake helper | founder |
 | **A boat.dev API key** | the cloud host is written but untested against the real service | founder |
 | Lawyer review of the Additional Use Grant | not blocking; worth an hour before the first public build | founder |
-| Change Date: 4 years or 3? | nothing yet | founder |
+| ~~Change Date: 4 years or 3?~~ | settled: no conversion; PolyForm Shield replaced BSL | founder |
 | Freestyle region list | whether EU-only is permanent | VM |
 
 Answered since this table was first written: spike 2 (a stopped machine does **not** wake for its
