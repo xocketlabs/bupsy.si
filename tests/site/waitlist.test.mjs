@@ -7,8 +7,15 @@ import { fakeD1, post } from "./helpers.mjs";
 
 test("cleanEmail lowercases, trims and refuses what isn't an address", () => {
   assert.equal(cleanEmail("  You@Example.COM "), "you@example.com");
-  for (const bad of ["", "nope", "a@b", "a b@c.d", "<x>@y.z", "a\"@b.c", "x".repeat(250) + "@a.bc"]) {
+  for (const bad of ["", "nope", "a@b", "a b@c.d", "<x>@y.z", "a\"@b.c", "x".repeat(250) + "@a.bc",
+    // Typed junk seen on the live list: neither address can ever receive an email.
+    "vfdgh@gmai;.com", "a@b..com", "a@-b.com", "a@b-.com", "a@b.c", "a@b.c0m", "a@@b.com", "a@b@c.com",
+    ".a@b.com", "a.@b.com", "a..b@c.com", "a;b@c.com", "a@b,com", "x".repeat(65) + "@b.com"]) {
     assert.equal(cleanEmail(bad), null, bad);
+  }
+  for (const good of ["you@example.com", "first.last+tag@mail.example.co.uk", "o'brien@example.ie".replace("'", ""),
+    "x_y-z@sub-domain.example.org", "a@xn--bcher-kva.ch", "Name@Example.COM"]) {
+    assert.equal(cleanEmail(good), good.toLowerCase(), good);
   }
 });
 
