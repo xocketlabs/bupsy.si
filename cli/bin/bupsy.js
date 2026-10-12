@@ -13,7 +13,9 @@ export const HELP = `bupsy: Bupsy from the command line (https://bupsy.pages.dev
 Usage:
   bupsy about                         What Bupsy is, and when to use it
   bupsy page <${PAGES.join("|")}>     A page of the site as Markdown
-  bupsy join <email> [--source name]  Join the waitlist (your own address)
+  bupsy download <email> [--updates]  Get Bupsy, free, for your own email address
+                                      --updates: one email a month about what's new
+  bupsy join <email> [--source name]  Older: be kept posted, without a download
   bupsy contact --email <e> --message <text> [--name <n>]
                                       Send a message to the people who make Bupsy
   bupsy mcp                           How to add Bupsy's MCP server to your agent
@@ -24,13 +26,19 @@ Options:
   --base <url>  Another server (for testing)
   -h, --help    This help`;
 
+// Flags that are on by being there, so they never swallow the next word.
+const SWITCHES = ["json", "updates"];
+
+export const INSTALL_HINT =
+  "Open Bupsy.dmg and drag Bupsy into Applications; if macOS won't open it the first time, use System Settings, Privacy & Security, Open Anyway.";
+
 /** Splits argv into positional words and --flags. */
 export function parseArgs(argv) {
   const words = [], flags = {};
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") flags.help = true;
-    else if (arg === "--json") flags.json = true;
+    else if (SWITCHES.includes(arg.slice(2)) && arg.startsWith("--")) flags[arg.slice(2)] = true;
     else if (arg.startsWith("--")) {
       const [key, inline] = arg.slice(2).split("=", 2);
       flags[key] = inline ?? argv[++i];
@@ -82,11 +90,27 @@ export async function run(argv, io = { fetch: globalThis.fetch, out: process.std
       if (text === null) return 1;
       say(text); return 0;
     }
+    case "download": {
+      if (!arg) { complain("Usage: bupsy download <email> [--updates]"); return 2; }
+      // Only a bare --updates (or --updates=true) is the person's yes to the monthly email.
+      const updates = flags.updates === true || flags.updates === "true";
+      const data = await post("/api/download", { email: arg, updates, source: "cli" });
+      if (!data) return 1;
+      if (!flags.json) {
+        say(`Download Bupsy: ${data.url}`);
+        say(INSTALL_HINT);
+        if (updates) say("You'll get one email a month about what's new.");
+      }
+      return 0;
+    }
     case "join": {
       if (!arg) { complain("Usage: bupsy join <email> [--source name]"); return 2; }
       const data = await post("/api/waitlist", { email: arg, source: flags.source || "cli" });
       if (!data) return 1;
-      if (!flags.json) say(data.already ? "Already on the Bupsy waitlist." : "Added to the Bupsy waitlist. One email when your spot opens.");
+      if (!flags.json) {
+        say(data.already ? "Already on Bupsy's list." : "Added to Bupsy's list.");
+        say("Bupsy is available now: bupsy download <your email>");
+      }
       return 0;
     }
     case "contact": {

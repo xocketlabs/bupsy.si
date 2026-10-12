@@ -5,6 +5,20 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Download Bupsy from the website**
+- Bupsy is out: the website now offers the download, free, for your email address, instead of a
+  waitlist. No account and no verification.
+- One email a month about what's new is opt-in: a box you tick, unticked unless you do. Without it
+  we send you nothing. Ticking it on a later download turns it on; an unticked download never
+  turns it off.
+- The privacy page says exactly what the download keeps: your address, which form, the country
+  Cloudflare saw, the time, whether you ticked the box, and how many times you downloaded and when
+  you last did.
+- For agents and scripts: `POST /api/download` (startDownload in openapi.json), a `get_download`
+  tool on the MCP server that points to the download page, and `bupsy download <email>
+  [--updates]` in the CLI. The waitlist endpoint, the `join_waitlist` tool and `bupsy join` still
+  work, now as the older "keep me posted" list.
+
 ## 0.2.0 — 2026-10-12
 
 ### Highlights

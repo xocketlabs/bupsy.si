@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bupsy: AI bots for your Mac, on your own Claude Code or Codex plan</title>
-<meta name="description" content="A Mac app where a little team of AI bots lives. Each one runs Claude Code or Codex under your own sign-in. No credits, no server in the middle. Join the waitlist.">
+<meta name="description" content="A Mac app where a little team of AI bots lives. Each one runs Claude Code or Codex under your own sign-in. No credits, no server in the middle. Free download for macOS 14 or later.">
 <meta property="og:title" content="Bupsy: give your AI subscription a job">
-<meta property="og:description" content="A native Mac app for a roster of AI bots that run on the Claude Code or Codex plan you already pay for. Join the waitlist.">
+<meta property="og:description" content="A native Mac app for a roster of AI bots that run on the Claude Code or Codex plan you already pay for. Free for macOS 14 or later.">
 <link rel="canonical" href="https://bupsy.pages.dev/">
 <link rel="alternate" type="text/markdown" href="/index.md">
 <meta property="og:url" content="https://bupsy.pages.dev/">
@@ -255,7 +255,14 @@
   .field .btn[disabled] { opacity: .6; cursor: default; }
   .field .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
   @media (max-width: 480px) { .field .btn { flex: 1 1 100%; } }
-  .form-msg { min-height: 22px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .opt { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .opt input { width: 16px; height: 16px; margin: 0; accent-color: var(--ink); cursor: pointer; }
+  .opt:hover { color: var(--ink); }
+  .form-msg { min-height: 22px; margin-top: 10px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+  .form-msg a { color: var(--ink); font-weight: 600; }
+  .form-msg .note { display: block; margin-top: 4px; font-weight: 400; color: var(--muted); }
+  .build { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: center; }
+  .build a { color: var(--ink); font-weight: 500; text-underline-offset: 3px; }
   .form-msg.ok { color: var(--ink); font-weight: 600; }
   .form-msg.err { color: var(--destructive); }
   .meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; font-size: 13px; color: var(--muted); }
@@ -517,7 +524,7 @@
       <a href="#make">Make a bot</a>
       <a href="#day">A day</a>
       <a href="#team">Teamwork</a>
-            <a class="btn btn-ink" href="#join">Join the waitlist</a>
+            <a class="btn btn-ink" href="#download">Download</a>
     </div>
   </div>
 </nav>
@@ -525,7 +532,7 @@
 <main id="top">
   <header class="hero">
     <div class="wrap">
-      <span class="badge pink"><i></i>Bupsy for Mac · Coming soon</span>
+      <span class="badge green"><i></i>Out now for Mac, free</span>
       <h1>Your AI already has a subscription. Give it a job.</h1>
       <p class="lead">Bupsy is a little team of AI bots that live on your Mac. Each one runs <b>Claude Code</b> or <b>Codex</b> under your own sign-in. No new account, no credits, no server of ours in the middle.</p>
 
@@ -541,11 +548,13 @@
         <div class="field">
           <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
           <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-          <button class="btn btn-ink" type="submit">Join the waitlist</button>
+          <button class="btn btn-ink" type="submit">Download for Mac</button>
         </div>
+        <label class="opt"><input type="checkbox" name="updates"><span>Send me one email a month about what's new</span></label>
         <p class="form-msg" role="status" aria-live="polite"></p>
       </form>
-      <p class="meta"><span>Free</span><span>macOS 14 or later</span><span>Apple silicon and Intel</span><span>One email when it's ready</span></p>
+      <p class="meta"><span>Free</span><span>macOS 14 or later</span><span>Apple silicon and Intel</span><span>No account, no spam</span></p>
+      <p class="build">Prefer to build it yourself? <a href="https://github.com/xocketlabs/bupsy.si">Get the source on GitHub</a>.</p>
     </div>
   </header>
 
@@ -624,7 +633,7 @@
           <div class="ctl"><span class="lbl" id="shape-lbl">Shape</span><div class="shapes" id="shapes" role="group" aria-labelledby="shape-lbl"></div></div>
           <div class="ctl"><span class="lbl" id="color-lbl">Colour</span><div class="swatches" id="swatches" role="group" aria-labelledby="color-lbl"></div></div>
           <div class="ctl"><span class="lbl" id="mood-lbl">Try a mood</span><div class="seg" id="moodseg" role="group" aria-labelledby="mood-lbl"></div></div>
-          <div class="foot"><button class="btn btn-quiet" type="button" id="shuffle">Shuffle</button><a class="btn btn-ink" href="#join"><span>Take <b id="me-take" style="font-weight:inherit">Pixel</b> to the waitlist</span></a><small>Same drawing as the app.</small></div>
+          <div class="foot"><button class="btn btn-quiet" type="button" id="shuffle">Shuffle</button><a class="btn btn-ink" href="#download"><span>Take <b id="me-take" style="font-weight:inherit">Pixel</b> home</span></a><small>Same drawing as the app.</small></div>
         </div>
       </div>
     </div>
@@ -744,7 +753,7 @@
         <p class="lead">Bupsy is a Mac app today. The iPhone app and Windows and Linux are being built now and can't be downloaded yet.</p>
       </div>
       <div class="plats">
-        <div class="plat"><h3>Mac</h3><p>The full app: your roster, chats, routines and approvals. macOS 14 or later.</p><span class="badge pink"><i></i>Coming soon</span></div>
+        <div class="plat"><h3>Mac</h3><p>The full app: your roster, chats, routines and approvals. macOS 14 or later.</p><span class="badge green"><i></i>Available now</span></div>
         <div class="plat"><h3>Phone and other Macs</h3><p>Open Bupsy in the browser on your own devices, privately over Tailscale. Chat, approve, stop, and move a bot or a whole team to another Mac.</p><span class="badge pink"><i></i>With the Mac app</span></div>
         <div class="plat"><h3>iPhone app</h3><p>A native app with notifications when a bot needs you, and Face ID to approve.</p><span class="badge"><i></i>In development</span></div>
         <div class="plat"><h3>Windows and Linux</h3><p>Bupsy for your other computers. The engine already runs there; the app is on its way.</p><span class="badge"><i></i>In development</span></div>
@@ -758,17 +767,17 @@
         <h2>Three steps to your first bot.</h2>
       </div>
       <div class="steps">
-        <div class="step"><h3>Get early access</h3><p>Join the waitlist. We'll email you the download when your spot opens.</p></div>
+        <div class="step"><h3>Download Bupsy</h3><p>Enter your email and the download starts. Open it and drag Bupsy into Applications.</p></div>
         <div class="step"><h3>Sign in to an engine</h3><p>Install Claude Code or Codex and sign in once. Bupsy finds it and never sees the credential.</p></div>
         <div class="step"><h3>Make a bot</h3><p>Click +, and your new bot asks what it's for. It names itself and gets to work.</p></div>
       </div>
     </div>
   </section>
 
-  <div class="wrap final" id="join">
+  <div class="wrap final" id="download"><span id="join" aria-hidden="true"></span>
     <img class="icon" src="icon.png" alt="Bupsy app icon" width="112" height="112">
     <h2>Give your subscription a job.</h2>
-    <p class="lead">Be first in when Bupsy opens. Free for macOS 14 and later.</p>
+    <p class="lead">Free for macOS 14 and later. Your email gets you the download, and nothing else unless you tick the box.</p>
     <form class="waitlist peek small" data-source="footer" novalidate>
       <div class="crew" aria-hidden="true">
         <div class="mate"><span data-bot="horns" data-color="8" data-size="84" data-no-shadow></span></div>
@@ -779,10 +788,12 @@
       <div class="field">
         <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
         <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-        <button class="btn btn-ink" type="submit">Join the waitlist</button>
+        <button class="btn btn-ink" type="submit">Download for Mac</button>
       </div>
+      <label class="opt"><input type="checkbox" name="updates"><span>Send me one email a month about what's new</span></label>
       <p class="form-msg" role="status" aria-live="polite"></p>
     </form>
+    <p class="build">Prefer to build it yourself? <a href="https://github.com/xocketlabs/bupsy.si">Get the source on GitHub</a>.</p>
   </div>
 </main>
 
@@ -995,6 +1006,13 @@
   function setAll(form, mood) { crewOf(form).forEach(function (b) { Bupsy.setMood(b, mood); }); }
   var mid = function (list) { return list[Math.floor(list.length / 2)]; };
 
+  // Bupsy.dmg is published under a fixed name on every release, so "latest" is always the newest
+  // build. The download endpoint answers with this same address; it is the fallback if it doesn't.
+  var RELEASES = 'https://github.com/xocketlabs/bupsy.si/releases/latest/download/Bupsy.dmg';
+  // Flip to true once releases are signed and notarized (docs/05-release.md); the first-open
+  // steps under the download then go away.
+  var NOTARIZED = false;
+
   document.querySelectorAll('form.waitlist').forEach(function (form) {
     var input = form.querySelector('input[type=email]');
     var msg = form.querySelector('.form-msg');
@@ -1023,16 +1041,22 @@
         setAll(form, 'idle'); Bupsy.setMood(mid(crewOf(form)), 'error');
         return;
       }
-      button.disabled = true; msg.textContent = 'Adding you…'; setAll(form, 'working');
+      button.disabled = true; msg.textContent = 'Getting your download…'; setAll(form, 'working');
       try {
-        var res = await fetch('/api/waitlist', {
+        var res = await fetch('/api/download', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email, company: form.company.value, source: form.dataset.source })
+          body: JSON.stringify({ email: email, updates: form.updates.checked, company: form.company.value, source: form.dataset.source })
         });
         var data = await res.json().catch(function () { return {}; });
         if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
-        msg.textContent = data.already ? 'You’re already on the list. We’ll be in touch.' : 'You’re on the list. We’ll email you when it’s ready.';
+        var url = data.url || RELEASES;
+        // Fixed strings only: nothing the visitor typed goes into this markup.
+        msg.innerHTML = 'Your download has started. Open Bupsy.dmg and drag Bupsy into Applications.' +
+          ' <a href="' + url + '">Didn’t start? Download Bupsy.dmg</a>' +
+          (NOTARIZED ? '' : '<span class="note">First time you open it: System Settings, Privacy &amp; Security, then Open Anyway. The build isn’t notarized by Apple yet.</span>') +
+          (/Macintosh|Mac OS X/.test(navigator.userAgent) ? '' : '<span class="note">Bupsy runs on a Mac with macOS 14 or later.</span>');
         msg.classList.add('ok'); input.value = ''; settled = true;
+        location.href = url;
         setAll(form, 'done'); form.classList.add('awake');
       } catch (err) {
         msg.textContent = err.message; msg.classList.add('err');

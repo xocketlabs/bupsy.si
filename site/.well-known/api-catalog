@@ -20,6 +20,21 @@
       ]
     },
     {
+      "anchor": "https://bupsy.pages.dev/api/download",
+      "service-desc": [
+        {
+          "href": "https://bupsy.pages.dev/openapi.json",
+          "type": "application/openapi+json"
+        }
+      ],
+      "service-doc": [
+        {
+          "href": "https://bupsy.pages.dev/developers#download-api",
+          "type": "text/html"
+        }
+      ]
+    },
+    {
       "anchor": "https://bupsy.pages.dev/api/waitlist",
       "service-doc": [
         {
