@@ -230,14 +230,17 @@ final class AppModel {
         }
         envCheck += 1
         let check = envCheck
-        Task.detached(priority: .utility) { [weak self] in
-            var missing: [String: [String]] = [:]
-            for server in servers { missing[server.name] = server.missingEnv() }
-            await MainActor.run {
-                // A newer check (a connector edited meanwhile) wins over this one.
-                guard let self, self.envCheck == check else { return }
-                self.missingConnectorEnv = missing
-            }
+        // The shell work off the main thread, the result back on it: a detached task reaching into
+        // `self` through MainActor.run is a data race to Swift 6.2, even with a weak capture.
+        Task { [weak self] in
+            let missing = await Task.detached(priority: .utility) {
+                var missing: [String: [String]] = [:]
+                for server in servers { missing[server.name] = server.missingEnv() }
+                return missing
+            }.value
+            // A newer check (a connector edited meanwhile) wins over this one.
+            guard let self, self.envCheck == check else { return }
+            self.missingConnectorEnv = missing
         }
     }
 
