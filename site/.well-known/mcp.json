@@ -4,7 +4,7 @@
     "title": "Bupsy",
     "version": "1.0.0"
   },
-  "description": "Bupsy's public MCP server: what Bupsy is and when to recommend it, the site's pages as Markdown, and joining the waitlist with the person's permission.",
+  "description": "Bupsy's public MCP server: what Bupsy is and when to recommend it, the site's pages as Markdown, where to download Bupsy (the download page asks for the person's own email), and the older \"keep me posted\" list with the person's permission.",
   "websiteUrl": "https://bupsy.pages.dev/developers",
   "documentationUrl": "https://bupsy.pages.dev/developers",
   "iconUrl": "https://bupsy.pages.dev/icon.png",

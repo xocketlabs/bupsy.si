@@ -18,10 +18,10 @@ PAGES = {
               "Why Bupsy exists, what makes it different, and who makes it. A Mac app for a team of AI bots on your own Claude Code or Codex subscription."),
     "privacy": ("/privacy", "Privacy · Bupsy",
                 "What the Bupsy website and app keep, and what they never see: no tracking, no Bupsy account, no telemetry, and your AI sign-in stays with the CLI."),
-    "developers": ("/developers", "Bupsy for developers: MCP server, waitlist API, Markdown for agents",
-                   "Bupsy's public MCP server, waitlist API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex."),
+    "developers": ("/developers", "Bupsy for developers: MCP server, download API, Markdown for agents",
+                   "Bupsy's public MCP server, download API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex."),
     "contact": ("/contact", "Contact Bupsy",
-                "Write to the people who make Bupsy: early access, questions, your data, press and security. We answer by email."),
+                "Write to the people who make Bupsy: getting it running, questions, your data, press and security. We answer by email."),
     "404": ("/404", "Page not found · Bupsy", "There is nothing at this address."),
 }
 
@@ -43,7 +43,7 @@ CONTACT_FORM = """<form class="contact" novalidate>
       var res = await fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: form.name.value, email: form.email.value, message: form.message.value, company: form.company.value }) });
       var data = await res.json().catch(function () { return {}; });
-      if (!res.ok) throw new Error(data.error || 'Something went wrong — please try again.');
+      if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
       msg.textContent = 'Sent. We’ll reply by email.'; msg.classList.add('ok'); form.reset();
     } catch (err) { msg.textContent = err.message; msg.classList.add('err'); }
     finally { button.disabled = false; }
@@ -111,7 +111,7 @@ HEAD = """<!doctype html>
 </head>
 <body>
 <div class="wrap">
-<nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#join">Join the waitlist</a></nav>
+<nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#download">Download</a></nav>
 <main>
 {body}
 </main>

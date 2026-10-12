@@ -113,7 +113,7 @@ You will need `claude` or `codex` installed and signed in. Bupsy detects whichev
 | [`Packages/BupsyKit`](Packages/BupsyKit) | The core: engines, hosts, approval gate, store, remote access |
 | [`Tools/bupsy-run`](Tools/bupsy-run) | The headless core in Go, for Linux and Windows, plus `bupsy-mcp`, the tools bots use to talk to Bupsy |
 | [`conformance`](conformance) | Shared test cases both cores must agree on |
-| [`site`](site), [`functions`](functions) | bupsy.pages.dev: the landing page, waitlist and MCP server |
+| [`site`](site), [`functions`](functions) | bupsy.pages.dev: the landing page, download form and MCP server |
 | [`docs`](docs) | Compliance, decisions, design, release process |
 
 ## How it works

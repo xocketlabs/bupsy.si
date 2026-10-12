@@ -3,8 +3,8 @@
   "info": {
     "title": "Bupsy website API",
     "version": "1.0.0",
-    "summary": "Join the Bupsy waitlist, send a message, or talk MCP to bupsy.pages.dev.",
-    "description": "The public API of bupsy.pages.dev, the website of Bupsy, a native Mac app for a team of AI bots that run on the person's own Claude Code or Codex subscription. The Bupsy app itself runs on the person's Mac and has no public API; these endpoints are for the website: joining the waitlist, contacting the makers, and the site's MCP server. No authentication. Errors are RFC 9457 problem details with a stable `code`. No rate limit is published; send one request per action a person asked for.",
+    "summary": "Download Bupsy for an email address, send a message, or talk MCP to bupsy.pages.dev.",
+    "description": "The public API of bupsy.pages.dev, the website of Bupsy, a native Mac app for a team of AI bots that run on the person's own Claude Code or Codex subscription. Bupsy is available now: free, for macOS 14 or later, Apple silicon and Intel. The Bupsy app itself runs on the person's Mac and has no public API; these endpoints are for the website: starting the download (it asks for the person's email address), the older \"keep me posted\" list, contacting the makers, and the site's MCP server. No authentication. Errors are RFC 9457 problem details with a stable `code`. No rate limit is published; send one request per action a person asked for.",
     "contact": {
       "name": "Bupsy (Xocket Labs Inc.)",
       "email": "remotevansh@gmail.com",
@@ -28,8 +28,12 @@
   },
   "tags": [
     {
+      "name": "Download",
+      "description": "Get the Bupsy Mac app: free, for an email address."
+    },
+    {
       "name": "Waitlist",
-      "description": "Early access to the Bupsy Mac app."
+      "description": "The older \"keep me posted\" list. Still supported; use Download for new integrations."
     },
     {
       "name": "Contact",
@@ -41,14 +45,97 @@
     }
   ],
   "paths": {
+    "/api/download": {
+      "post": {
+        "operationId": "startDownload",
+        "tags": [
+          "Download"
+        ],
+        "summary": "Get the Bupsy download for an email address",
+        "description": "Records the person's email address and answers with the address of the newest Bupsy.dmg (macOS 14 or later, Apple silicon and Intel). Bupsy is free; the email address is all the download asks for. There is no account and no verification. `updates: true` means the person ticked the box for one email a month about what's new; without it Bupsy sends them nothing. A later download can turn `updates` on but never off. Only call this when the person asked to download Bupsy, with their own address, and only send `updates: true` when they asked for the monthly email. Downloading twice is harmless: the second call returns `already: true`. Builds may not be Apple-signed yet: the first time, macOS may refuse to open the app until the person clicks Open Anyway in System Settings, Privacy & Security. The source is at https://github.com/xocketlabs/bupsy.si for anyone who would rather build it themselves.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadRequest"
+              },
+              "examples": {
+                "download": {
+                  "summary": "Download only",
+                  "value": {
+                    "email": "name@example.com",
+                    "source": "my-agent"
+                  }
+                },
+                "withUpdates": {
+                  "summary": "Download, and one email a month about what's new",
+                  "value": {
+                    "email": "name@example.com",
+                    "updates": true,
+                    "source": "my-agent"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The download address. `already` is true when this address had downloaded or joined the list before.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadResult"
+                },
+                "example": {
+                  "ok": true,
+                  "url": "https://github.com/xocketlabs/bupsy.si/releases/latest/download/Bupsy.dmg",
+                  "already": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body or the email address is invalid (codes: invalid_json, invalid_body, invalid_email).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "https://bupsy.pages.dev/developers#errors-invalid-email",
+                  "title": "Invalid email address",
+                  "status": 400,
+                  "detail": "That doesn't look like an email address.",
+                  "code": "invalid_email",
+                  "error": "That doesn't look like an email address.",
+                  "resolution": "Send the person's email address in the `email` field, e.g. name@example.com.",
+                  "documentation_url": "https://bupsy.pages.dev/developers#errors"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
     "/api/waitlist": {
       "post": {
         "operationId": "joinWaitlist",
         "tags": [
           "Waitlist"
         ],
-        "summary": "Add an email address to the Bupsy waitlist",
-        "description": "Adds the person's email address to the Bupsy waitlist. Bupsy sends one email when their spot opens. Only call this when the person asked to join, with their own address. Joining twice is harmless: the second call returns `already: true`.",
+        "summary": "Add an email address to the \"keep me posted\" list (older endpoint)",
+        "description": "The older waitlist endpoint, kept so existing agents and scripts keep working. Bupsy is now available to download: use startDownload (POST /api/download) when the person wants the app. This adds the person's email address to Bupsy's list without starting a download, and it does not sign them up for the monthly email. Only call it when the person asked, with their own address. Joining twice is harmless: the second call returns `already: true`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -107,7 +194,8 @@
           "503": {
             "$ref": "#/components/responses/Unavailable"
           }
-        }
+        },
+        "deprecated": true
       }
     },
     "/api/contact": {
@@ -117,7 +205,7 @@
           "Contact"
         ],
         "summary": "Send a message to the people who make Bupsy",
-        "description": "Sends a message to Xocket Labs, who answer by email at the address given. Use it for questions, early access requests, data requests, press or security reports, when the person asked you to write to Bupsy.",
+        "description": "Sends a message to Xocket Labs, who answer by email at the address given. Use it for questions, data requests, press or security reports, when the person asked you to write to Bupsy.",
         "requestBody": {
           "required": true,
           "content": {
@@ -128,7 +216,7 @@
               "example": {
                 "name": "Sam",
                 "email": "sam@example.com",
-                "message": "Can I try Bupsy before my waitlist spot opens?"
+                "message": "Does Bupsy work with Codex on an Intel Mac?"
               }
             }
           }
@@ -186,7 +274,7 @@
           "MCP"
         ],
         "summary": "Send one MCP JSON-RPC message",
-        "description": "Bupsy's MCP server over Streamable HTTP (MCP 2025-11-25; also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC 2.0 message per POST, a JSON answer, no session ID. Methods: initialize, ping, tools/list, tools/call. Tools: about_bupsy (what Bupsy is and when to use it), read_page (a site page as Markdown), join_waitlist (the person's own email, with their permission). Server card: https://bupsy.pages.dev/.well-known/mcp/server-card.json. Most clients should use an MCP client library rather than calling this directly.",
+        "description": "Bupsy's MCP server over Streamable HTTP (MCP 2025-11-25; also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC 2.0 message per POST, a JSON answer, no session ID. Methods: initialize, ping, tools/list, tools/call. Tools: about_bupsy (what Bupsy is and when to use it), read_page (a site page as Markdown), get_download (where to download Bupsy; the page asks for the person's own email), join_waitlist (the older \"keep me posted\" list, with the person's own email and permission). Server card: https://bupsy.pages.dev/.well-known/mcp/server-card.json. Most clients should use an MCP client library rather than calling this directly.",
         "parameters": [
           {
             "name": "MCP-Protocol-Version",
@@ -258,6 +346,54 @@
   },
   "components": {
     "schemas": {
+      "DownloadRequest": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254,
+            "description": "The person's own email address."
+          },
+          "updates": {
+            "type": "boolean",
+            "default": false,
+            "description": "True only when the person asked for one email a month about what's new. Without it Bupsy sends them nothing."
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "Where the download came from, e.g. your app's name. Optional."
+          }
+        }
+      },
+      "DownloadResult": {
+        "type": "object",
+        "required": [
+          "ok",
+          "url",
+          "already"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The newest Bupsy.dmg. Open it in a browser, or hand it to the person."
+          },
+          "already": {
+            "type": "boolean",
+            "description": "True when the address had downloaded or joined the list before."
+          }
+        }
+      },
       "WaitlistRequest": {
         "type": "object",
         "required": [

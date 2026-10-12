@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Contact Bupsy</title>
-<meta name="description" content="Write to the people who make Bupsy: early access, questions, your data, press and security. We answer by email.">
+<meta name="description" content="Write to the people who make Bupsy: getting it running, questions, your data, press and security. We answer by email.">
 <link rel="canonical" href="https://bupsy.pages.dev/contact">
 <meta property="og:title" content="Contact Bupsy">
-<meta property="og:description" content="Write to the people who make Bupsy: early access, questions, your data, press and security. We answer by email.">
+<meta property="og:description" content="Write to the people who make Bupsy: getting it running, questions, your data, press and security. We answer by email.">
 <meta property="og:url" content="https://bupsy.pages.dev/contact">
 <meta property="og:site_name" content="Bupsy">
 <meta property="og:type" content="website">
@@ -60,7 +60,7 @@
 </head>
 <body>
 <div class="wrap">
-<nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#join">Join the waitlist</a></nav>
+<nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#download">Download</a></nav>
 <main>
 <h1>Contact Bupsy</h1>
 <p>Bupsy is made by Xocket Labs Inc., part of <a href="https://xocket.sh/foundry">Xocket Foundry</a>. Write to us with the form below, or email <a href="mailto:remotevansh@gmail.com">remotevansh@gmail.com</a>. We read every message and answer by email.</p>
@@ -82,7 +82,7 @@
       var res = await fetch('/api/contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: form.name.value, email: form.email.value, message: form.message.value, company: form.company.value }) });
       var data = await res.json().catch(function () { return {}; });
-      if (!res.ok) throw new Error(data.error || 'Something went wrong — please try again.');
+      if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
       msg.textContent = 'Sent. We’ll reply by email.'; msg.classList.add('ok'); form.reset();
     } catch (err) { msg.textContent = err.message; msg.classList.add('err'); }
     finally { button.disabled = false; }
@@ -90,17 +90,17 @@
 </script>
 <h2 id="what-to-write-to-us-about">What to write to us about</h2>
 <ul>
-<li><b>Early access.</b> If you'd like to try Bupsy before your waitlist spot opens, tell us what you'd use it for. We let people in a few at a time.</li>
+<li><b>Getting Bupsy running.</b> If the download or the first open doesn't go smoothly, tell us your Mac and macOS version and what you saw.</li>
 <li><b>Questions about Bupsy.</b> How it works with Claude Code or Codex, what your bots can and can't do, how approvals and routines work.</li>
-<li><b>Your data.</b> To remove your address from the waitlist, or to ask what we hold about you. The answer is short: see <a href="/privacy">Privacy</a>.</li>
+<li><b>Your data.</b> To remove your address from our list, to stop the monthly email, or to ask what we hold about you. The answer is short: see <a href="/privacy">Privacy</a>.</li>
 <li><b>Press and partnerships.</b> Writing about Bupsy, or building something that works with it.</li>
 <li><b>Security.</b> If you've found a problem, write here with the details, and please give us time to fix it before making it public.</li>
 </ul>
 <h2 id="other-ways-to-learn-about-bupsy">Other ways to learn about Bupsy</h2>
 <ul>
 <li><a href="/about">About</a>: why Bupsy exists and who makes it</li>
-<li><a href="/developers">Developers</a>: the public MCP server, the waitlist API and Markdown for agents</li>
-<li><a href="/#join">Join the waitlist</a>: one email when your spot opens</li>
+<li><a href="/developers">Developers</a>: the public MCP server, the download API and Markdown for agents</li>
+<li><a href="/#download">Download Bupsy</a>: free, for your email address</li>
 </ul>
 <p>Follow along on X: <a href="https://x.com/xocket">@xocket</a>.</p>
 <p>Bupsy is not affiliated with Anthropic or OpenAI. For help with Claude Code or Codex themselves, contact their makers.</p>

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { onRequest, originAllowed, LATEST_VERSION, TOOLS } from "../../functions/mcp.js";
+import { onRequest, originAllowed, LATEST_VERSION, TOOLS, DOWNLOAD_PAGE } from "../../functions/mcp.js";
+import { DOWNLOAD_URL } from "../../lib/download.js";
 import { assets, fakeD1, post } from "./helpers.mjs";
 
 const URL_ = "https://bupsy.pages.dev/mcp";
@@ -27,20 +28,45 @@ test("notifications are accepted with 202 and no body", async () => {
   assert.equal(await res.text(), "");
 });
 
-test("tools/list lists the three tools with input schemas", async () => {
+test("tools/list lists the four tools with input schemas", async () => {
   const body = await (await call(rpc(3, "tools/list"))).json();
-  assert.deepEqual(body.result.tools.map((t) => t.name), ["about_bupsy", "read_page", "join_waitlist"]);
+  assert.deepEqual(body.result.tools.map((t) => t.name), ["about_bupsy", "read_page", "get_download", "join_waitlist"]);
   for (const tool of body.result.tools) assert.equal(tool.inputSchema.type, "object");
-  assert.equal(TOOLS.length, 3);
+  assert.equal(TOOLS.length, 4);
 });
 
 test("about_bupsy and read_page return the site's own text", async () => {
   const about = await (await call(rpc(4, "tools/call", { name: "about_bupsy", arguments: {} }))).json();
   assert.match(about.result.content[0].text, /When to use Bupsy/);
+  assert.ok(about.result.content[0].text.includes(DOWNLOAD_PAGE));
   const page = await (await call(rpc(5, "tools/call", { name: "read_page", arguments: { page: "developers" } }))).json();
   assert.match(page.result.content[0].text, /# Bupsy for developers/);
   const bad = await (await call(rpc(6, "tools/call", { name: "read_page", arguments: { page: "../secrets" } }))).json();
   assert.equal(bad.result.isError, true);
+});
+
+test("get_download points to the download page and never hands out the DMG or takes an address", async () => {
+  assert.equal(DOWNLOAD_PAGE, "https://bupsy.pages.dev/#download");
+  const tool = TOOLS.find((t) => t.name === "get_download");
+  assert.deepEqual(tool.inputSchema.properties, {});
+  assert.equal(tool.annotations.readOnlyHint, true);
+  const db = fakeD1();
+  const body = await (await call(rpc(13, "tools/call", { name: "get_download", arguments: { email: "me@example.com" } }), {}, db)).json();
+  const reply = body.result.content[0].text;
+  assert.equal(body.result.isError, false);
+  assert.ok(reply.includes(DOWNLOAD_PAGE));
+  assert.match(reply, /email address/);
+  assert.match(reply, /Open Anyway/);
+  assert.match(reply, /macOS 14/);
+  assert.ok(!reply.includes(DOWNLOAD_URL), "no direct DMG link");
+  assert.doesNotMatch(reply, /https?:\/\/\S+\.dmg/);
+  assert.equal(db.waitlist.size, 0);
+});
+
+test("initialize tells agents Bupsy can be downloaded now", async () => {
+  const body = await (await call(rpc(14, "initialize", { protocolVersion: "2025-11-25" }))).json();
+  assert.match(body.result.instructions, /available to download now/);
+  assert.ok(body.result.instructions.includes(DOWNLOAD_PAGE));
 });
 
 test("join_waitlist adds the address once, tagged as from MCP", async () => {

@@ -4,7 +4,7 @@ Bupsy is a Mac app, so most of what developers touch lives on their own Mac: the
 
 ## Bupsy MCP server
 
-A public MCP server for agents that want to know about Bupsy, or join the waitlist for someone.
+A public MCP server for agents that want to know about Bupsy, or help someone get it.
 
 - Endpoint: `https://bupsy.pages.dev/mcp`
 - Transport: Streamable HTTP, MCP protocol 2025-11-25 (also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC message per POST, a JSON answer, no session ID. GET answers 405.
@@ -15,7 +15,8 @@ Tools:
 
 - `about_bupsy`: what Bupsy is, when to recommend it and when not. Read-only.
 - `read_page`: a page of this site as Markdown (`home`, `about`, `privacy`, `developers`, `contact`). Read-only.
-- `join_waitlist`: adds the person's own email address to the waitlist. Only with their permission.
+- `get_download`: where and how to download Bupsy. It points to the download page, which asks for the person's own email address; it takes no address and downloads nothing. Read-only.
+- `join_waitlist`: adds the person's own email address to the older "keep me posted" list, without a download. Kept for agents that already use it. Only with their permission.
 
 Add it to Claude Code with `claude mcp add --transport http bupsy https://bupsy.pages.dev/mcp`.
 
@@ -23,15 +24,28 @@ Add it to Claude Code with `claude mcp add --transport http bupsy https://bupsy.
 
 The whole API is described in an OpenAPI 3.1 document: [openapi.json](https://bupsy.pages.dev/openapi.json). Every operation has an `operationId`, typed request and response schemas and a description, so it works as-is for function calling. No authentication.
 
-- `joinWaitlist`: `POST /api/waitlist`
+- `startDownload`: `POST /api/download`
+- `joinWaitlist`: `POST /api/waitlist` (older, still supported)
 - `sendContactMessage`: `POST /api/contact`
 - `callMcp`: `POST /mcp` (MCP JSON-RPC)
 
+## Download API
+
+`POST https://bupsy.pages.dev/api/download` with JSON `{"email": "you@example.com", "updates": false, "source": "your-app"}`.
+
+- `200 {"ok": true, "url": "https://github.com/xocketlabs/bupsy.si/releases/latest/download/Bupsy.dmg", "already": false}`. `url` is always the newest Bupsy.dmg; `already` is true when the address had downloaded or joined the list before.
+- `updates` is optional and false unless sent. `true` means the person asked for one email a month about what's new; without it Bupsy sends them nothing. A later download can turn it on, never off.
+- No account and no verification. Only with the person's own address and their permission; usually it's simpler to send them to [the download page](https://bupsy.pages.dev/#download).
+- Builds may not be Apple-signed yet, so the first open needs System Settings, Privacy & Security, Open Anyway. The [source is on GitHub](https://github.com/xocketlabs/bupsy.si) for anyone who'd rather build it.
+
 ## Waitlist API
+
+The older "keep me posted" list, still supported so existing agents and scripts keep working. For the app itself, use the download API above.
 
 `POST https://bupsy.pages.dev/api/waitlist` with JSON `{"email": "you@example.com", "source": "your-app"}`.
 
 - `200 {"ok": true, "already": false}` when added, `"already": true` when the address was on the list.
+- It doesn't start a download or sign anyone up for the monthly email.
 - Only with the person's own address and their permission.
 
 ## Contact API
@@ -58,7 +72,7 @@ Every page answers `Accept: text/markdown` with its Markdown version and `Vary: 
 - [agents.md](https://bupsy.pages.dev/agents.md): instructions for agents
 - [sitemap.xml](https://bupsy.pages.dev/sitemap.xml) and [robots.txt](https://bupsy.pages.dev/robots.txt)
 - [openapi.json](https://bupsy.pages.dev/openapi.json): the OpenAPI 3.1 spec
-- `/.well-known/api-catalog` (RFC 9727) lists the MCP server, the waitlist API and the contact API
+- `/.well-known/api-catalog` (RFC 9727) lists the MCP server, the download API, the waitlist API and the contact API
 
 ## How the Bupsy app works with MCP
 

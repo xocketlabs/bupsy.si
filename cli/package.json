@@ -1,7 +1,7 @@
 {
   "name": "bupsy",
   "version": "0.1.0",
-  "description": "Command line for bupsy.pages.dev: what Bupsy is, its pages as Markdown, the waitlist, and its MCP server. Bupsy is a Mac app for a team of AI bots on your own Claude Code or Codex subscription.",
+  "description": "Command line for bupsy.pages.dev: what Bupsy is, its pages as Markdown, the download, and its MCP server. Bupsy is a Mac app for a team of AI bots on your own Claude Code or Codex subscription.",
   "type": "module",
   "bin": { "bupsy": "bin/bupsy.js" },
   "files": ["bin/", "README.md"],

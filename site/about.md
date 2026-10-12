@@ -23,4 +23,4 @@ Bupsy is not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI or 
 
 ## Status
 
-Bupsy is in early access for macOS 14 and later. The iPhone app and Windows and Linux versions are in development. [Join the waitlist](https://bupsy.pages.dev/#join) to get the download when your spot opens.
+Bupsy 0.2.0 is available now for macOS 14 and later, on Apple silicon and Intel. It's free: [download it](https://bupsy.pages.dev/#download) for your email address. The source is [on GitHub](https://github.com/xocketlabs/bupsy.si), so anyone can build it themselves. The iPhone app and Windows and Linux versions are in development.

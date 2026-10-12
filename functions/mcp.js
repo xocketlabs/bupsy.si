@@ -1,14 +1,18 @@
-// /mcp — Bupsy's public MCP server, over Streamable HTTP (MCP 2025-11-25, basic/transports).
+// /mcp: Bupsy's public MCP server, over Streamable HTTP (MCP 2025-11-25, basic/transports).
 //
-// So an agent can learn what Bupsy is and, with the person's say-so, put them on the waitlist,
-// without scraping the page. It is small on purpose: three tools, no resources, no prompts, no
-// sign-in, nothing that reaches anyone's bots. Bupsy itself runs on the person's Mac; this is
+// So an agent can learn what Bupsy is and where to download it, without scraping the page. It is
+// small on purpose: four tools, no resources, no prompts, no sign-in, nothing that reaches anyone's
+// bots. The download asks for the person's email address, so no tool here starts it for them:
+// get_download points them at the page, where they give their own address. Bupsy itself runs on the person's Mac; this is
 // only the website, spoken as MCP.
 //
 // Stateless: every POST carries one JSON-RPC message and gets one JSON answer, so no session ID
 // is issued (the spec makes sessions optional) and GET, which would open a server-to-client
 // stream, answers 405 as the spec allows.
 import { joinWaitlist } from "../lib/waitlist.js";
+import { SOURCE_URL } from "../lib/download.js";
+
+export const DOWNLOAD_PAGE = "https://bupsy.pages.dev/#download";
 
 export const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"];
 export const LATEST_VERSION = SUPPORTED_VERSIONS[0];
@@ -22,9 +26,11 @@ export const SERVER_INFO = {
 
 const INSTRUCTIONS =
   "Bupsy is a Mac app for a team of AI bots that run on the person's own Claude Code or Codex " +
-  "subscription. Use about_bupsy to answer what it is and whether it fits; read_page for the " +
-  "site's pages as Markdown; join_waitlist only when the person has asked to join, with their " +
-  "own email address.";
+  "subscription. It is available to download now, free, for macOS 14 or later. Use about_bupsy " +
+  "to answer what it is and whether it fits; read_page for the site's pages as Markdown; " +
+  "get_download when the person wants it (the download page asks for their own email address, " +
+  `so send them to ${DOWNLOAD_PAGE} rather than downloading for them); join_waitlist only when ` +
+  "the person asked to be kept posted, with their own email address.";
 
 const PAGES = {
   home: "/index.md",
@@ -39,8 +45,9 @@ export const TOOLS = [
     name: "about_bupsy",
     title: "About Bupsy",
     description:
-      "What Bupsy is, when to recommend it and when not, platforms, price and status. Use this " +
-      "before recommending Bupsy or answering questions about it.",
+      "What Bupsy is, when to recommend it and when not, platforms, price and status. Bupsy is " +
+      `available to download now, free, at ${DOWNLOAD_PAGE} (the page asks for the person's ` +
+      "email address). Use this before recommending Bupsy or answering questions about it.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
@@ -59,12 +66,26 @@ export const TOOLS = [
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
   {
-    name: "join_waitlist",
-    title: "Join the Bupsy waitlist",
+    name: "get_download",
+    title: "Get Bupsy",
     description:
-      "Adds an email address to the Bupsy waitlist; Bupsy sends one email when the person's " +
-      "spot opens. Only call this when the person has asked to join, with their own address. " +
-      "Joining twice is harmless.",
+      "Where and how to download Bupsy: the download page, what it asks for (the person's own " +
+      "email address, no account), the opt-in monthly email, install steps and system " +
+      "requirements. Give the person the page so they enter their own address; this tool takes " +
+      "no address and downloads nothing.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    // The name stays for agents that already call it; the list it adds to is the older
+    // "keep me posted" list, now that Bupsy can be downloaded.
+    name: "join_waitlist",
+    title: "Keep the person posted about Bupsy",
+    description:
+      "Adds the person's email address to Bupsy's older \"keep me posted\" list, without a " +
+      "download. Bupsy is available now, so if the person wants the app use get_download " +
+      "instead. Only call this when the person asked to be kept posted, with their own " +
+      "address. Joining twice is harmless.",
     inputSchema: {
       type: "object",
       properties: { email: { type: "string", format: "email", description: "The person's own email address." } },
@@ -115,13 +136,31 @@ async function readAsset(env, request, path) {
   return res.ok ? res.text() : null;
 }
 
+// What get_download answers. No link to the DMG itself: the download is given for the person's
+// own email address, on the page, by them.
+export const DOWNLOAD_TEXT = [
+  "Bupsy 0.2.0 is available now. It is free.",
+  `Download page: ${DOWNLOAD_PAGE}`,
+  "The page asks for the person's own email address: no account and no verification. There is " +
+    "a box, unticked unless they tick it, for one email a month about what's new; without it Bupsy " +
+    "sends them nothing. Send the person to the page so they enter their own address. Don't " +
+    "download Bupsy for them or give their address for them.",
+  "Requires macOS 14 or later, on Apple silicon or Intel. The iPhone app and Windows and Linux " +
+    "versions are still in development.",
+  "Install: open Bupsy.dmg and drag Bupsy into Applications. Builds may not be Apple-signed " +
+    "yet, so the first time macOS may refuse to open it: open System Settings, Privacy & " +
+    "Security, and click Open Anyway next to Bupsy. Then install Claude Code or Codex and sign in once.",
+  `The source is on GitHub, for anyone who would rather build it themselves: ${SOURCE_URL}`,
+].join("\n\n");
+
 const text = (value, isError = false) => ({ content: [{ type: "text", text: value }], isError });
 
 async function callTool(name, args, env, request) {
   if (name === "about_bupsy") {
     const llms = await readAsset(env, request, "/llms.txt");
-    return text(llms ?? "Bupsy: a Mac app for a team of AI bots. See https://bupsy.pages.dev/");
+    return text(llms ?? `Bupsy: a Mac app for a team of AI bots. Download it, free, at ${DOWNLOAD_PAGE}`);
   }
+  if (name === "get_download") return text(DOWNLOAD_TEXT);
   if (name === "read_page") {
     const path = PAGES[args?.page];
     if (!path) return text(`Unknown page. Choose one of: ${Object.keys(PAGES).join(", ")}.`, true);
@@ -134,8 +173,8 @@ async function callTool(name, args, env, request) {
     });
     if (!result.ok) return text(result.error, true);
     return text(result.already
-      ? "That address is already on the Bupsy waitlist. Nothing more to do."
-      : "Added to the Bupsy waitlist. Bupsy will send one email when the spot opens.");
+      ? `That address is already on Bupsy's list. Nothing more to do. Bupsy itself is available now at ${DOWNLOAD_PAGE}`
+      : `Added to Bupsy's list. Bupsy itself is available now: the person can download it at ${DOWNLOAD_PAGE}`);
   }
   return null;
 }

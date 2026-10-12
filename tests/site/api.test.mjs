@@ -77,7 +77,7 @@ test("the OpenAPI document is self-describing enough for function calling", () =
       assert.ok(resolve(ok.$ref), `${op.operationId} 200 schema`);
     }
   }
-  assert.deepEqual(ids, ["joinWaitlist", "sendContactMessage", "callMcp"]);
+  assert.deepEqual(ids, ["startDownload", "joinWaitlist", "sendContactMessage", "callMcp"]);
   assert.equal(new Set(ids).size, ids.length);
 });
 
@@ -86,4 +86,16 @@ test("the spec matches what the endpoints accept", () => {
   assert.deepEqual(waitlist.required, ["email"]);
   assert.equal(waitlist.properties.email.maxLength, 254);
   assert.equal(spec.components.schemas.ContactRequest.properties.message.maxLength, 4000);
+  const download = spec.components.schemas.DownloadRequest;
+  assert.deepEqual(download.required, ["email"]);
+  assert.equal(download.properties.email.maxLength, 254);
+  assert.equal(download.properties.updates.type, "boolean");
+  assert.equal(download.properties.updates.default, false);
+  assert.deepEqual(spec.components.schemas.DownloadResult.required, ["ok", "url", "already"]);
+});
+
+test("the old waitlist operation is still documented, marked as superseded by the download", () => {
+  assert.equal(spec.paths["/api/waitlist"].post.deprecated, true);
+  assert.match(spec.paths["/api/waitlist"].post.description, /startDownload/);
+  assert.equal(spec.paths["/api/download"].post.deprecated, undefined);
 });

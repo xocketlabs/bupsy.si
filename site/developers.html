@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bupsy for developers: MCP server, waitlist API, Markdown for agents</title>
-<meta name="description" content="Bupsy&#x27;s public MCP server, waitlist API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex.">
+<title>Bupsy for developers: MCP server, download API, Markdown for agents</title>
+<meta name="description" content="Bupsy&#x27;s public MCP server, download API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex.">
 <link rel="canonical" href="https://bupsy.pages.dev/developers">
-<meta property="og:title" content="Bupsy for developers: MCP server, waitlist API, Markdown for agents">
-<meta property="og:description" content="Bupsy&#x27;s public MCP server, waitlist API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex.">
+<meta property="og:title" content="Bupsy for developers: MCP server, download API, Markdown for agents">
+<meta property="og:description" content="Bupsy&#x27;s public MCP server, download API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex.">
 <meta property="og:url" content="https://bupsy.pages.dev/developers">
 <meta property="og:site_name" content="Bupsy">
 <meta property="og:type" content="website">
@@ -60,12 +60,12 @@
 </head>
 <body>
 <div class="wrap">
-<nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#join">Join the waitlist</a></nav>
+<nav aria-label="Main"><a class="brand" href="/"><img src="/favicon-32.png" alt="" width="30" height="30">Bupsy</a><a class="cta" href="/#download">Download</a></nav>
 <main>
 <h1>Bupsy for developers</h1>
 <p>Bupsy is a Mac app, so most of what developers touch lives on their own Mac: the bots run Claude Code or Codex, and Bupsy speaks MCP to them. This page lists every public, machine-readable part of bupsy.pages.dev, and how the app works with MCP.</p>
 <h2 id="bupsy-mcp-server">Bupsy MCP server</h2>
-<p>A public MCP server for agents that want to know about Bupsy, or join the waitlist for someone.</p>
+<p>A public MCP server for agents that want to know about Bupsy, or help someone get it.</p>
 <ul>
 <li>Endpoint: <code>https://bupsy.pages.dev/mcp</code></li>
 <li>Transport: Streamable HTTP, MCP protocol 2025-11-25 (also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC message per POST, a JSON answer, no session ID. GET answers 405.</li>
@@ -76,20 +76,32 @@
 <ul>
 <li><code>about_bupsy</code>: what Bupsy is, when to recommend it and when not. Read-only.</li>
 <li><code>read_page</code>: a page of this site as Markdown (<code>home</code>, <code>about</code>, <code>privacy</code>, <code>developers</code>, <code>contact</code>). Read-only.</li>
-<li><code>join_waitlist</code>: adds the person's own email address to the waitlist. Only with their permission.</li>
+<li><code>get_download</code>: where and how to download Bupsy. It points to the download page, which asks for the person's own email address; it takes no address and downloads nothing. Read-only.</li>
+<li><code>join_waitlist</code>: adds the person's own email address to the older "keep me posted" list, without a download. Kept for agents that already use it. Only with their permission.</li>
 </ul>
 <p>Add it to Claude Code with <code>claude mcp add --transport http bupsy https://bupsy.pages.dev/mcp</code>.</p>
 <h2 id="bupsy-api-reference">Bupsy API reference</h2>
 <p>The whole API is described in an OpenAPI 3.1 document: <a href="/openapi.json">openapi.json</a>. Every operation has an <code>operationId</code>, typed request and response schemas and a description, so it works as-is for function calling. No authentication.</p>
 <ul>
-<li><code>joinWaitlist</code>: <code>POST /api/waitlist</code></li>
+<li><code>startDownload</code>: <code>POST /api/download</code></li>
+<li><code>joinWaitlist</code>: <code>POST /api/waitlist</code> (older, still supported)</li>
 <li><code>sendContactMessage</code>: <code>POST /api/contact</code></li>
 <li><code>callMcp</code>: <code>POST /mcp</code> (MCP JSON-RPC)</li>
 </ul>
+<h2 id="download-api">Download API</h2>
+<p><code>POST https://bupsy.pages.dev/api/download</code> with JSON <code>{"email": "you@example.com", "updates": false, "source": "your-app"}</code>.</p>
+<ul>
+<li><code>200 {"ok": true, "url": "https://github.com/xocketlabs/bupsy.si/releases/latest/download/Bupsy.dmg", "already": false}</code>. <code>url</code> is always the newest Bupsy.dmg; <code>already</code> is true when the address had downloaded or joined the list before.</li>
+<li><code>updates</code> is optional and false unless sent. <code>true</code> means the person asked for one email a month about what's new; without it Bupsy sends them nothing. A later download can turn it on, never off.</li>
+<li>No account and no verification. Only with the person's own address and their permission; usually it's simpler to send them to <a href="/#download">the download page</a>.</li>
+<li>Builds may not be Apple-signed yet, so the first open needs System Settings, Privacy &amp; Security, Open Anyway. The <a href="https://github.com/xocketlabs/bupsy.si">source is on GitHub</a> for anyone who'd rather build it.</li>
+</ul>
 <h2 id="waitlist-api">Waitlist API</h2>
+<p>The older "keep me posted" list, still supported so existing agents and scripts keep working. For the app itself, use the download API above.</p>
 <p><code>POST https://bupsy.pages.dev/api/waitlist</code> with JSON <code>{"email": "you@example.com", "source": "your-app"}</code>.</p>
 <ul>
 <li><code>200 {"ok": true, "already": false}</code> when added, <code>"already": true</code> when the address was on the list.</li>
+<li>It doesn't start a download or sign anyone up for the monthly email.</li>
 <li>Only with the person's own address and their permission.</li>
 </ul>
 <h2 id="contact-api">Contact API</h2>
@@ -111,7 +123,7 @@
 <li><a href="/agents.md">agents.md</a>: instructions for agents</li>
 <li><a href="/sitemap.xml">sitemap.xml</a> and <a href="/robots.txt">robots.txt</a></li>
 <li><a href="/openapi.json">openapi.json</a>: the OpenAPI 3.1 spec</li>
-<li><code>/.well-known/api-catalog</code> (RFC 9727) lists the MCP server, the waitlist API and the contact API</li>
+<li><code>/.well-known/api-catalog</code> (RFC 9727) lists the MCP server, the download API, the waitlist API and the contact API</li>
 </ul>
 <h2 id="how-the-bupsy-app-works-with-mcp">How the Bupsy app works with MCP</h2>
 <ul>

@@ -4,7 +4,7 @@
 
 Bupsy is a Mac app where a little team of AI bots lives. Each bot runs **Claude Code** or **Codex** under your own sign-in, on the plan you already pay for. No new account, no credits, no server of ours in the middle.
 
-Status: coming soon for Mac (macOS 14 or later, Apple silicon and Intel). Free. [Join the waitlist](https://bupsy.pages.dev/#join).
+Status: available now for Mac (macOS 14 or later, Apple silicon and Intel). Free. [Download Bupsy](https://bupsy.pages.dev/#download) for your email address.
 
 ## What it does
 
@@ -27,15 +27,18 @@ Bupsy runs the tools. It never holds the keys. You sign in to your CLI yourself;
 
 | Platform | Status |
 |---|---|
-| Mac (macOS 14+) | Coming soon. The full app. |
+| Mac (macOS 14+) | Available now. The full app. |
 | Phone and other Macs | With the Mac app: in the browser over Tailscale. Chat, approve, stop, move bots between Macs. |
 | iPhone app | In development |
 | Windows and Linux | In development |
 
 ## Get started
 
-1. Join the waitlist at <https://bupsy.pages.dev/#join>.
-2. Install Claude Code or Codex and sign in once.
-3. Open Bupsy, click +, and your new bot asks what it's for.
+1. Download Bupsy at <https://bupsy.pages.dev/#download>. It's free; the page asks for your email address. Tick the box if you'd like one email a month about what's new.
+2. Open Bupsy.dmg and drag Bupsy into Applications. The first time, macOS may refuse to open it because the build isn't Apple-signed yet: open System Settings, Privacy & Security, and click Open Anyway.
+3. Install Claude Code or Codex and sign in once.
+4. Open Bupsy, click +, and your new bot asks what it's for.
 
-Made by Xocket Labs Inc. Not affiliated with Anthropic or OpenAI. More: [About](https://bupsy.pages.dev/about) · [Developers](https://bupsy.pages.dev/developers) · [Contact](https://bupsy.pages.dev/contact) · [llms.txt](https://bupsy.pages.dev/llms.txt) · MCP server: https://bupsy.pages.dev/mcp
+The source is on GitHub, if you'd rather build it yourself: <https://github.com/xocketlabs/bupsy.si>.
+
+Made by Xocket Labs Inc. Not affiliated with Anthropic or OpenAI. More: [About](https://bupsy.pages.dev/about), [Developers](https://bupsy.pages.dev/developers), [Contact](https://bupsy.pages.dev/contact), [llms.txt](https://bupsy.pages.dev/llms.txt). MCP server: https://bupsy.pages.dev/mcp
