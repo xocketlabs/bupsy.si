@@ -31,7 +31,7 @@ const DMG = "https://github.com/xocketlabs/bupsy.si/releases/latest/download/Bup
 test("download posts the address from the cli, without the monthly email unless asked", async () => {
   const io = harness({ "/api/download": [200, { ok: true, url: DMG, already: false }] });
   assert.equal(await run(["download", "a@b.co"], io), 0);
-  assert.deepEqual(io.calls[0], { url: "https://bupsy.pages.dev/api/download", method: "POST", body: { email: "a@b.co", updates: false, source: "cli" } });
+  assert.deepEqual(io.calls[0], { url: "https://bupsy.si/api/download", method: "POST", body: { email: "a@b.co", updates: false, source: "cli" } });
   const printed = io.printed.join("");
   assert.ok(printed.includes(DMG));
   assert.ok(printed.includes(INSTALL_HINT));
@@ -60,7 +60,7 @@ test("download --json prints the API's JSON, and an error exits 1", async () => 
 test("join posts the address and reports a repeat", async () => {
   const io = harness({ "/api/waitlist": [200, { ok: true, already: true }] });
   assert.equal(await run(["join", "a@b.co"], io), 0);
-  assert.deepEqual(io.calls[0], { url: "https://bupsy.pages.dev/api/waitlist", method: "POST", body: { email: "a@b.co", source: "cli" } });
+  assert.deepEqual(io.calls[0], { url: "https://bupsy.si/api/waitlist", method: "POST", body: { email: "a@b.co", source: "cli" } });
   assert.match(io.printed.join(""), /Already on Bupsy's list[\s\S]*bupsy download/);
 });
 
@@ -93,5 +93,5 @@ test("wrong usage exits 2 without calling the network", async () => {
 test("mcp prints the endpoint and a JSON config", async () => {
   const io = harness({});
   assert.equal(await run(["mcp", "--json"], io), 0);
-  assert.deepEqual(JSON.parse(io.printed.join("")), { mcpServers: { bupsy: { type: "http", url: "https://bupsy.pages.dev/mcp" } } });
+  assert.deepEqual(JSON.parse(io.printed.join("")), { mcpServers: { bupsy: { type: "http", url: "https://bupsy.si/mcp" } } });
 });

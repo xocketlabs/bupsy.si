@@ -7,7 +7,7 @@ import { joinWaitlist } from "../../lib/waitlist.js";
 import * as downloadApi from "../../functions/api/download.js";
 import { fakeD1, post } from "./helpers.mjs";
 
-const URL_ = "https://bupsy.pages.dev/api/download";
+const URL_ = "https://bupsy.si/api/download";
 const download = (body, env) => downloadApi.onRequestPost({ request: post(URL_, body), env });
 
 async function expectProblem(res, status, code) {

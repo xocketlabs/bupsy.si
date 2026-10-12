@@ -1,65 +1,65 @@
 {
   "linkset": [
     {
-      "anchor": "https://bupsy.pages.dev/mcp",
+      "anchor": "https://bupsy.si/mcp",
       "service-desc": [
         {
-          "href": "https://bupsy.pages.dev/.well-known/mcp/server-card.json",
+          "href": "https://bupsy.si/.well-known/mcp/server-card.json",
           "type": "application/json"
         },
         {
-          "href": "https://bupsy.pages.dev/openapi.json",
+          "href": "https://bupsy.si/openapi.json",
           "type": "application/openapi+json"
         }
       ],
       "service-doc": [
         {
-          "href": "https://bupsy.pages.dev/developers",
+          "href": "https://bupsy.si/developers",
           "type": "text/html"
         }
       ]
     },
     {
-      "anchor": "https://bupsy.pages.dev/api/download",
+      "anchor": "https://bupsy.si/api/download",
       "service-desc": [
         {
-          "href": "https://bupsy.pages.dev/openapi.json",
+          "href": "https://bupsy.si/openapi.json",
           "type": "application/openapi+json"
         }
       ],
       "service-doc": [
         {
-          "href": "https://bupsy.pages.dev/developers#download-api",
+          "href": "https://bupsy.si/developers#download-api",
           "type": "text/html"
         }
       ]
     },
     {
-      "anchor": "https://bupsy.pages.dev/api/waitlist",
+      "anchor": "https://bupsy.si/api/waitlist",
       "service-doc": [
         {
-          "href": "https://bupsy.pages.dev/developers#waitlist-api",
+          "href": "https://bupsy.si/developers#waitlist-api",
           "type": "text/html"
         }
       ],
       "service-desc": [
         {
-          "href": "https://bupsy.pages.dev/openapi.json",
+          "href": "https://bupsy.si/openapi.json",
           "type": "application/openapi+json"
         }
       ]
     },
     {
-      "anchor": "https://bupsy.pages.dev/api/contact",
+      "anchor": "https://bupsy.si/api/contact",
       "service-desc": [
         {
-          "href": "https://bupsy.pages.dev/openapi.json",
+          "href": "https://bupsy.si/openapi.json",
           "type": "application/openapi+json"
         }
       ],
       "service-doc": [
         {
-          "href": "https://bupsy.pages.dev/developers#contact-api",
+          "href": "https://bupsy.si/developers#contact-api",
           "type": "text/html"
         }
       ]

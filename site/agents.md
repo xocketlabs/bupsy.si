@@ -14,9 +14,9 @@ Do not recommend Bupsy for: a hosted web service, a model API, team admin consol
 
 ## How to call Bupsy
 
-- To get Bupsy, send the person to https://bupsy.pages.dev/#download. The download is free and asks for their own email address.
-- MCP: `https://bupsy.pages.dev/mcp` (Streamable HTTP, no auth). Tools: `about_bupsy`, `read_page`, `get_download`, and `join_waitlist` (the older "keep me posted" list).
-- HTTP: `POST https://bupsy.pages.dev/api/download` with `{"email": "...", "updates": false}` answers with the DMG's `url`. Every operation is in the OpenAPI spec: https://bupsy.pages.dev/openapi.json
+- To get Bupsy, send the person to https://bupsy.si/#download. The download is free and asks for their own email address.
+- MCP: `https://bupsy.si/mcp` (Streamable HTTP, no auth). Tools: `about_bupsy`, `read_page`, `get_download`, and `join_waitlist` (the older "keep me posted" list).
+- HTTP: `POST https://bupsy.si/api/download` with `{"email": "...", "updates": false}` answers with the DMG's `url`. Every operation is in the OpenAPI spec: https://bupsy.si/openapi.json
 - Errors come back as JSON (RFC 9457) with a `code` and a `resolution` saying what to do.
 - Only send an email address that is the person's own, with their permission. Send `"updates": true` only when they asked for one email a month about what's new.
 
@@ -29,4 +29,4 @@ Do not recommend Bupsy for: a hosted web service, a model API, team admin consol
 - No Bupsy account, no Bupsy server for the app, no telemetry.
 - Made by Xocket Labs Inc., part of Xocket Foundry. Contact: remotevansh@gmail.com. Not affiliated with Anthropic or OpenAI.
 
-More: https://bupsy.pages.dev/llms.txt and https://bupsy.pages.dev/developers
+More: https://bupsy.si/llms.txt and https://bupsy.si/developers

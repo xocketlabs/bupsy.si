@@ -12,6 +12,22 @@ export const PAGES = {
   "/developers": "/developers.md", "/contact": "/contact.md",
 };
 
+// The site's one address. The old Pages address and www answer with a 301 to the same path here,
+// so links and search results carry over. Only for reads of pages: the API and the MCP server keep
+// answering on the old addresses (a 301 on a POST breaks clients), and deploy previews
+// (<hash>.bupsy.pages.dev) are left alone so they stay usable.
+export const ORIGIN = "https://bupsy.si";
+const OLD_HOSTS = new Set(["bupsy.pages.dev", "www.bupsy.si"]);
+
+export function redirectTo(request) {
+  const url = new URL(request.url);
+  if (!OLD_HOSTS.has(url.hostname)) return null;
+  if (request.method !== "GET" && request.method !== "HEAD") return null;
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+  if (path.startsWith("/api/") || path === "/api" || path === "/mcp") return null;
+  return ORIGIN + url.pathname + url.search;
+}
+
 export function wantsJson(request) {
   const accept = request.headers.get("accept") || "";
   return /application\/(problem\+)?json/i.test(accept.split(",")[0]);
@@ -33,6 +49,9 @@ async function markdown(env, request, path, status) {
 
 export async function onRequest(context) {
   const { request, env, next } = context;
+  const moved = redirectTo(request);
+  if (moved) return new Response(null, { status: 301, headers: { location: moved, "cache-control": "public, max-age=86400" } });
+
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const markdownWanted = request.method === "GET" && wantsMarkdown(request) && !path.startsWith("/api/") && path !== "/mcp";

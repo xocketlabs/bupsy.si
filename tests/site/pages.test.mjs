@@ -8,7 +8,7 @@ const read = (path) => readFile(SITE + path, "utf8");
 const html = (body = "<html></html>", status = 200) =>
   new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 const run = (path, accept, next = async () => html()) =>
-  onRequest({ request: new Request("https://bupsy.pages.dev" + path, { headers: { accept } }), env: { ASSETS: assets }, next });
+  onRequest({ request: new Request("https://bupsy.si" + path, { headers: { accept } }), env: { ASSETS: assets }, next });
 
 test("Markdown is served when asked for, with Vary: Accept", async () => {
   for (const path of ["/", "/about", "/privacy", "/developers", "/contact"]) {
@@ -38,7 +38,7 @@ test("every page has its Markdown twin and HTML page, and is in the sitemap", as
   const sitemap = await read("sitemap.xml");
   for (const [path, md] of Object.entries(PAGES)) {
     await access(SITE + md.slice(1));
-    if (path !== "/index.html") assert.match(sitemap, new RegExp(`<loc>https://bupsy.pages.dev${path === "/" ? "/" : path}</loc>`), path);
+    if (path !== "/index.html") assert.match(sitemap, new RegExp(`<loc>https://bupsy.si${path === "/" ? "/" : path}</loc>`), path);
   }
   for (const name of ["about", "privacy", "developers", "contact", "404"]) await access(`${SITE}${name}.html`);
 });
@@ -54,7 +54,7 @@ test("llms.txt and agents.md say when to use Bupsy and how to call it", async ()
   for (const file of ["llms.txt", "agents.md"]) {
     const text = await read(file);
     assert.match(text, /## When to use Bupsy/, file);
-    assert.match(text, /https:\/\/bupsy\.pages\.dev\/mcp/, file);
+    assert.match(text, /https:\/\/bupsy\.si\/mcp/, file);
   }
 });
 
@@ -67,7 +67,7 @@ test("the MCP server card has the fields discovery checks for", async () => {
     assert.deepEqual(card.capabilities, { tools: true, resources: false, prompts: false });
   }
   const catalog = JSON.parse(await read(".well-known/api-catalog"));
-  assert.ok(catalog.linkset.some((entry) => entry.anchor === "https://bupsy.pages.dev/mcp"));
+  assert.ok(catalog.linkset.some((entry) => entry.anchor === "https://bupsy.si/mcp"));
 });
 
 test("the homepage's JSON-LD parses and names the product and its maker", async () => {
@@ -76,8 +76,8 @@ test("the homepage's JSON-LD parses and names the product and its maker", async 
   const items = JSON.parse(block);
   const types = items.map((item) => item["@type"]);
   assert.deepEqual(types, ["SoftwareApplication", "Organization", "WebSite"]);
-  assert.equal(items[1].contactPoint.url, "https://bupsy.pages.dev/contact");
+  assert.equal(items[1].contactPoint.url, "https://bupsy.si/contact");
   assert.match(items[1].contactPoint.email, /@/);
   assert.equal(items[1].address["@type"], "PostalAddress");
-  assert.match(page, /<link rel="canonical" href="https:\/\/bupsy.pages.dev\/">/);
+  assert.match(page, /<link rel="canonical" href="https:\/\/bupsy.si\/">/);
 });

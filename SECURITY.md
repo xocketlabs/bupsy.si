@@ -27,7 +27,7 @@ These are the promises the app makes; anything that breaks one is a vulnerabilit
 - **Remote access stays private.** Use from other devices works only over the person's Tailscale
   network, only for paired devices, and never exposes anything to the public internet.
 - **A bot kept to "This Mac only"** is invisible to every other device.
-- **The website and its MCP server** (bupsy.pages.dev) keep only what the privacy page says.
+- **The website and its MCP server** (bupsy.si) keep only what the privacy page says.
 
 ## Supported versions
 

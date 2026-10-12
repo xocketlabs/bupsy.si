@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // bupsy: the website's API from a terminal, for people and for agents scripting it.
 //
-// Every command is one call to bupsy.pages.dev (see /openapi.json). `--json` prints the API's own
+// Every command is one call to bupsy.si (see /openapi.json). `--json` prints the API's own
 // JSON. Exit codes: 0 done, 1 the API said no (its `detail` and `resolution` go to stderr),
 // 2 the command was used wrongly.
 
-export const BASE = "https://bupsy.pages.dev";
+export const BASE = "https://bupsy.si";
 export const PAGES = ["home", "about", "privacy", "developers", "contact"];
 
-export const HELP = `bupsy: Bupsy from the command line (https://bupsy.pages.dev)
+export const HELP = `bupsy: Bupsy from the command line (https://bupsy.si)
 
 Usage:
   bupsy about                         What Bupsy is, and when to use it

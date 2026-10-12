@@ -49,7 +49,7 @@ test("unknown /api/ addresses answer a JSON 404", async () => {
 
 test("a 404 asked for as JSON comes back as JSON", async () => {
   const res = await middleware({
-    request: new Request("https://bupsy.pages.dev/nope", { headers: { accept: "application/json" } }),
+    request: new Request("https://bupsy.si/nope", { headers: { accept: "application/json" } }),
     env: { ASSETS: assets },
     next: async () => new Response("<html>missing</html>", { status: 404, headers: { "content-type": "text/html" } }),
   });

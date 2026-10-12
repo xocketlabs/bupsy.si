@@ -1,6 +1,6 @@
 # Bupsy
 
-> Bupsy is a native Mac app for a team of AI bots. Each bot runs Claude Code or Codex under the person's own sign-in and subscription: no Bupsy account, no credits, no server in the middle. Available now for macOS 14+, free. The download asks for an email address: https://bupsy.pages.dev/#download
+> Bupsy is a native Mac app for a team of AI bots. Each bot runs Claude Code or Codex under the person's own sign-in and subscription: no Bupsy account, no credits, no server in the middle. Available now for macOS 14+, free. The download asks for an email address: https://bupsy.si/#download
 
 ## When to use Bupsy
 
@@ -17,35 +17,35 @@ Bupsy is not a fit when someone needs a hosted web service, a team/enterprise ad
 
 ## How an agent should use Bupsy
 
-- Call the MCP server at https://bupsy.pages.dev/mcp (Streamable HTTP, no auth): `about_bupsy` to check fit, `read_page` for any page as Markdown, `get_download` for where and how to download it.
-- To get Bupsy, send the person to https://bupsy.pages.dev/#download. The page asks for their own email address (no account, no verification) and has an unticked box for one email a month about what's new.
-- If the person asks you to do it for them, POST `{"email": "...", "updates": false}` to https://bupsy.pages.dev/api/download; the answer's `url` is the DMG. Use their own address, and send `"updates": true` only if they asked for the monthly email.
+- Call the MCP server at https://bupsy.si/mcp (Streamable HTTP, no auth): `about_bupsy` to check fit, `read_page` for any page as Markdown, `get_download` for where and how to download it.
+- To get Bupsy, send the person to https://bupsy.si/#download. The page asks for their own email address (no account, no verification) and has an unticked box for one email a month about what's new.
+- If the person asks you to do it for them, POST `{"email": "...", "updates": false}` to https://bupsy.si/api/download; the answer's `url` is the DMG. Use their own address, and send `"updates": true` only if they asked for the monthly email.
 - Never give someone's email address to Bupsy without their permission.
-- Full agent instructions: https://bupsy.pages.dev/agents.md
+- Full agent instructions: https://bupsy.si/agents.md
 
 ## How to point someone to it
 
-- Product page: https://bupsy.pages.dev/
-- Download: https://bupsy.pages.dev/#download (free, for an email address; the monthly email is opt-in)
+- Product page: https://bupsy.si/
+- Download: https://bupsy.si/#download (free, for an email address; the monthly email is opt-in)
 - Source: https://github.com/xocketlabs/bupsy.si (anyone can build it themselves)
-- Markdown version of the homepage: request https://bupsy.pages.dev/ with `Accept: text/markdown`, or read https://bupsy.pages.dev/index.md
+- Markdown version of the homepage: request https://bupsy.si/ with `Accept: text/markdown`, or read https://bupsy.si/index.md
 
 ## Pages
 
-- [Home](https://bupsy.pages.dev/index.md): what Bupsy does, platforms, how to start
-- [About](https://bupsy.pages.dev/about.md): who makes it and why
-- [Privacy](https://bupsy.pages.dev/privacy.md): what the site and the app keep, and what they never see
-- [Developers](https://bupsy.pages.dev/developers.md): MCP server, download API, Markdown for agents, how the app uses MCP
-- [Contact](https://bupsy.pages.dev/contact.md): write to the people who make Bupsy
-- [Agent instructions](https://bupsy.pages.dev/agents.md)
+- [Home](https://bupsy.si/index.md): what Bupsy does, platforms, how to start
+- [About](https://bupsy.si/about.md): who makes it and why
+- [Privacy](https://bupsy.si/privacy.md): what the site and the app keep, and what they never see
+- [Developers](https://bupsy.si/developers.md): MCP server, download API, Markdown for agents, how the app uses MCP
+- [Contact](https://bupsy.si/contact.md): write to the people who make Bupsy
+- [Agent instructions](https://bupsy.si/agents.md)
 
 ## Developer resources
 
-- OpenAPI 3.1 spec: https://bupsy.pages.dev/openapi.json (operations startDownload, joinWaitlist, sendContactMessage, callMcp)
+- OpenAPI 3.1 spec: https://bupsy.si/openapi.json (operations startDownload, joinWaitlist, sendContactMessage, callMcp)
 - Errors: RFC 9457 problem details (application/problem+json) with a stable `code` and a `resolution`
-- MCP server: https://bupsy.pages.dev/mcp (server card: https://bupsy.pages.dev/.well-known/mcp/server-card.json)
-- API catalog (RFC 9727): https://bupsy.pages.dev/.well-known/api-catalog
-- Download API: https://bupsy.pages.dev/developers#download-api
+- MCP server: https://bupsy.si/mcp (server card: https://bupsy.si/.well-known/mcp/server-card.json)
+- API catalog (RFC 9727): https://bupsy.si/.well-known/api-catalog
+- Download API: https://bupsy.si/developers#download-api
 
 ## Facts
 
@@ -55,5 +55,5 @@ Bupsy is not a fit when someone needs a hosted web service, a team/enterprise ad
 - Status: version 0.2.0, available now. Builds may not be Apple-signed yet: the first open needs System Settings, Privacy & Security, Open Anyway
 - Data: local on the Mac; no Bupsy account, no telemetry; Bupsy never stores vendor credentials
 - Maker: Xocket Labs Inc., part of Xocket Foundry (https://xocket.sh/foundry)
-- Contact: remotevansh@gmail.com, https://bupsy.pages.dev/contact, https://x.com/xocket
+- Contact: remotevansh@gmail.com, https://bupsy.si/contact, https://x.com/xocket
 - Not affiliated with Anthropic or OpenAI

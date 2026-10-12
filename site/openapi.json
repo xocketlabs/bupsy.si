@@ -3,12 +3,12 @@
   "info": {
     "title": "Bupsy website API",
     "version": "1.0.0",
-    "summary": "Download Bupsy for an email address, send a message, or talk MCP to bupsy.pages.dev.",
-    "description": "The public API of bupsy.pages.dev, the website of Bupsy, a native Mac app for a team of AI bots that run on the person's own Claude Code or Codex subscription. Bupsy is available now: free, for macOS 14 or later, Apple silicon and Intel. The Bupsy app itself runs on the person's Mac and has no public API; these endpoints are for the website: starting the download (it asks for the person's email address), the older \"keep me posted\" list, contacting the makers, and the site's MCP server. No authentication. Errors are RFC 9457 problem details with a stable `code`. No rate limit is published; send one request per action a person asked for.",
+    "summary": "Download Bupsy for an email address, send a message, or talk MCP to bupsy.si.",
+    "description": "The public API of bupsy.si, the website of Bupsy, a native Mac app for a team of AI bots that run on the person's own Claude Code or Codex subscription. Bupsy is available now: free, for macOS 14 or later, Apple silicon and Intel. The Bupsy app itself runs on the person's Mac and has no public API; these endpoints are for the website: starting the download (it asks for the person's email address), the older \"keep me posted\" list, contacting the makers, and the site's MCP server. No authentication. Errors are RFC 9457 problem details with a stable `code`. No rate limit is published; send one request per action a person asked for.",
     "contact": {
       "name": "Bupsy (Xocket Labs Inc.)",
       "email": "remotevansh@gmail.com",
-      "url": "https://bupsy.pages.dev/contact"
+      "url": "https://bupsy.si/contact"
     },
     "license": {
       "name": "PolyForm Shield License 1.0.0",
@@ -17,14 +17,14 @@
   },
   "servers": [
     {
-      "url": "https://bupsy.pages.dev",
+      "url": "https://bupsy.si",
       "description": "Production"
     }
   ],
   "security": [],
   "externalDocs": {
     "description": "Bupsy for developers",
-    "url": "https://bupsy.pages.dev/developers"
+    "url": "https://bupsy.si/developers"
   },
   "tags": [
     {
@@ -104,14 +104,14 @@
                   "$ref": "#/components/schemas/Problem"
                 },
                 "example": {
-                  "type": "https://bupsy.pages.dev/developers#errors-invalid-email",
+                  "type": "https://bupsy.si/developers#errors-invalid-email",
                   "title": "Invalid email address",
                   "status": 400,
                   "detail": "That doesn't look like an email address.",
                   "code": "invalid_email",
                   "error": "That doesn't look like an email address.",
                   "resolution": "Send the person's email address in the `email` field, e.g. name@example.com.",
-                  "documentation_url": "https://bupsy.pages.dev/developers#errors"
+                  "documentation_url": "https://bupsy.si/developers#errors"
                 }
               }
             }
@@ -173,14 +173,14 @@
                   "$ref": "#/components/schemas/Problem"
                 },
                 "example": {
-                  "type": "https://bupsy.pages.dev/developers#errors-invalid-email",
+                  "type": "https://bupsy.si/developers#errors-invalid-email",
                   "title": "Invalid email address",
                   "status": 400,
                   "detail": "That doesn't look like an email address.",
                   "code": "invalid_email",
                   "error": "That doesn't look like an email address.",
                   "resolution": "Send the person's email address in the `email` field, e.g. name@example.com.",
-                  "documentation_url": "https://bupsy.pages.dev/developers#errors"
+                  "documentation_url": "https://bupsy.si/developers#errors"
                 }
               }
             }
@@ -243,14 +243,14 @@
                   "$ref": "#/components/schemas/Problem"
                 },
                 "example": {
-                  "type": "https://bupsy.pages.dev/developers#errors-empty-message",
+                  "type": "https://bupsy.si/developers#errors-empty-message",
                   "title": "Empty message",
                   "status": 400,
                   "detail": "Write a message first.",
                   "code": "empty_message",
                   "error": "Write a message first.",
                   "resolution": "Put the message text in the `message` field.",
-                  "documentation_url": "https://bupsy.pages.dev/developers#errors"
+                  "documentation_url": "https://bupsy.si/developers#errors"
                 }
               }
             }
@@ -274,7 +274,7 @@
           "MCP"
         ],
         "summary": "Send one MCP JSON-RPC message",
-        "description": "Bupsy's MCP server over Streamable HTTP (MCP 2025-11-25; also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC 2.0 message per POST, a JSON answer, no session ID. Methods: initialize, ping, tools/list, tools/call. Tools: about_bupsy (what Bupsy is and when to use it), read_page (a site page as Markdown), get_download (where to download Bupsy; the page asks for the person's own email), join_waitlist (the older \"keep me posted\" list, with the person's own email and permission). Server card: https://bupsy.pages.dev/.well-known/mcp/server-card.json. Most clients should use an MCP client library rather than calling this directly.",
+        "description": "Bupsy's MCP server over Streamable HTTP (MCP 2025-11-25; also 2025-06-18 and 2025-03-26). Stateless: one JSON-RPC 2.0 message per POST, a JSON answer, no session ID. Methods: initialize, ping, tools/list, tools/call. Tools: about_bupsy (what Bupsy is and when to use it), read_page (a site page as Markdown), get_download (where to download Bupsy; the page asks for the person's own email), join_waitlist (the older \"keep me posted\" list, with the person's own email and permission). Server card: https://bupsy.si/.well-known/mcp/server-card.json. Most clients should use an MCP client library rather than calling this directly.",
         "parameters": [
           {
             "name": "MCP-Protocol-Version",

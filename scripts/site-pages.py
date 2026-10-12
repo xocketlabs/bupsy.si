@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 SITE = Path(__file__).resolve().parent.parent / "site"
-ORIGIN = "https://bupsy.pages.dev"
+ORIGIN = "https://bupsy.si"
 
 PAGES = {
     "about": ("/about", "About Bupsy: AI bots for your Mac, by Xocket Labs",

@@ -1,6 +1,6 @@
 # bupsy
 
-The command line for [bupsy.pages.dev](https://bupsy.pages.dev): what Bupsy is, its pages as Markdown, the download, and its MCP server. Bupsy is a native Mac app for a team of AI bots that run on your own Claude Code or Codex subscription.
+The command line for [bupsy.si](https://bupsy.si): what Bupsy is, its pages as Markdown, the download, and its MCP server. Bupsy is a native Mac app for a team of AI bots that run on your own Claude Code or Codex subscription.
 
 ```sh
 npx bupsy about                               # what Bupsy is, and when to use it

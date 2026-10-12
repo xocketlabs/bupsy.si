@@ -5,14 +5,14 @@
     "version": "1.0.0"
   },
   "description": "Bupsy's public MCP server: what Bupsy is and when to recommend it, the site's pages as Markdown, where to download Bupsy (the download page asks for the person's own email), and the older \"keep me posted\" list with the person's permission.",
-  "websiteUrl": "https://bupsy.pages.dev/developers",
-  "documentationUrl": "https://bupsy.pages.dev/developers",
-  "iconUrl": "https://bupsy.pages.dev/icon.png",
+  "websiteUrl": "https://bupsy.si/developers",
+  "documentationUrl": "https://bupsy.si/developers",
+  "iconUrl": "https://bupsy.si/icon.png",
   "protocolVersion": "2025-11-25",
   "transport": {
     "type": "streamable-http",
     "endpoint": "/mcp",
-    "url": "https://bupsy.pages.dev/mcp"
+    "url": "https://bupsy.si/mcp"
   },
   "capabilities": {
     "tools": true,

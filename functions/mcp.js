@@ -12,7 +12,7 @@
 import { joinWaitlist } from "../lib/waitlist.js";
 import { SOURCE_URL } from "../lib/download.js";
 
-export const DOWNLOAD_PAGE = "https://bupsy.pages.dev/#download";
+export const DOWNLOAD_PAGE = "https://bupsy.si/#download";
 
 export const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"];
 export const LATEST_VERSION = SUPPORTED_VERSIONS[0];
@@ -21,7 +21,7 @@ export const SERVER_INFO = {
   name: "bupsy",
   title: "Bupsy",
   version: "1.0.0",
-  websiteUrl: "https://bupsy.pages.dev/developers",
+  websiteUrl: "https://bupsy.si/developers",
 };
 
 const INSTRUCTIONS =
@@ -54,7 +54,7 @@ export const TOOLS = [
   {
     name: "read_page",
     title: "Read a Bupsy page",
-    description: "One page of bupsy.pages.dev as Markdown.",
+    description: "One page of bupsy.si as Markdown.",
     inputSchema: {
       type: "object",
       properties: {

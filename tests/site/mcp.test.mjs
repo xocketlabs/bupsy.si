@@ -4,7 +4,7 @@ import { onRequest, originAllowed, LATEST_VERSION, TOOLS, DOWNLOAD_PAGE } from "
 import { DOWNLOAD_URL } from "../../lib/download.js";
 import { assets, fakeD1, post } from "./helpers.mjs";
 
-const URL_ = "https://bupsy.pages.dev/mcp";
+const URL_ = "https://bupsy.si/mcp";
 const call = (body, headers, db = fakeD1()) =>
   onRequest({ request: post(URL_, body, headers), env: { ASSETS: assets, WAITLIST: db } });
 const rpc = (id, method, params) => ({ jsonrpc: "2.0", id, method, params });
@@ -46,7 +46,7 @@ test("about_bupsy and read_page return the site's own text", async () => {
 });
 
 test("get_download points to the download page and never hands out the DMG or takes an address", async () => {
-  assert.equal(DOWNLOAD_PAGE, "https://bupsy.pages.dev/#download");
+  assert.equal(DOWNLOAD_PAGE, "https://bupsy.si/#download");
   const tool = TOOLS.find((t) => t.name === "get_download");
   assert.deepEqual(tool.inputSchema.properties, {});
   assert.equal(tool.annotations.readOnlyHint, true);
