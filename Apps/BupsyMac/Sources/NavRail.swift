@@ -88,7 +88,23 @@ struct NavRail: View {
     /// The Hidden section is folded unless this key is in the folded set: folded by default.
     private static let hiddenOpenKey = "\u{1}hidden-open"
 
+    // In small parts, each its own property: as one expression, the column, its sheet and seven
+    // dialogs were more than Swift 6.2's type checker would solve in time.
     var body: some View {
+        column
+            // Cmd 1 to 9, registered once here rather than on the rows, so they follow the order
+            // the list shows and keep working while a section is folded.
+            .background { numberShortcuts }
+            .sheet(item: sheetBinding) { item in sheetContent(item) }
+            .background { dialogHosts }
+            // Help > Keyboard shortcuts (Cmd /) lives on the app; the sheet hangs here.
+            .onReceive(NotificationCenter.default.publisher(for: .bupsyShowKeyboardShortcuts)) { _ in
+                showsYouMenu = false
+                sheet = .shortcuts
+            }
+    }
+
+    private var column: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
                 .padding(.bottom, Theme.Space.gutter)
@@ -109,105 +125,116 @@ struct NavRail: View {
         .padding(.bottom, Theme.Space.snug)
         .frame(width: 276)
         .background(palette.sidebar)
-        // Cmd 1 to 9, registered once here rather than on the rows, so they follow the order the
-        // list shows and keep working while a section is folded.
-        .background { numberShortcuts }
-        .sheet(item: sheetBinding) { item in
-            switch item {
-            case .addBot: BotCreatorSheet()
-            case .addBotToSection(let section): BotCreatorSheet(section: section)
-            case .renameFolder(let name): RenameFolderSheet(folder: name)
-            case .fileBot(let bot): NewFolderSheet(bot: bot)
-            case .editBot(let bot): BotCreatorSheet(editing: bot)
-            case .customModel(let bot): CustomModelSheet(bot: bot)
-            case .addGroup: NewGroupSheet(onCreated: { group in destination = .group(group.id) })
-            case .renameGroup(let group): RenameGroupSheet(group: group)
-            case .shortcuts: KeyboardShortcutsSheet()
-            }
-        }
-        // Each on its own empty view: two dialogs on one view and SwiftUI silently drops one.
-        .background {
-            Color.clear.confirmsBotDeletion($deletingBot) { bot in
-                model.deleteBot(bot)
-            }
-        }
-        .background {
-            Color.clear.confirmsGroupDeletion($deletingGroup) { group in
-                if destination == .group(group.id) {
-                    destination = .groups
-                }
-                model.deleteGroup(group)
-            }
-        }
-        .background {
-            Color.clear.confirmsSectionDeletion($deletingSection) { section in
-                model.deleteSection(section)
-                SidebarFolds.unfold(section)
-            }
-        }
-        .background {
-            Color.clear.confirmsSignOut($signingOut, onConfirm: { awaitingAccount = true })
-        }
-        // Moving a bot or a section to another Mac: asked from the bot's menus, its details and
-        // a section's menu, so the request lives on the model and is answered here, once.
-        .background {
-            Color.clear.confirmationDialog(
-                model.moveRequest.map(model.moveTitle) ?? "",
-                isPresented: Binding(
-                    get: { model.moveRequest != nil },
-                    set: { if !$0 { model.moveRequest = nil } }),
-                titleVisibility: .visible,
-                presenting: model.moveRequest
-            ) { request in
-                Button("Move to \(request.mac.name)") { model.confirmMove(request) }
-                Button("Cancel", role: .cancel) {}
-            } message: { request in
-                Text(model.moveMessage(request))
-            }
-        }
-        .background {
-            Color.clear.alert(
-                model.moveOutcome?.title ?? "",
-                isPresented: Binding(
-                    get: { model.moveOutcome != nil },
-                    set: { if !$0 { model.moveOutcome = nil } }),
-                presenting: model.moveOutcome
-            ) { outcome in
-                // When the fix is a setting, the way there, rather than only its name.
-                if let pane = outcome.settingsPane {
-                    Button("Open \(pane.label)") { model.openSettings(pane) }
-                }
-                Button("OK", role: .cancel) {}
-            } message: { outcome in
-                Text(outcome.message)
-            }
-        }
-        .background {
-            Color.clear.alert(
-                "That didn't work",
-                isPresented: Binding(
-                    get: { awaitingAccount && model.accountProblem != nil },
-                    set: { shown in
-                        if !shown {
-                            awaitingAccount = false
-                            model.accountProblem = nil
-                        }
-                    })
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(model.accountProblem ?? "")
-            }
-        }
-        // Help > Keyboard shortcuts (Cmd /) lives on the app; the sheet hangs here.
-        .onReceive(NotificationCenter.default.publisher(for: .bupsyShowKeyboardShortcuts)) { _ in
-            showsYouMenu = false
-            sheet = .shortcuts
+    }
+
+    @ViewBuilder
+    private func sheetContent(_ item: RailSheet) -> some View {
+        switch item {
+        case .addBot: BotCreatorSheet()
+        case .addBotToSection(let section): BotCreatorSheet(section: section)
+        case .renameFolder(let name): RenameFolderSheet(folder: name)
+        case .fileBot(let bot): NewFolderSheet(bot: bot)
+        case .editBot(let bot): BotCreatorSheet(editing: bot)
+        case .customModel(let bot): CustomModelSheet(bot: bot)
+        case .addGroup: NewGroupSheet(onCreated: { group in destination = .group(group.id) })
+        case .renameGroup(let group): RenameGroupSheet(group: group)
+        case .shortcuts: KeyboardShortcutsSheet()
         }
     }
 
-    /// The rail's own sheet, or else the custom-model sheet the model asks for (opened from the
-    /// bot page's menu as well as the rail's, so the request lives on the model).
+    /// Each dialog on its own empty view: two dialogs on one view and SwiftUI silently drops one.
+    private var dialogHosts: some View {
+        ZStack {
+            botDeletionHost
+            groupDeletionHost
+            sectionDeletionHost
+            signOutHost
+            moveConfirmationHost
+            moveOutcomeHost
+            accountProblemHost
+        }
+    }
+
+    private var botDeletionHost: some View {
+        Color.clear.confirmsBotDeletion($deletingBot) { bot in
+            model.deleteBot(bot)
+        }
+    }
+
+    private var groupDeletionHost: some View {
+        Color.clear.confirmsGroupDeletion($deletingGroup) { group in
+            if destination == .group(group.id) {
+                destination = .groups
+            }
+            model.deleteGroup(group)
+        }
+    }
+
+    private var sectionDeletionHost: some View {
+        Color.clear.confirmsSectionDeletion($deletingSection) { section in
+            model.deleteSection(section)
+            SidebarFolds.unfold(section)
+        }
+    }
+
+    private var signOutHost: some View {
+        Color.clear.confirmsSignOut($signingOut, onConfirm: { awaitingAccount = true })
+    }
+
+    // Moving a bot or a section to another Mac: asked from the bot's menus, its details and a
+    // section's menu, so the request lives on the model and is answered here, once.
+    private var moveConfirmationHost: some View {
+        let shown = Binding<Bool>(
+            get: { model.moveRequest != nil },
+            set: { if !$0 { model.moveRequest = nil } })
+        return Color.clear.confirmationDialog(
+            model.moveRequest.map(model.moveTitle) ?? "",
+            isPresented: shown,
+            titleVisibility: .visible,
+            presenting: model.moveRequest
+        ) { (request: AppModel.MoveRequest) in
+            Button("Move to \(request.mac.name)") { model.confirmMove(request) }
+            Button("Cancel", role: .cancel) {}
+        } message: { (request: AppModel.MoveRequest) in
+            Text(model.moveMessage(request))
+        }
+    }
+
+    private var moveOutcomeHost: some View {
+        let shown = Binding<Bool>(
+            get: { model.moveOutcome != nil },
+            set: { if !$0 { model.moveOutcome = nil } })
+        return Color.clear.alert(
+            model.moveOutcome?.title ?? "",
+            isPresented: shown,
+            presenting: model.moveOutcome
+        ) { outcome in
+            // When the fix is a setting, the way there, rather than only its name.
+            if let pane = outcome.settingsPane {
+                Button("Open \(pane.label)") { model.openSettings(pane) }
+            }
+            Button("OK", role: .cancel) {}
+        } message: { outcome in
+            Text(outcome.message)
+        }
+    }
+
+    private var accountProblemHost: some View {
+        let shown = Binding<Bool>(
+            get: { awaitingAccount && model.accountProblem != nil },
+            set: { stillShown in
+                if !stillShown {
+                    awaitingAccount = false
+                    model.accountProblem = nil
+                }
+            })
+        return Color.clear.alert("That didn't work", isPresented: shown) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.accountProblem ?? "")
+        }
+    }
+
     private var sheetBinding: Binding<RailSheet?> {
         Binding(
             get: { sheet ?? model.customModelBot.map { RailSheet.customModel($0) } },
