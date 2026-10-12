@@ -78,8 +78,13 @@ struct BotPage: View {
             .onChange(of: draft) { _, text in model.botDrafts[bot.id] = text.isEmpty ? nil : text }
     }
 
-    @ViewBuilder
+    /// In three parts, so each is a small expression: one long chain of sheets and onChange
+    /// handlers was more than Swift 6.2's type checker would solve in time.
     private var page: some View {
+        followingTour(withSheets(surface))
+    }
+
+    private var surface: some View {
         // One card, like every page: the chat on the left and, when open, the bot's details on
         // the right behind a hairline, so the two read as one object rather than two windows.
         PanelSurface {
@@ -88,46 +93,88 @@ struct BotPage: View {
             }
         }
         .padding([.top, .bottom, .trailing], Theme.Space.snug)
-        // Each sheet on its own view: two sheets on one view and SwiftUI silently shows only one.
-        // The panel already lists routines and goals, so "New" opens the form itself rather than
-        // a second list with its own New button.
-        .background { Color.clear.sheet(isPresented: $showsRoutines) { NewRoutineSheet(bot: bot) } }
-        .background { Color.clear.sheet(isPresented: $showsObjectives) { NewObjectiveSheet(bot: bot) } }
-        .background { Color.clear.sheet(item: $editingRoutine) { NewRoutineSheet(bot: bot, editing: $0) } }
-        .background { Color.clear.sheet(item: $editingBot) { BotCreatorSheet(editing: $0) } }
-        // The folder watch form is the new-routine sheet opened on its Folder watch tab.
-        .background { Color.clear.sheet(isPresented: $showsNewWatch) { NewRoutineSheet(bot: bot, kind: .folderWatch) } }
-        .background { Color.clear.sheet(item: $editingWatch) { NewFolderWatchSheet(bot: bot, editing: $0) } }
-        .background {
-            Color.clear.confirmsObjectiveDeletion($deletingObjective) { model.deleteObjective($0) }
+    }
+
+    private func withSheets(_ content: some View) -> some View {
+        content.background { sheetHosts }
+    }
+
+    /// Each sheet on its own view: two sheets on one view and SwiftUI silently shows only one.
+    /// Every host is its own small property, because a single expression holding all of them was
+    /// more than Swift 6.2's type checker would take. The panel already lists routines and goals,
+    /// so "New" opens the form itself rather than a second list with its own New button.
+    private var sheetHosts: some View {
+        ZStack {
+            newRoutineHost
+            newObjectiveHost
+            editRoutineHost
+            editBotHost
+            newWatchHost
+            editWatchHost
+            objectiveDeletionHost
+            folderWatchDeletion
         }
-        .background {
-            Color.clear.confirmsDeletion(
-                of: $deletingWatch,
-                title: { "Delete the folder watch \u{201C}\($0.name)\u{201D}?" },
-                button: "Delete watch",
-                message: { _ in
-                    "\(bot.name) stops running when files in that folder change. The folder and its files are not touched. This can't be undone."
-                },
-                perform: { model.deleteFolderWatch($0) })
-        }
-        // A routine open for one bot must not stay open, unrelated, on the next.
-        .onChange(of: bot.id) { openRoutineID = nil }
-        .onChange(of: model.tourDetails, initial: true) { old, new in
-            // Only a tour ending closes the panel. On appear there is no tour, and closing it then
-            // would undo the remembered choice every time you switch bots.
-            if let new { tab = new; showsDetails = true } else if old != nil { showsDetails = false }
-        }
-        .onChange(of: model.tourSheet, initial: true) { _, new in
-            showsRoutines = new == "newRoutine"
-            if new == "editBot" { editingBot = bot } else { editingBot = nil }
-        }
-        .onChange(of: model.tourDraft, initial: true) { _, new in
-            if let new { draft = new }
-        }
-        .onChange(of: model.tourRoutine, initial: true) { old, new in
-            if let new { openRoutineID = new } else if old != nil { openRoutineID = nil }
-        }
+    }
+
+    private var newRoutineHost: some View {
+        Color.clear.sheet(isPresented: $showsRoutines) { NewRoutineSheet(bot: bot) }
+    }
+
+    private var newObjectiveHost: some View {
+        Color.clear.sheet(isPresented: $showsObjectives) { NewObjectiveSheet(bot: bot) }
+    }
+
+    private var editRoutineHost: some View {
+        Color.clear.sheet(item: $editingRoutine) { (routine: Routine) in NewRoutineSheet(bot: bot, editing: routine) }
+    }
+
+    private var editBotHost: some View {
+        Color.clear.sheet(item: $editingBot) { (editing: Bot) in BotCreatorSheet(editing: editing) }
+    }
+
+    /// The folder watch form is the new-routine sheet opened on its Folder watch tab.
+    private var newWatchHost: some View {
+        Color.clear.sheet(isPresented: $showsNewWatch) { NewRoutineSheet(bot: bot, kind: .folderWatch) }
+    }
+
+    private var editWatchHost: some View {
+        Color.clear.sheet(item: $editingWatch) { (watch: FolderWatch) in NewFolderWatchSheet(bot: bot, editing: watch) }
+    }
+
+    private var objectiveDeletionHost: some View {
+        Color.clear.confirmsObjectiveDeletion($deletingObjective) { model.deleteObjective($0) }
+    }
+
+    private var folderWatchDeletion: some View {
+        Color.clear.confirmsDeletion(
+            of: $deletingWatch,
+            title: { (watch: FolderWatch) in "Delete the folder watch \u{201C}\(watch.name)\u{201D}?" },
+            button: "Delete watch",
+            message: { (_: FolderWatch) in
+                "\(bot.name) stops running when files in that folder change. The folder and its files are not touched. This can't be undone."
+            },
+            perform: { (watch: FolderWatch) in model.deleteFolderWatch(watch) })
+    }
+
+    private func followingTour(_ content: some View) -> some View {
+        content
+            // A routine open for one bot must not stay open, unrelated, on the next.
+            .onChange(of: bot.id) { openRoutineID = nil }
+            .onChange(of: model.tourDetails, initial: true) { old, new in
+                // Only a tour ending closes the panel. On appear there is no tour, and closing it
+                // then would undo the remembered choice every time you switch bots.
+                if let new { tab = new; showsDetails = true } else if old != nil { showsDetails = false }
+            }
+            .onChange(of: model.tourSheet, initial: true) { _, new in
+                showsRoutines = new == "newRoutine"
+                if new == "editBot" { editingBot = bot } else { editingBot = nil }
+            }
+            .onChange(of: model.tourDraft, initial: true) { _, new in
+                if let new { draft = new }
+            }
+            .onChange(of: model.tourRoutine, initial: true) { old, new in
+                if let new { openRoutineID = new } else if old != nil { openRoutineID = nil }
+            }
     }
 
     /// The page laid out for the width it has: details beside the chat when both fit, and

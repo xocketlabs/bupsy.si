@@ -25,7 +25,7 @@ machines, which the app marks as Beta until then).
 
 - ✅ Native Mac app; a bot runs Claude Code and its reply streams in live
 - ✅ Everything stored (SQLite, append-only events) and restored on reopen
-- ✅ CI builds a DMG; CI runs on our own Mac runner (no GitHub minutes)
+- ✅ CI builds a DMG, on GitHub's own runners (never a self-hosted one: the repo is public)
 - 🟡 Signed and notarized — **needs an Apple Developer account**
 
 ## M2 — The chat app

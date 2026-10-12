@@ -24,7 +24,8 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ${{ fromJSON(vars.MAC_RUNNER || '"macos-15"') }}
+    # GitHub's own Mac, never a self-hosted one: see the note at the top of ci.yml.
+    runs-on: macos-15
     env:
       # Whether the Apple signing secrets exist. Signed and unsigned builds share every step but
       # these, so a release ships today and becomes notarized the day the secrets are added —
@@ -39,6 +40,17 @@ jobs:
       # $(...) would have been executed on the release machine with the signing secrets nearby.
       # It is then held to plain x.y.z, because it names files, a tag and a release, and
       # package.sh and appcast.sh take it as given.
+      # The runner image holds several Xcodes and defaults to an older one; Bupsy is built with
+      # the current Swift, so use the newest released (non-beta) Xcode there is.
+      - name: Use the newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          XCODE=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          swift --version
+
       - name: Work out the version
         id: version
         env:
@@ -179,7 +191,20 @@ jobs:
         run: |
           MODE=$(cat build/mode)
           SUM=$(cut -d' ' -f1 "build/Bupsy-$VERSION.dmg.sha256")
+          # What's new: the version's Highlights from CHANGELOG.md, up to the marker that starts its
+          # full list, so the notes stay short and the changelog stays the one place it's written.
+          HIGHLIGHTS=$(awk -v v="## $VERSION " '
+            index($0, v) == 1 { on = 1; next }
+            on && (/^<!-- full changes below -->/ || /^## /) { exit }
+            on { print }' CHANGELOG.md)
           {
+            if [ -n "$(printf '%s' "$HIGHLIGHTS" | tr -d '[:space:]')" ]; then
+              echo "## What's new"
+              printf '%s\n' "$HIGHLIGHTS" | sed 's/^### Highlights$//'
+              echo
+              echo "Everything that changed: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/v$VERSION/CHANGELOG.md)"
+              echo
+            fi
             echo "## Install"
             echo
             echo "1. Download **Bupsy.dmg** below and open it."

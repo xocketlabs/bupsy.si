@@ -36,3 +36,6 @@ build/
 
 # Demo videos (scripts/record-demo.sh)
 demo-out/
+
+# Claude Code worktrees and local settings
+.claude/

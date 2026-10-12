@@ -366,6 +366,13 @@ private struct AboutSettingsSection: View {
                     Text("Source-available under BSL 1.1. No telemetry.")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(palette.mutedForeground)
+                    // The bundled libraries' licences require their notices to travel with the
+                    // app; this is where a person can read them.
+                    if let notices = Bundle.main.url(forResource: "Acknowledgements", withExtension: "txt") {
+                        Button("Third-party licences") { NSWorkspace.shared.open(notices) }
+                            .buttonStyle(.link)
+                            .font(Theme.Typography.caption)
+                    }
                 }
                 Spacer(minLength: Theme.Space.snug)
                 // No update feed yet (GitHub Releases only), so this says what it does rather than

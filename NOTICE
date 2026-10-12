@@ -12,11 +12,15 @@ authenticated with that user's own credentials under their own agreement with th
 relevant vendor. bupsy.si neither modifies those binaries nor holds their credentials.
 See docs/00-compliance-and-auth.md.
 
-Third-party components bundled by this project keep their own licenses and are
-listed here as they are added, with license texts in third_party/. The Business
-Source License applies to this project's own code, not to them.
+Third-party components bundled by this project keep their own licenses, with
+license texts in third_party/ and, inside the app, in Acknowledgements.txt (shown
+from Settings › About). The Business Source License applies to this project's own
+code, not to them.
 
-  (none yet)
+  GRDB.swift   https://github.com/groue/GRDB.swift   MIT License
+               third_party/GRDB.swift-LICENSE.txt
+  Sparkle      https://sparkle-project.org            MIT License, with bundled
+               third_party/Sparkle-LICENSE.txt        components' notices
 
 The bot faces, thinking orbs and border beam are original SwiftUI implementations.
 Their design language is inspired by libraries.dev (MIT, https://libraries.dev);

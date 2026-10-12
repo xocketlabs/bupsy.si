@@ -11,7 +11,7 @@ public struct TailscaleStatus: Equatable, Sendable {
     }
 
     public var state: State
-    /// This Mac's name on the person's tailnet, e.g. `vanshs-macbook-pro.taild5f9c6.ts.net`.
+    /// This Mac's name on the person's tailnet, e.g. `my-mac.tail1234.ts.net`.
     public var dnsName: String?
 
     public init(state: State, dnsName: String? = nil) {

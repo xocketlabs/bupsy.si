@@ -6,16 +6,36 @@
 
 **A Mac app where your AI bots live. They use the subscriptions you already pay for.**
 
+[![CI](https://github.com/xocketlabs/bupsy.si/actions/workflows/ci.yml/badge.svg)](https://github.com/xocketlabs/bupsy.si/actions/workflows/ci.yml)
+[![Licence: BUSL 1.1](https://img.shields.io/badge/licence-BUSL%201.1-blue)](LICENSE)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
+
+[Website](https://bupsy.pages.dev) · [Download](https://github.com/xocketlabs/bupsy.si/releases/latest) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+
 </div>
 
-![Bupsy: Scout asks before running a command](docs/screenshots/bupsy.png)
+![Bupsy: a new bot names itself, hands work to another bot, and a routine runs](docs/demo.gif)
 
 Each bot is a real agent: `claude` or `codex` running under **your own sign-in**, on your Mac or
-on a machine you rent. Give one a job, a schedule, or a standing goal. They ask before they act.
+on a machine you rent. Give one a job, a schedule, or a standing goal. They hand work to each other,
+and they ask before they act.
 
-> **Early access.** In daily use, but not yet publicly downloadable: the signed build needs an Apple
-> Developer certificate. Everything below works from source today. See [CHECKLIST.md](CHECKLIST.md)
-> for exactly what is and is not done.
+> **Early access.** In daily use, not yet Apple-signed. Download the DMG from
+> [Releases](https://github.com/xocketlabs/bupsy.si/releases/latest), or build from source. See
+> [CHECKLIST.md](CHECKLIST.md) for exactly what is and is not done.
+
+## Install
+
+1. Download **Bupsy.dmg** from the [latest release](https://github.com/xocketlabs/bupsy.si/releases/latest),
+   open it, and drag **Bupsy** into **Applications**.
+2. The first time, macOS says it can't check the app for malicious software, because the build is
+   not notarized yet. Open **System Settings › Privacy & Security**, scroll down, and click
+   **Open Anyway** next to Bupsy. You only do this once.
+3. Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or
+   [Codex](https://github.com/openai/codex) and sign in once. Bupsy finds it.
+4. Click **+**. Your new bot asks what it's for, names itself, and gets to work.
+
+Requires macOS 14 or later, on Apple silicon or Intel.
 
 ## Why this exists
 
@@ -71,16 +91,30 @@ authenticates. It quotes the vendor terms the design is built around.
 
 ## Build it
 
-Requires macOS 14+, Swift 6, and Xcode.
+Requires macOS 14+, Xcode 16 with Swift 6, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+The headless core needs Go 1.24.
 
 ```bash
 brew install xcodegen
-make run      # build and launch
+make run      # generate the project, build and launch
 make test     # the BupsyKit tests
 make spike    # drive your real claude binary and watch the event stream
 ```
 
-You will need `claude` or `codex` installed and signed in. bupsy detects whichever you have.
+You will need `claude` or `codex` installed and signed in. Bupsy detects whichever you have.
+`./scripts/ci-local.sh` runs what CI runs.
+
+## Project layout
+
+| Path | What it is |
+|---|---|
+| [`Apps/BupsyMac`](Apps/BupsyMac) | The Mac app (SwiftUI) |
+| [`Apps/BupsyiOS`](Apps/BupsyiOS) | The iPhone app, in development |
+| [`Packages/BupsyKit`](Packages/BupsyKit) | The core: engines, hosts, approval gate, store, remote access |
+| [`Tools/bupsy-run`](Tools/bupsy-run) | The headless core in Go, for Linux and Windows, plus `bupsy-mcp`, the tools bots use to talk to Bupsy |
+| [`conformance`](conformance) | Shared test cases both cores must agree on |
+| [`site`](site), [`functions`](functions) | bupsy.pages.dev: the landing page, waitlist and MCP server |
+| [`docs`](docs) | Compliance, decisions, design, release process |
 
 ## How it works
 
@@ -93,16 +127,32 @@ A SwiftUI app wraps `BupsyKit`, which owns two abstractions:
 Everything above that line — chat, transcript, audit log, approval gate — is written once, and
 every engine and host plugs in beneath it. [PLAN.md](PLAN.md) has the long version.
 
+## Docs
+
+- [docs/00-compliance-and-auth.md](docs/00-compliance-and-auth.md): how Bupsy stays inside each vendor's terms
+- [docs/03-decisions.md](docs/03-decisions.md): what we chose, and what we left out on purpose
+- [docs/06-design.md](docs/06-design.md): the design system
+- [docs/05-release.md](docs/05-release.md): how a release is cut
+- [PLAN.md](PLAN.md) and [CHECKLIST.md](CHECKLIST.md): the plan, and where it stands
+
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: a few of its
+rules (never hold a vendor credential, clean room) are not negotiable. Contributions need the
+one-time [CLA](CLA.md). Everyone follows the [Code of Conduct](CODE_OF_CONDUCT.md). Report security
+problems privately, as [SECURITY.md](SECURITY.md) describes.
+
 ## Licence
 
 **Source-available** under the [Business Source License 1.1](LICENSE), converting automatically to
 Apache-2.0 four years after each version is published. Licensed by Xocket Labs Inc., a Delaware
-corporation.
+corporation, part of [Xocket Foundry](https://xocket.sh/foundry).
 
 Read it, use it free for yourself or inside your company, modify it, self-host it. You may not
 offer it to third parties as a product or hosted service until the Change Date. This is not an
 open-source licence by the OSI definition and we do not call it one —
-[docs/02-licence.md](docs/02-licence.md) explains the choice and what it cost.
+[docs/02-licence.md](docs/02-licence.md) explains the choice and what it cost. Third-party
+components keep their own licences; see [NOTICE](NOTICE).
 
 ---
 

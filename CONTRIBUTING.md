@@ -60,12 +60,22 @@ messaging cleaner.
   limitation in copy.
 - **No telemetry.** Not opt-out, not anonymised. This is a local-first privacy tool.
 
+## Security
+
+Found a vulnerability? Report it privately: see [SECURITY.md](SECURITY.md). Please don't open a
+public issue.
+
+## Conduct
+
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Process
 
 1. Open an issue first for anything beyond a small fix, so we agree on the shape.
 2. Branch from `main`: `feat/…`, `fix/…`, `docs/…`.
 3. `make test` must pass. New behaviour needs a test.
-4. Open a PR describing *why*, not just what. Note any new dependency and update `NOTICE`.
+4. Open a PR describing *why*, not just what, and tick the CLA box. Note any new dependency and
+   update `NOTICE`.
 5. Squash-merge once review passes.
 
 ## Licence and the CLA
@@ -73,7 +83,8 @@ messaging cleaner.
 bupsy.si is source-available under [BSL 1.1](LICENSE), converting to Apache-2.0 four years after
 each version is published.
 
-Contributions require a one-time CLA. The reason is mechanical rather than defensive: the Licensor
+Contributions require a one-time CLA: read [CLA.md](CLA.md) and tick its box in your first pull
+request. The reason is mechanical rather than defensive: the Licensor
 has to be able to relicense the work for that automatic Apache-2.0 conversion to happen at all, and
 a contribution with no agreement attached would be code we cannot convert — quietly breaking the
 promise the licence makes.
