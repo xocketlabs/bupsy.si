@@ -2,9 +2,9 @@ bupsy.si
 Copyright 2026 Xocket Labs Inc., a Delaware corporation, and the bupsy.si
 contributors.
 
-Source-available under the Business Source License 1.1; see LICENSE. Each version
-converts to the Apache License, Version 2.0 four years after it is published.
-See docs/02-licence.md.
+Source-available under the PolyForm Shield License 1.0.0; see LICENSE and
+docs/02-licence.md. Version 0.2.0 and earlier were published under the Business
+Source License 1.1, which still applies to those versions.
 
 This product runs, but does not include or redistribute, third-party coding agent
 binaries (Claude Code, Codex, Grok CLI, OpenCode). Each is installed by the user and
@@ -14,7 +14,7 @@ See docs/00-compliance-and-auth.md.
 
 Third-party components bundled by this project keep their own licenses, with
 license texts in third_party/ and, inside the app, in Acknowledgements.txt (shown
-from Settings › About). The Business Source License applies to this project's own
+from Settings › About). The PolyForm Shield License applies to this project's own
 code, not to them.
 
   GRDB.swift   https://github.com/groue/GRDB.swift   MIT License

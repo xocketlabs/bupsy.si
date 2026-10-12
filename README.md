@@ -7,7 +7,7 @@
 **A Mac app where your AI bots live. They use the subscriptions you already pay for.**
 
 [![CI](https://github.com/xocketlabs/bupsy.si/actions/workflows/ci.yml/badge.svg)](https://github.com/xocketlabs/bupsy.si/actions/workflows/ci.yml)
-[![Licence: BUSL 1.1](https://img.shields.io/badge/licence-BUSL%201.1-blue)](LICENSE)
+[![Licence: PolyForm Shield 1.0.0](https://img.shields.io/badge/licence-PolyForm%20Shield%201.0.0-blue)](LICENSE)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
 
 [Website](https://bupsy.pages.dev) · [Download](https://github.com/xocketlabs/bupsy.si/releases/latest) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
@@ -144,15 +144,15 @@ problems privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## Licence
 
-**Source-available** under the [Business Source License 1.1](LICENSE), converting automatically to
-Apache-2.0 four years after each version is published. Licensed by Xocket Labs Inc., a Delaware
-corporation, part of [Xocket Foundry](https://xocket.sh/foundry).
+**Source-available** under the [PolyForm Shield License 1.0.0](LICENSE). Licensed by Xocket Labs
+Inc., a Delaware corporation, part of [Xocket Foundry](https://xocket.sh/foundry).
 
-Read it, use it free for yourself or inside your company, modify it, self-host it. You may not
-offer it to third parties as a product or hosted service until the Change Date. This is not an
-open-source licence by the OSI definition and we do not call it one —
-[docs/02-licence.md](docs/02-licence.md) explains the choice and what it cost. Third-party
-components keep their own licences; see [NOTICE](NOTICE).
+Use it free, personally or at work. Read it, change it, build it, share it. What you may not do is
+use it to make a product that competes with Bupsy: a fork, a clone, a rebranded or hosted version,
+paid or free. That rule does not expire. This is not an open-source licence by the OSI definition
+and we do not call it one; [docs/02-licence.md](docs/02-licence.md) explains the choice. Version
+0.2.0 and earlier were published under the Business Source License 1.1, which still applies to
+those versions. Third-party components keep their own licences; see [NOTICE](NOTICE).
 
 ---
 

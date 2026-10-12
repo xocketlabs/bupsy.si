@@ -1,100 +1,85 @@
-# Licence: Business Source License 1.1
+# Licence: PolyForm Shield 1.0.0
 
-> Not legal advice. A licence is a legal instrument, and the parameter block below is the part
-> that actually binds. The licensor is now named, which is what makes it enforceable at all; a
-> lawyer should still read the Additional Use Grant before the first public build.
+> Not legal advice. [LICENSE](../LICENSE) is the text that binds; this page explains it. Have a
+> lawyer read it before relying on it in a dispute.
 
 ## What we chose, and what it means
 
-bupsy.si is **source-available under BSL 1.1**, converting to **Apache-2.0 four years after each
-version is published**.
+bupsy.si is **source-available under the [PolyForm Shield License 1.0.0](../LICENSE)**, licensed by
+Xocket Labs Inc., a Delaware corporation.
 
 | | |
 |---|---|
 | Read the source | ✅ |
-| Use the app free, personally or inside your company | ✅ (Additional Use Grant) |
-| Modify it, build it, self-host it for your own use | ✅ |
-| Offer it to third parties as a product or hosted service | ❌ until the Change Date |
-| Everything becomes Apache-2.0 | ✅ automatically, 4 years per version |
+| Use the app free, personally or at work, in any company | ✅ |
+| Change it, build it, run it on machines you control | ✅ |
+| Share copies, with or without your changes | ✅ as long as it isn't a competing product |
+| Make a product that competes with Bupsy (a fork, clone, rebrand or hosted version, paid or free) | ❌ never |
+| Expires, or turns into an open-source licence later | ❌ no |
 
-This is the licence used by Sentry, MariaDB and HashiCorp's Terraform. It is **not** an
-open-source licence by the OSI definition, and we do not call it one.
+The licence's own test for competing: goods and services compete even across different interfaces,
+platforms and languages, and even when free; "if you market a product as a practical substitute for
+the software or another product, it definitely competes."
+
+It is **not** an open-source licence by the OSI definition, and we do not call it one.
+
+## History: BSL 1.1 until 0.2.0
+
+Bupsy 0.2.0 and earlier were published under the **Business Source License 1.1**, which forbade
+offering the work to third parties as a product or service and converted each version to
+Apache-2.0 four years after it was published. Licences already granted cannot be taken back, so
+**those versions keep those terms**, including their conversion (0.2.0's code becomes Apache-2.0 in
+October 2030). Everything after 0.2.0 is PolyForm Shield.
+
+We changed because BSL's conversion is compulsory: the licence requires a Change Date of at most four
+years. We wanted the protection against competing products to last, and PolyForm Shield is the
+standard, lawyer-drafted licence that does exactly that, while keeping the app free for everyone to
+use, including at work.
 
 ## Why this instead of the alternatives
 
-The original plan was Apache-2.0, positioned directly against OpenMausBot's open-core carve-out.
-That was dropped deliberately: Apache-2.0 lets anyone rebrand and ship bupsy as their own product,
-which is precisely what we could have done to them. The licence that prevents it is the licence
-that prevents us claiming to be more open than they are, and that trade was made with open eyes.
+- **Apache-2.0 / MIT**: no protection against a rebranded fork competing with us.
+- **BSL 1.1**: good protection, but it ends after at most four years per version.
+- **PolyForm Noncommercial**: would forbid using the app for paid work, which is most of our users.
+- **PolyForm Strict, or a custom no-derivatives licence**: blocks changes and contributions too.
+- **Fully proprietary, source private**: gives up readable source and outside contributions, for a
+  tool that runs agents on people's machines and where "you can read exactly what it does" matters.
 
-Considered and rejected:
-
-- **Apache-2.0 / MIT** — no protection against a rebranded fork competing with us.
-- **Fully proprietary, source private** — strongest protection, but gives up readable source,
-  outside contributions, and any credible claim to transparency for a tool that holds a user's
-  agent credentials. For a local-first privacy product, "you can read exactly what it does" is
-  worth real money.
-- **A custom no-derivatives licence** — closest to a literal "don't modify it", but unusual,
-  poorly understood, draws accusations of fake openness, makes contribution legally impossible,
-  and needs bespoke drafting.
-
-BSL keeps the source readable and the fork risk closed, and the four-year conversion means the
-openness claim is deferred rather than abandoned.
+One trade-off we accepted: Shield lets someone reuse a piece of our code inside an unrelated,
+non-competing product. BSL forbade that until its Change Date. Clones and competitors are blocked by
+both.
 
 ## What this changes about how we talk
 
-**Say:** "source-available", "free to use", "the source is public and becomes Apache-2.0 after four
-years", "no backend, no account, no telemetry".
+**Say:** "source-available", "free to use", "the source is public", "no backend, no account, no
+telemetry".
 
 **Never say:** "open source", "FOSS", "libre". It is not, and saying so invites exactly the
-criticism that hurts most — the audience most attracted to a local-first agent tool is the audience
-most likely to check.
+criticism that hurts most: the audience drawn to a local-first agent tool is the one most likely to
+check.
 
-PLAN.md §1 lists **three** differentiators, not four: native rather than Electron, lid-closed
-always-on, and MCP-native connectors. The openness argument was retired rather than weakened, which
-is the honest move. Three real advantages beat four where one is contested.
+## Consequences we live with
 
-## Consequences we have to live with
+### A CLA
 
-### A CLA is now necessary
+The Licensor must be able to license every line on the project's terms, today and if they change.
+Contributions therefore need the one-time [CLA](../CLA.md), agreed by ticking its box in a pull
+request.
 
-Under BSL the Licensor must be able to relicense the work — that is what makes the Change Date
-conversion to Apache-2.0 possible at all. Accepting a contribution with no agreement would leave
-code we cannot relicense, breaking the promise above.
+### The clean-room rule
 
-So contributions require a one-time CLA. `CONTRIBUTING.md` previously promised the opposite
-("No CLA, and there will never be one"), written when the plan was Apache-2.0. That promise is
-retracted before anyone relied on it, which is the only acceptable time to retract it.
-
-### The clean-room rule gets sharper, not softer
-
-Taking Apache-2.0 code from another project into a BSL work is possible but messy: the attribution
-and NOTICE obligations survive, those files keep their own terms, and the boundary has to be
-maintained forever. Do not do it casually. See `CONTRIBUTING.md` §2.
+Taking Apache-2.0 or MIT code from another project into this one is possible but messy: the
+attribution and NOTICE obligations survive, those files keep their own terms, and the boundary has
+to be maintained forever. Do not do it casually. See `CONTRIBUTING.md` §2.
 
 ### Third-party dependencies are unaffected
 
-GRDB, Sparkle, noVNC, libraries.dev packages and the rest keep their own licences, tracked in
-[NOTICE](../NOTICE) and `third_party/`. BSL applies to *our* code.
+GRDB.swift and Sparkle keep their own licences, tracked in [NOTICE](../NOTICE) and `third_party/`
+and shipped inside the app. Our licence applies to *our* code.
 
-### Vendor terms are a separate question entirely
+### Vendor terms are a separate question
 
-Our licence governs our source. It has no bearing on Anthropic's or OpenAI's terms, which govern
-how their binaries and credentials may be used. Both sets of rules apply at once, and
-[docs/00-compliance-and-auth.md](00-compliance-and-auth.md) is the one that can get the product
-shut down.
-
-## Before the repo goes public
-
-- [x] **Licensor set: Xocket Labs Inc., a Delaware corporation.** Both places in
-      [LICENSE](../LICENSE), and the copyright line in [NOTICE](../NOTICE).
-- [ ] Have a lawyer review the parameter block, especially the Additional Use Grant. Worth an
-      hour of someone's time before the first public build: the grant decides what a competitor
-      may do, and it is the clause that would actually be argued over.
-- [ ] Decide whether the Change Date is four years (HashiCorp) or shorter (Sentry uses three).
-      Shorter is a stronger good-faith signal; four is more protective.
-- [ ] Add `CLA.md` and a bot or checklist to record agreement.
-- [ ] Sweep all copy — README, site, store listing, social — for "open source". Replace with
-      "source-available".
-- [ ] Add the licence header or a `LICENSE` pointer to distributed builds; BSL requires the licence
-      to be conspicuously displayed.
+Our licence governs our source. It has no bearing on Anthropic's or OpenAI's terms, which govern how
+their binaries and credentials may be used. Both apply at once, and
+[docs/00-compliance-and-auth.md](00-compliance-and-auth.md) is the one that could get the product shut
+down.
