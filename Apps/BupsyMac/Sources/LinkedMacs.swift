@@ -47,7 +47,14 @@ final class LinkedMacs {
         self.model = model
         if let data = try? Data(contentsOf: file),
            let saved = try? JSONDecoder().decode([Link].self, from: data) {
-            links = saved
+            // An older Bupsy added a second link each time a Mac was paired again, which showed
+            // its bots twice. Keep the newest pairing per Mac and drop the rest with their keys.
+            let (kept, dropped) = RemoteClient.newestPerMac(saved, address: \.address)
+            links = kept
+            if !dropped.isEmpty {
+                for link in dropped { try? keys.remove(link.id) }
+                save()
+            }
         }
     }
 
@@ -81,13 +88,18 @@ final class LinkedMacs {
         let name = Host.current().localizedName ?? "Mac"
         let key = try await RemoteClient(address: address, key: nil).pair(code: code, name: name)
         let info = try await RemoteClient(address: address, key: key).sessionInfo()
-        let id = UUID().uuidString
+        // Pairing again with a Mac already linked (after a disconnect, say) renews that link
+        // rather than adding a second one: same id, so its bots keep theirs and show once.
+        let existing = links.firstIndex { RemoteClient.sameMac($0.address, address) }
+        let id = existing.map { links[$0].id } ?? UUID().uuidString
         #if DEBUG
         if Self.isTestLink { testKeys[id] = key } else { try keys.set(key, for: id) }
         #else
         try keys.set(key, for: id)
         #endif
-        links.append(Link(id: id, name: info.mac, address: address, kind: info.kind ?? "desktop"))
+        let link = Link(id: id, name: info.mac, address: address, kind: info.kind ?? "desktop")
+        if let existing { links[existing] = link } else { links.append(link) }
+        problems[id] = nil
         save()
         await refresh()
     }

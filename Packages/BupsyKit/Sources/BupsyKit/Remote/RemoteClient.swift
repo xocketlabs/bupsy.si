@@ -107,6 +107,36 @@ public struct RemoteClient: Sendable {
         return components.url
     }
 
+    /// Whether two addresses reach the same Mac: its Tailscale name and port, ignoring case, a
+    /// trailing dot and a left-out default port. A Mac has no other stable id over this API, so
+    /// this is how pairing again with a Mac already linked is told apart from a new one.
+    public static func sameMac(_ a: URL, _ b: URL) -> Bool {
+        func key(_ url: URL) -> String? {
+            guard let normal = normalisedAddress(url.absoluteString),
+                  let host = normal.host?.lowercased() else { return nil }
+            let trimmed = host.hasSuffix(".") ? String(host.dropLast()) : host
+            return "\(trimmed):\(normal.port ?? Tailscale.httpsPort)"
+        }
+        guard let left = key(a), let right = key(b) else { return false }
+        return left == right
+    }
+
+    /// One entry per Mac, keeping the newest (the last in the list, as links are appended), so a
+    /// Mac saved twice by an older Bupsy shows its bots once. Returns what was dropped too, so
+    /// their keys can be removed.
+    public static func newestPerMac<T>(_ items: [T], address: (T) -> URL) -> (kept: [T], dropped: [T]) {
+        var kept: [T] = []
+        var dropped: [T] = []
+        for item in items.reversed() {
+            if kept.contains(where: { sameMac(address($0), address(item)) }) {
+                dropped.append(item)
+            } else {
+                kept.append(item)
+            }
+        }
+        return (kept.reversed(), dropped.reversed())
+    }
+
     /// Pairs this Mac and returns the key the other Mac set, to keep in the Keychain.
     public func pair(code: String, name: String) async throws -> String {
         let (data, response) = try await send("POST", "/api/pair", body: ["code": code, "name": name], authenticated: false)

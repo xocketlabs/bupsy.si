@@ -299,3 +299,34 @@ struct RemoteUploadTests {
         #expect(try await client.upload(file, to: "b1") == "/Users/mini/bupsy/b1/Attachments/brief notes.txt")
     }
 }
+
+@Suite("Remote access: linked Macs")
+struct LinkedMacIdentityTests {
+    private func url(_ s: String) -> URL { URL(string: s)! }
+
+    @Test("the same Mac matches whatever the case, trailing dot or left-out port")
+    func sameMac() {
+        let mini = url("https://studio-mini.tail0000.ts.net:8443")
+        #expect(RemoteClient.sameMac(mini, url("https://Studio-Mini.tail0000.ts.net:8443")))
+        #expect(RemoteClient.sameMac(mini, url("https://studio-mini.tail0000.ts.net.:8443")))
+        #expect(RemoteClient.sameMac(mini, url("https://studio-mini.tail0000.ts.net")))
+        #expect(!RemoteClient.sameMac(mini, url("https://studio-book.tail0000.ts.net:8443")))
+        #expect(!RemoteClient.sameMac(mini, url("https://studio-mini.tail0000.ts.net:9443")))
+    }
+
+    @Test("a Mac saved twice keeps only its newest link, and says which were dropped")
+    func newestPerMac() {
+        struct Link: Equatable { let id: String; let address: URL }
+        let links = [
+            Link(id: "old-mini", address: url("https://mini.ts.net:8443")),
+            Link(id: "book", address: url("https://book.ts.net:8443")),
+            Link(id: "new-mini", address: url("https://MINI.ts.net")),
+        ]
+        let (kept, dropped) = RemoteClient.newestPerMac(links, address: \.address)
+        #expect(kept.map(\.id) == ["book", "new-mini"])
+        #expect(dropped.map(\.id) == ["old-mini"])
+        let (same, none) = RemoteClient.newestPerMac(Array(links.prefix(2)), address: \.address)
+        #expect(same.map(\.id) == ["old-mini", "book"])
+        #expect(none.isEmpty)
+    }
+}
