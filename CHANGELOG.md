@@ -5,6 +5,10 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Fixes**
+- Pairing again with a Mac that's already linked, after a disconnect say, no longer adds it a
+  second time, so its bots and chats show once. Macs saved twice by 0.2.0 are merged on launch.
+
 **bupsy.si**
 - The website has its own address: https://bupsy.si. Every page, llms.txt, agents.md, the sitemap,
   openapi.json, the MCP server card and the CLI now point there.
