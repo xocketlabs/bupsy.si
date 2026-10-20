@@ -804,12 +804,14 @@ struct FailureNotice: View {
                     if checking {
                         ProgressView().controlSize(.small)
                     } else {
-                        Text("Check sign-in")
+                        Text(bot.engine == .local ? "Check again" : "Check sign-in")
                     }
                 }
                 .buttonStyle(ThreadButtonStyle(kind: .secondary))
                 .disabled(checking)
-                .help("Ask \(bot.engine.displayName) whether it is signed in now")
+                .help(bot.engine == .local
+                      ? "Ask Ollama and LM Studio which models they have now"
+                      : "Ask \(bot.engine.displayName) whether it is signed in now")
             } else if failure.kind == .untrustedDirectory {
                 // Retrying in the same folder fails the same way. A different folder is the fix.
                 Button("Choose folder") { model.chooseWorkdir(for: bot) }
@@ -880,6 +882,11 @@ struct FailureNotice: View {
     /// What the last check found, in words. Nothing before a check.
     private var signInVerdict: String? {
         guard let signedInNow, let bot else { return nil }
+        if bot.engine == .local {
+            if signedInNow { return "A local model is ready now." }
+            return "Still can't run a local model. "
+                + AppModel.accountStatusLine(model.engineStatus[.local]) + ", then check again."
+        }
         if signedInNow { return "\(bot.engine.displayName) is signed in now." }
         let command = bot.engine == .codex ? "codex login" : "claude"
         return "Still can't run \(bot.engine.displayName). Run \(command) in Terminal and sign in, then check again."
@@ -1323,7 +1330,7 @@ struct Composer: View {
             perform(command, argument: argument)
             return
         }
-        if bot.engine == .codex, bot.remote == nil, let expansion = model.codexPromptExpansion(draft) {
+        if bot.engine.runsOnCodex, bot.remote == nil, let expansion = model.codexPromptExpansion(draft) {
             switch expansion {
             case .success(let prompt): onSend(prompt)
             case .failure(let problem): commandProblem = problem.description

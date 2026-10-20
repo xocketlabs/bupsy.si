@@ -11,15 +11,29 @@ struct ModelMenuItems: View {
 
     var body: some View {
         let options = model.models(for: bot)
+        if bot.engine == .local { localHeader(options) }
         ForEach(options.filter { $0.section == .standard }) { item($0) }
         section("Latest", options.filter { $0.section == .latest })
         section("Versions", options.filter { $0.section == .version })
         Divider()
+        if bot.engine == .local {
+            // The list is what Ollama and LM Studio had when last asked; a model pulled since
+            // shows up after asking again.
+            Button("Check for models") { Task { await model.refreshLocalModels() } }
+        }
         // A model typed in earlier stays visible and ticked, so it never looks like "Default".
         if let custom = bot.model, !options.contains(where: { $0.id == custom }) {
             Button { } label: { Label(custom, systemImage: "checkmark") }
         }
         Button("Custom model…") { model.customModelBot = bot }
+    }
+
+    /// With nothing installed there is nothing safe to pick, and the menu says why.
+    @ViewBuilder
+    private func localHeader(_ options: [ModelOption]) -> some View {
+        if options.isEmpty {
+            Text("No models found. Start Ollama or LM Studio and get a model.")
+        }
     }
 
     @ViewBuilder
@@ -72,13 +86,17 @@ struct CustomModelSheet: View {
         SheetFrame(
             title: "Custom model",
             icon: "slider.horizontal.3",
-            subtitle: "Any model ID \(bot.engine.displayName) accepts. Passed to it exactly as typed.",
+            subtitle: bot.engine == .local
+                ? "A model you have in Ollama or LM Studio. Bupsy checks it is installed before each run."
+                : "Any model ID \(bot.engine.displayName) accepts. Passed to it exactly as typed.",
             width: 440
         ) {
             Field(label: "Model ID",
-                  hint: "If the CLI is older than the model, it says so on the first run. "
-                      + "Updating the CLI fixes it.") {
-                TextField("", text: $id, prompt: Text(bot.engine == .codex ? "gpt-5.6" : "claude-opus-5-5"))
+                  hint: bot.engine == .local
+                      ? "ollama:<name> or lmstudio:<id>. A name on its own is looked up in both."
+                      : "If the CLI is older than the model, it says so on the first run. "
+                          + "Updating the CLI fixes it.") {
+                TextField("", text: $id, prompt: Text(placeholder))
                     .bupsyField()
                     .onSubmit(save)
             }
@@ -94,6 +112,14 @@ struct CustomModelSheet: View {
     }
 
     private var trimmed: String { id.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private var placeholder: String {
+        switch bot.engine {
+        case .codex: "gpt-5.6"
+        case .local: "ollama:qwen3:8b"
+        default: "claude-opus-5-5"
+        }
+    }
 
     private func save() {
         guard !trimmed.isEmpty else { return }

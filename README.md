@@ -32,7 +32,9 @@ and they ask before they act.
    not notarized yet. Open **System Settings › Privacy & Security**, scroll down, and click
    **Open Anyway** next to Bupsy. You only do this once.
 3. Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or
-   [Codex](https://github.com/openai/codex) and sign in once. Bupsy finds it.
+   [Codex](https://github.com/openai/codex) and sign in once. Bupsy finds it. Or run bots on a
+   model on your own Mac: install Codex plus [Ollama](https://ollama.com) or
+   [LM Studio](https://lmstudio.ai), get a model, and pick **Local model**. No account needed.
 4. Click **+**. Your new bot asks what it's for, names itself, and gets to work.
 
 Requires macOS 14 or later, on Apple silicon or Intel.
@@ -54,7 +56,7 @@ work on their servers. bupsy is the opposite shape.
 
 | | |
 |---|---|
-| **Chat** | Claude Code or Codex, switchable per bot, each keeping its own thread. Bubbles, tables, code with a Run button, attachments, replies, voice in and out |
+| **Chat** | Claude Code, Codex, or a local model in Ollama or LM Studio, switchable per bot, each keeping its own thread. Bubbles, tables, code with a Run button, attachments, replies, voice in and out |
 | **Teamwork** | Bots message each other, hand work on, create new bots, file bots into sections, and change each other's job, model or chat — within the trust you give them |
 | **Routines** | "Brief me every weekday at 7am" — runs with the app closed. Bots can schedule them too |
 | **Standing goals** | "My inbox has nothing older than a day" — it checks, and acts only when something is off |

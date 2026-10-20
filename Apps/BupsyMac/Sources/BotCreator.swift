@@ -177,7 +177,7 @@ struct BotCreatorSheet: View {
                         ForEach(EngineID.supported, id: \.self) { option in
                             Toggle(isOn: Binding(
                                 get: { engine == option },
-                                set: { if $0 { engine = option; modelID = nil } })) {
+                                set: { if $0 { engine = option; modelID = startingModel(for: option) } })) {
                                 Text(option.displayName)
                             }
                         }
@@ -307,7 +307,13 @@ struct BotCreatorSheet: View {
     }
 
     private var modelLabel: String {
-        modelOptions.first { $0.id == modelID }?.label ?? modelID ?? "Default"
+        modelOptions.first { $0.id == modelID }?.label ?? modelID ?? (engine == .local ? "None installed" : "Default")
+    }
+
+    /// The model a bot starts on with this engine: the CLI's default, or for a local model, the
+    /// first one installed, since "whatever Codex picks" there means a download.
+    private func startingModel(for engine: EngineID) -> String? {
+        engine == .local ? model.localModels.first?.id : nil
     }
 
     // MARK: - Load and save
@@ -330,6 +336,7 @@ struct BotCreatorSheet: View {
             if let initialSection { folder = initialSection }
             // The first engine that is ready, so a new bot can actually run.
             engine = model.defaultNewBotEngine
+            modelID = startingModel(for: engine)
             // A fresh bot starts on a shape nobody else wears, in any of the eight colours.
             shape = BotShape.allCases.first { !taken.contains($0) } ?? .bup
             colour = Int.random(in: BotShape.palette.indices)

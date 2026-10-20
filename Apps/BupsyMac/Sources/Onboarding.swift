@@ -275,7 +275,8 @@ struct OnboardingSheet: View {
 
     private func enginesScene(_ s: CGFloat) -> some View {
         let left = EngineID.supported.first ?? .claude
-        let right = EngineID.supported.last ?? .codex
+        // The two account engines on the stage; a local model is listed with them below.
+        let right = EngineID.supported.dropFirst().first ?? .codex
         return VStack(spacing: 18) {
             MascotStageBubble(text: engineLine)
                 .frame(maxWidth: 300)
@@ -676,7 +677,7 @@ struct OnboardingSheet: View {
     private var engines: some View {
         VStack(alignment: .leading, spacing: Theme.Space.gutter) {
             heading("What's signed in",
-                    "Bots run under your own sign-in. One engine is enough to start.",
+                    "Bots run under your own sign-in, or on a model on this Mac. One engine is enough to start.",
                     size: 36, body: 16)
             VStack(spacing: Theme.Space.step) {
                 ForEach(EngineID.supported, id: \.self) { engine in
@@ -684,24 +685,15 @@ struct OnboardingSheet: View {
                 }
             }
             if readyEngines.count > 1 {
-                Text("Your first bot runs on \(engine.displayName). Click the other to switch.")
+                Text("Your first bot runs on \(engine.displayName). Click \(readyEngines.count > 2 ? "another" : "the other") to switch.")
                     .font(Theme.Typography.label)
                     .foregroundStyle(palette.mutedForeground)
             }
             ForEach(missingEngines, id: \.self) { missing in
-                VStack(alignment: .leading, spacing: Theme.Space.snug) {
-                    if isNotInstalled(missing) {
-                        Text("To add \(missing.displayName), install it in Terminal, then sign in with \(AppModel.signInCommand(for: missing))")
-                            .font(Theme.Typography.label)
-                            .foregroundStyle(palette.mutedForeground)
-                            .fixedSize(horizontal: false, vertical: true)
-                        commandBox(AppModel.installCommand(for: missing))
-                    } else {
-                        Text("To add \(missing.displayName), run this once in Terminal and sign in")
-                            .font(Theme.Typography.label)
-                            .foregroundStyle(palette.mutedForeground)
-                        commandBox(AppModel.signInCommand(for: missing))
-                    }
+                if missing == .local {
+                    localSetup
+                } else {
+                    accountSetup(missing)
                 }
             }
             if !isChecking && !readyEngines.isEmpty && readyEngines.count < EngineID.supported.count {
@@ -722,6 +714,48 @@ struct OnboardingSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+        }
+    }
+
+    /// How to add an engine that runs on an account: install it, or sign in.
+    private func accountSetup(_ missing: EngineID) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            if isNotInstalled(missing) {
+                Text("To add \(missing.displayName), install it in Terminal, then sign in with \(AppModel.signInCommand(for: missing))")
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                commandBox(AppModel.installCommand(for: missing))
+            } else {
+                Text("To add \(missing.displayName), run this once in Terminal and sign in")
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(palette.mutedForeground)
+                commandBox(AppModel.signInCommand(for: missing))
+            }
+        }
+    }
+
+    /// How to add a local model: Codex first, then Ollama or LM Studio with a model in it. Shown
+    /// as commands to copy; Bupsy runs neither, since a model is a download of several gigabytes.
+    private var localSetup: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            if isNotInstalled(.local) {
+                Text("Local model runs through Codex. To add it, install Codex, then Ollama or LM Studio with a model")
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                commandBox(AppModel.installCommand(for: .local))
+            } else {
+                Text("To add Local model, install Ollama (ollama.com) or LM Studio (lmstudio.ai), start it and get a model")
+                    .font(Theme.Typography.label)
+                    .foregroundStyle(palette.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                commandBox(AppModel.signInCommand(for: .local))
+            }
+            Text(AppModel.localModelAdvice)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(palette.mutedForeground)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -1067,6 +1101,7 @@ struct OnboardingSheet: View {
         let current = engine
         if model.engineStatus[current]?.isUsable == true { return current.displayName }
         if isNotInstalled(current) { return "\(current.displayName), install it first" }
+        if current == .local { return "\(current.displayName), set it up first" }
         return "\(current.displayName), sign in first"
     }
 
@@ -1230,15 +1265,16 @@ struct OnboardingSheet: View {
 
     private var engineLine: String {
         if isChecking { return "Checking what's signed in…" }
-        if missingEngines.isEmpty { return "Both engines found!" }
+        if missingEngines.isEmpty { return "Every engine found!" }
         if readyEngines.isEmpty {
-            return missingEngines.allSatisfy { isNotInstalled($0) } ? "Neither is installed yet." : "Nothing's signed in yet."
+            return missingEngines.allSatisfy { isNotInstalled($0) } ? "None is installed yet." : "Nothing's ready yet."
         }
         let ready = readyEngines.map(\.displayName).joined(separator: " and ")
-        let missing = missingEngines.map { engine in
-            isNotInstalled(engine) ? "\(engine.displayName) isn't installed." : "\(engine.displayName) needs a sign-in."
+        let missing = missingEngines.map { engine -> String in
+            if isNotInstalled(engine) { return "\(engine.displayName) isn't installed." }
+            return engine == .local ? "\(engine.displayName) isn't set up." : "\(engine.displayName) needs a sign-in."
         }
-        return "\(ready) is ready.\n" + missing.joined(separator: "\n")
+        return "\(ready) \(readyEngines.count > 1 ? "are" : "is") ready.\n" + missing.joined(separator: "\n")
     }
 
     private var engineMood: BotMood {
@@ -1259,6 +1295,7 @@ struct OnboardingSheet: View {
         case .signedInWithoutModelAccess: "Can't run models"
         case .signedOut: "Not signed in"
         case .notInstalled: "Not installed"
+        case .notReady: "Not set up"
         case .unknown: "Not ready"
         }
     }

@@ -64,7 +64,8 @@ final class SlashCommandLibrary {
         let home = FileManager.default.homeDirectoryForCurrentUser
         switch engine {
         case .claude: return ClaudeCommands.builtIns + ClaudeCommands.discover(home: home, workdir: workdir)
-        case .codex: return CodexPrompts.discover(in: CodexPrompts.folder(home: home))
+        // A local model runs on codex, which reads the same custom prompts.
+        case .codex, .local: return CodexPrompts.discover(in: CodexPrompts.folder(home: home))
         case .grok, .opencode: return []
         }
     }

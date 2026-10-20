@@ -272,9 +272,20 @@ private struct EnginesSettingsSection: View {
                 .foregroundStyle(palette.mutedForeground)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Theme.Space.hairline)
+            localNote
         }
         // Coming back from Terminal is handled once, by the window: it asks the engines again if
         // a sign-in or sign-out was opened. See BupsyApp.
+    }
+
+    /// What the local engine is, and which models suit it.
+    private var localNote: some View {
+        Text("Local model runs bots through Codex on a model in Ollama or LM Studio on this Mac: "
+             + "no account and no plan limits. " + AppModel.localModelAdvice)
+            .font(Theme.Typography.caption)
+            .foregroundStyle(palette.mutedForeground)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, Theme.Space.hairline)
     }
 
     private func engineRow(_ engine: EngineID, showsDivider: Bool) -> some View {
@@ -314,7 +325,9 @@ private struct EnginesSettingsSection: View {
                         .help(AppModel.accountStatusLine(status))
                 }
                 Spacer(minLength: Theme.Space.snug)
-                if status != nil {
+                if engine == .local {
+                    localAction(status)
+                } else if status != nil {
                     if signedIn {
                         Button("Sign out…") { signingOut = engine }
                             .buttonStyle(QuietButton(compact: true))
@@ -329,6 +342,17 @@ private struct EnginesSettingsSection: View {
             .padding(.horizontal, Theme.Space.step)
             .padding(.vertical, Theme.Space.snug)
             .frame(minHeight: 52)
+        }
+    }
+
+    /// A local model has no sign-in. Until one can run, the button is where to get a runtime;
+    /// Bupsy installs and downloads nothing itself.
+    @ViewBuilder
+    private func localAction(_ status: AuthStatus?) -> some View {
+        if let status, !status.isUsable, status != .notInstalled {
+            Button("Get Ollama") { NSWorkspace.shared.open(AppModel.ollamaDownloadURL) }
+                .buttonStyle(QuietButton(compact: true))
+                .help("Opens ollama.com. LM Studio (lmstudio.ai) works too.")
         }
     }
 

@@ -510,6 +510,10 @@ struct BotPage: View {
                         // Says why a long thread is cheaper than its token count suggests, and
                         // why "sent" is so much larger than anything that was typed.
                         FactRow(label: "Largest turn", value: Self.compact(counted.max() ?? 0))
+                        // No plan behind a local model, so no limits to show: say why they are absent.
+                        if !bot.engine.hasPlanLimits {
+                            FactRow(label: "Plan limits", value: "None. Runs on this Mac")
+                        }
                         // Labelled as a value, never a bill: on a subscription nobody pays per
                         // token. Absent rather than "$0" for engines that report no figure.
                         if let cost = model.usage(for: bot)?.costUSD {
@@ -557,7 +561,7 @@ struct BotPage: View {
                 .help(model.isRunning(bot.id)
                       ? "Stop \(bot.name) or wait for it to finish to switch engines"
                       : "Each engine keeps its own conversation")
-                BotPanelMenuRow(label: "Model", value: modelLabel ?? "Default") {
+                BotPanelMenuRow(label: "Model", value: modelLabel ?? (bot.engine == .local ? "Pick one" : "Default")) {
                     ModelMenuItems(bot: bot)
                 }
                 BotPanelMenuRow(label: "Runs on", value: model.moving[bot.id].map { "Moving to \($0)…" } ?? machineName) {

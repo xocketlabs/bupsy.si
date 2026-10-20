@@ -5,6 +5,15 @@ PR as the change; the release moves it under a version.
 
 ## Unreleased
 
+**Local models**
+- A third engine, **Local model**: bots run on a model in your own Ollama or LM Studio, through
+  Codex's local mode. No account and no plan limits: the model runs on your Mac.
+- The Model menu lists the models you have installed, read live from Ollama and LM Studio. A bot
+  never starts a download: a run with no model picked, or one that isn't installed, stops and
+  says so.
+- Onboarding and Settings say what's missing (Codex, a running Ollama or LM Studio, or a model)
+  and which models handle a bot's tools well.
+
 **Fixes**
 - Pairing again with a Mac that's already linked, after a disconnect say, no longer adds it a
   second time, so its bots and chats show once. Macs saved twice by 0.2.0 are merged on launch.
