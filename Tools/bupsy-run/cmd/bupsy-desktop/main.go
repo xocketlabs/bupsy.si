@@ -52,7 +52,7 @@ func main() {
 	codexBinary := flag.String("codex-binary", "", "path to the codex binary, if it is not on PATH")
 
 	newBot := flag.String("new-bot", "", "make a bot with this name, then exit")
-	engineID := flag.String("engine", "claude", "with --new-bot: claude or codex")
+	engineID := flag.String("engine", "claude", "with --new-bot: claude, codex or local")
 	job := flag.String("job", "", "with --new-bot: what the bot is for, put before every message it gets")
 	role := flag.String("role", "", "with --new-bot: a short tag shown beside its name")
 	section := flag.String("section", "", "with --new-bot: the sidebar section to file it under")

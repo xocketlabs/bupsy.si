@@ -333,3 +333,14 @@ func TestCodexRunsWithoutAGate(t *testing.T) {
 		t.Errorf("codex argv %q: an ask bot should get the read-only sandbox", run)
 	}
 }
+
+// A bot on the local engine runs Codex's local mode, on the codex binary. Before this case existed
+// an engine the runner did not know fell through to Claude.
+func TestLocalBotsRunOnCodexLocalMode(t *testing.T) {
+	r := &Runner{opts: Options{Binaries: map[string]string{"codex": "/opt/codex"}}}
+	adapter, binary := r.adapter("local")
+	local, ok := adapter.(engine.Local)
+	if !ok || binary != "codex" || local.Binary != "/opt/codex" {
+		t.Fatalf("adapter(\"local\") = %T %q (binary %q), want engine.Local on codex", adapter, binary, local.Binary)
+	}
+}

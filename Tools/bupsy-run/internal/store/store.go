@@ -131,7 +131,7 @@ func (s *Store) discover() {
 }
 
 // Engines a bot may run on.
-var Engines = []string{"claude", "codex"}
+var Engines = []string{"claude", "codex", "local"}
 
 // AddBot validates and saves a new bot, filling in what was left out.
 func (s *Store) AddBot(bot Bot) (Bot, error) {
@@ -143,7 +143,7 @@ func (s *Store) AddBot(bot Bot) (Bot, error) {
 		return Bot{}, errors.New("a bot's name can be at most 40 characters")
 	}
 	if !contains(Engines, bot.Engine) {
-		return Bot{}, fmt.Errorf("unknown engine %q (want claude or codex)", bot.Engine)
+		return Bot{}, fmt.Errorf("unknown engine %q (want claude, codex or local)", bot.Engine)
 	}
 	if bot.Autonomy == "" {
 		// The bottom of the ladder, as on the Mac: a new bot asks before everything until the

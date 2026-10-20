@@ -83,7 +83,7 @@ type ConnectorState struct {
 
 // Adapter turns one engine's native output into canonical events.
 type Adapter interface {
-	// ID is the engine's name: "claude", "codex".
+	// ID is the engine's name: "claude", "codex", "local".
 	ID() string
 	// Command is the binary and arguments for a run.
 	Command(req Request) (string, []string)

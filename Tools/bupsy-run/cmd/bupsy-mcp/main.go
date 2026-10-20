@@ -302,7 +302,7 @@ func manageBotTool() map[string]any {
 				},
 				"engine": map[string]any{
 					"type":        "string",
-					"description": "\"claude\" or \"codex\". Switching engines also switches to that engine's own conversation, and resets the model to its default.",
+					"description": "\"claude\", \"codex\" or \"local\" (a model in Ollama or LM Studio on this Mac). Switching engines also switches to that engine's own conversation, and resets the model to its default.",
 				},
 				"fresh_chat": map[string]any{"type": "boolean", "description": "Start a new conversation, leaving the old context behind."},
 				"message": map[string]any{
@@ -538,8 +538,8 @@ func call(params json.RawMessage, outbox, sender string) map[string]any {
 		if job == "" && role == "" && model == "" && engine == "" && !args.Fresh && message == "" {
 			return toolError("give at least one of job, role, model, engine, fresh_chat or message")
 		}
-		if engine != "" && engine != "claude" && engine != "codex" {
-			return toolError("engine is \"claude\" or \"codex\"")
+		if engine != "" && engine != "claude" && engine != "codex" && engine != "local" {
+			return toolError("engine is \"claude\", \"codex\" or \"local\"")
 		}
 		if err := drop(outbox, map[string]any{
 			"kind": "manage_bot", "from": sender, "bot": bot, "job": job, "role": role,
