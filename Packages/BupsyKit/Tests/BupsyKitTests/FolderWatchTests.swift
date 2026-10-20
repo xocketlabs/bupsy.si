@@ -65,6 +65,7 @@ struct FolderWatchTests {
         #expect(refused(data + "/workspaces/ABC"))
         #expect(refused("/Users/x/.claude"))
         #expect(refused("/Users/x/.codex/sessions"))
+        #expect(refused("/Users/x/.ollama/logs"), "a local model's runtime logs every run")
         #expect(!refused("/Users/x/Downloads"))
         #expect(!refused("/Users/x/Library/Mobile Documents/com~apple~CloudDocs"))
         #expect(!refused("/Users/xavier"), "a different home that merely starts the same")

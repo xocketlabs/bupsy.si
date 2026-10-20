@@ -74,10 +74,14 @@ public struct FolderWatch: Sendable, Equatable, Identifiable, Codable {
     /// is almost always a run's own doing, so reacting to it starts another run, which writes
     /// there again: a loop that spends the person's quota until someone notices.
     ///
+    /// A local model's runtime counts too: Ollama logs to `~/.ollama` and LM Studio to
+    /// `~/.lmstudio` while a local-model bot works.
+    ///
     /// `~/Library` is only left out when the watch is above it: a folder picked inside it on
     /// purpose (iCloud Drive and the cloud-storage folders live there) is watched normally.
     static func busyFolders(home: String, appData: String) -> (always: [String], library: String) {
-        (always: [appData, home + "/.claude", home + "/.codex"], library: home + "/Library")
+        (always: [appData, home + "/.claude", home + "/.codex", home + "/.ollama", home + "/.lmstudio"],
+         library: home + "/Library")
     }
 
     /// Bupsy's data folder (bots' own folders live in it), read once: the environment that can move

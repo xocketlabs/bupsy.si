@@ -128,11 +128,17 @@ public enum AuthStatus: Sendable, Equatable {
     /// The CLI itself is not on this Mac: not in the usual install folders and not on the login
     /// shell's PATH. Told apart from `.signedOut` because the fix is installing it, not signing in.
     case notInstalled
+    /// Installed, but something outside Bupsy has to happen before it can run, and the message
+    /// says what in plain words: for a local model, starting Ollama or LM Studio, or pulling a
+    /// model. Told apart from `.signedOut` because there is no account to sign in to.
+    case notReady(String)
     case unknown(String)
 
     public enum Method: String, Sendable, Codable {
         case subscription
         case apiKey
+        /// No account at all: the model runs on this Mac, in the person's own runtime.
+        case onThisMac
     }
 
     /// True only when a run would actually be expected to work.
@@ -191,4 +197,21 @@ public protocol EngineAdapter: Sendable {
     /// Translates one line of engine output into canonical events. Stateful adapters may
     /// buffer internally; this is called in order and must never drop input.
     func normalise(_ output: HostOutput) -> [AgentEvent]
+
+    /// Called just before a run starts, off the main thread. Returns the request to run, possibly
+    /// with its model made exact, or throws `RunRefused` to stop the run before anything is
+    /// spawned. Most engines take the request as it is; a local model checks that the model it
+    /// names is really installed, because Codex would otherwise download one on its own.
+    func prepare(_ request: RunRequest) async throws -> RunRequest
+}
+
+extension EngineAdapter {
+    public func prepare(_ request: RunRequest) async throws -> RunRequest { request }
+}
+
+/// A run stopped before it began, with the failure to show for it.
+public struct RunRefused: Error, Sendable, Equatable, LocalizedError {
+    public let failure: EngineFailure
+    public init(_ failure: EngineFailure) { self.failure = failure }
+    public var errorDescription: String? { failure.message }
 }

@@ -1,0 +1,17 @@
+[
+  {
+    "request": { "prompt": "list the files", "autonomy": "ask", "model": "ollama:qwen3:8b" },
+    "argv": ["exec", "--json", "--oss", "--local-provider", "ollama", "--sandbox", "read-only", "--skip-git-repo-check", "-m", "qwen3:8b", "list the files"],
+    "why": "a local model is Codex's local mode. The stored model id is '<provider>:<name>', split at the FIRST colon only, so an Ollama tag keeps its own colon: '--local-provider ollama -m qwen3:8b'. '-m' is always present: without it, `codex exec --oss` downloads gpt-oss:20b (about 13 GB) on its own"
+  },
+  {
+    "request": { "prompt": "carry on", "autonomy": "trusted", "resume": "01a0fc87-6711", "model": "lmstudio:qwen/qwen3-8b", "workingDir": "/tmp/work" },
+    "argv": ["exec", "--json", "--oss", "--local-provider", "lmstudio", "--sandbox", "workspace-write", "-m", "qwen/qwen3-8b", "-C", "/tmp/work", "resume", "01a0fc87-6711", "carry on"],
+    "why": "every option goes on `exec`, BEFORE `resume`, as for Codex: `codex exec resume` has no --oss or --local-provider of its own (checked against codex-cli 0.160). Everything else, sandbox per trust level included, is exactly the Codex engine's"
+  },
+  {
+    "request": { "prompt": "ship it", "autonomy": "auto", "model": "ollama:gpt-oss:20b" },
+    "argv": ["exec", "--json", "--oss", "--local-provider", "ollama", "--sandbox", "danger-full-access", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-oss:20b", "ship it"],
+    "why": "the top of the ladder, reached only after the user typed a confirmation, the same as Codex"
+  }
+]
