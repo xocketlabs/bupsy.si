@@ -93,3 +93,15 @@ func TestLocalSurfacesCodexRuntimeCheck(t *testing.T) {
 		t.Errorf("got %v", events)
 	}
 }
+
+func TestLocalDropsCodexFallbackMetadataWarning(t *testing.T) {
+	warning := `{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for ` + "`qwen3:8b`" + ` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}`
+	if events := (Local{}).Normalise(warning); len(events) != 0 {
+		t.Fatalf("the fallback-metadata warning must not be an event, got %+v", events)
+	}
+	other := `{"type":"item.completed","item":{"id":"item_1","type":"error","message":"stream disconnected before completion"}}`
+	events := (Local{}).Normalise(other)
+	if len(events) != 1 || events[0].Kind != KindFailed || events[0].Message != "stream disconnected before completion" {
+		t.Fatalf("any other error item stays a failure, got %+v", events)
+	}
+}

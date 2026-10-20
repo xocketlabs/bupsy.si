@@ -55,6 +55,44 @@ public enum LocalProvider: String, Sendable, Codable, CaseIterable {
     }
 }
 
+extension LocalProvider {
+    /// Where to ask how long a model's context window is, and the body to send (nil for a GET).
+    ///
+    /// Codex has no metadata for most local models and writes a fallback window (258,400 on
+    /// codex 0.160) into its session file, so the meter would be wrong without this. Ollama answers
+    /// `POST /api/show {"model": …}`; LM Studio answers `GET /api/v0/models/<id>`.
+    public func contextRequest(for name: String) -> (url: URL, body: Data?) {
+        switch self {
+        case .ollama:
+            let body = try? JSONSerialization.data(withJSONObject: ["model": name])
+            return (URL(string: "http://localhost:11434/api/show")!, body)
+        case .lmstudio:
+            let escaped = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+            return (URL(string: "http://localhost:1234/api/v0/models/\(escaped)")!, nil)
+        }
+    }
+
+    /// The model's context length in a provider's reply, or nil when it does not say.
+    ///
+    /// Ollama: `model_info["<architecture>.context_length"]`, e.g. `qwen3.context_length: 40960`.
+    /// LM Studio: `loaded_context_length` when the model is loaded (what it actually runs with),
+    /// otherwise `max_context_length`.
+    public func contextLength(in data: Data) -> Int? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        switch self {
+        case .ollama:
+            guard let info = object["model_info"] as? [String: Any] else { return nil }
+            let lengths = info.filter { $0.key.hasSuffix(".context_length") }.compactMap { ($0.value as? NSNumber)?.intValue }
+            return lengths.filter { $0 > 0 }.max()
+        case .lmstudio:
+            for key in ["loaded_context_length", "max_context_length"] {
+                if let value = (object[key] as? NSNumber)?.intValue, value > 0 { return value }
+            }
+            return nil
+        }
+    }
+}
+
 /// One installed model, and the provider it is in.
 ///
 /// Stored as a bot's model id in the form `<provider>:<name>`, e.g. `ollama:qwen3:8b` or
@@ -189,11 +227,15 @@ public struct LocalRuntime: Sendable, Equatable {
 public struct LocalDiscovery: Sendable {
     /// Returns the body of a successful GET, or throws.
     public typealias Fetch = @Sendable (URL) async throws -> Data
+    /// A GET, or a POST of the given JSON body; returns the body of a successful reply, or throws.
+    public typealias Send = @Sendable (URL, Data?) async throws -> Data
 
     private let fetch: Fetch
+    private let send: Send
 
-    public init(fetch: @escaping Fetch = LocalDiscovery.localhost) {
+    public init(fetch: @escaping Fetch = LocalDiscovery.localhost, send: @escaping Send = LocalDiscovery.localhostSend) {
         self.fetch = fetch
+        self.send = send
     }
 
     public func discover() async -> LocalRuntime {
@@ -209,6 +251,14 @@ public struct LocalDiscovery: Sendable {
         return runtime
     }
 
+    /// How long a model's context window is, from its own provider, or nil when it does not say
+    /// or is not running. Used in place of the fallback window Codex writes for local models.
+    public func contextLength(of model: LocalModel) async -> Int? {
+        let request = model.provider.contextRequest(for: model.name)
+        guard let data = try? await send(request.url, request.body) else { return nil }
+        return model.provider.contextLength(in: data)
+    }
+
     private func names(from provider: LocalProvider) async -> [String]? {
         guard let data = try? await fetch(provider.modelsURL) else { return nil }
         return provider.modelNames(in: data)
@@ -217,6 +267,21 @@ public struct LocalDiscovery: Sendable {
     /// A plain GET to localhost: no cookies, no cache, no proxy, 1.5 seconds at most.
     public static let localhost: Fetch = { url in
         let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return data
+    }
+
+    /// The same, with an optional JSON body sent as a POST.
+    public static let localhostSend: Send = { url, body in
+        var request = URLRequest(url: url)
+        if let body {
+            request.httpMethod = "POST"
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }

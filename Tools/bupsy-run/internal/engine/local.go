@@ -187,7 +187,34 @@ func getLocalhost(ctx context.Context, url string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(response.Body, 4<<20))
 }
 
-func (l Local) Normalise(line string) []Event { return Codex{}.Normalise(line) }
+func (l Local) Normalise(line string) []Event {
+	if isFallbackMetadataWarning(line) {
+		return nil
+	}
+	return Codex{}.Normalise(line)
+}
+
+// isFallbackMetadataWarning is Codex's note at the start of every local turn, sent as an error
+// item: "Model metadata for `qwen3:8b` not found. Defaulting to fallback metadata; …". The turn
+// goes on and answers, so it is a warning, not a failure. Seen on codex 0.160 with Ollama.
+func isFallbackMetadataWarning(line string) bool {
+	if !strings.Contains(line, "fallback metadata") {
+		return false
+	}
+	var event struct {
+		Type string `json:"type"`
+		Item struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"item"`
+	}
+	if json.Unmarshal([]byte(line), &event) != nil {
+		return false
+	}
+	return event.Type == "item.completed" && event.Item.Type == "error" &&
+		strings.HasPrefix(event.Item.Message, "Model metadata for") &&
+		strings.Contains(event.Item.Message, "Defaulting to fallback metadata")
+}
 
 func (l Local) NormaliseStderr(raw string) []Event {
 	// Codex's own check that the runtime is up: "Error: OSS setup failed: No running Ollama server

@@ -255,3 +255,64 @@ struct LocalStatusTests {
         #expect(!EngineID.local.hasPlanLimits && EngineID.claude.hasPlanLimits)
     }
 }
+
+/// Found running codex 0.160 against a real Ollama: every local turn opens with a warning item,
+/// and the session file carries a made-up window. Both are handled here.
+@Suite("Local model: what a real run looks like")
+struct LocalRealRunTests {
+    /// The first lines of a real `codex exec --json --oss --local-provider ollama -m qwen3:8b` turn.
+    static let warning = #"{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `qwen3:8b` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}"#
+    static let reply = #"{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"ok"}}"#
+    static let realError = #"{"type":"item.completed","item":{"id":"item_1","type":"error","message":"stream disconnected before completion"}}"#
+
+    @Test("Codex's fallback-metadata warning is not shown as a failure, and the reply still is")
+    func dropsTheWarning() {
+        let adapter = LocalAdapter(discovery: LocalDiscovery(fetch: { _ in throw URLError(.cannotConnectToHost) }))
+        #expect(adapter.normalise(.stdout(Self.warning)).isEmpty)
+        #expect(adapter.normalise(.stdout(Self.reply)) == [.text("ok")])
+        // Any other error item is still a failure.
+        let other = adapter.normalise(.stdout(Self.realError))
+        #expect(other.count == 1)
+        if case .failed(let failure)? = other.first {
+            #expect(failure.message == "stream disconnected before completion")
+        } else {
+            Issue.record("a real error item must stay a failure")
+        }
+    }
+
+    @Test("the context window comes from the provider: Ollama's /api/show, LM Studio's model")
+    func contextLength() {
+        let show = Data(#"{"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960,"qwen3.embedding_length":4096}}"#.utf8)
+        #expect(LocalProvider.ollama.contextLength(in: show) == 40960)
+        let loaded = Data(#"{"id":"qwen/qwen3-8b","state":"loaded","max_context_length":40960,"loaded_context_length":8192}"#.utf8)
+        #expect(LocalProvider.lmstudio.contextLength(in: loaded) == 8192)
+        let unloaded = Data(#"{"id":"qwen/qwen3-8b","state":"not-loaded","max_context_length":40960}"#.utf8)
+        #expect(LocalProvider.lmstudio.contextLength(in: unloaded) == 40960)
+        #expect(LocalProvider.ollama.contextLength(in: Data(#"{"model_info":{}}"#.utf8)) == nil)
+        #expect(LocalProvider.ollama.contextLength(in: Data("not json".utf8)) == nil)
+    }
+
+    @Test("Ollama is asked with a POST naming the model; LM Studio with a GET of its id")
+    func contextRequests() throws {
+        let ollama = LocalProvider.ollama.contextRequest(for: "qwen3:8b")
+        #expect(ollama.url.absoluteString == "http://localhost:11434/api/show")
+        let body = try JSONSerialization.jsonObject(with: try #require(ollama.body)) as? [String: String]
+        #expect(body == ["model": "qwen3:8b"])
+        let lmstudio = LocalProvider.lmstudio.contextRequest(for: "qwen/qwen3-8b")
+        #expect(lmstudio.url.absoluteString == "http://localhost:1234/api/v0/models/qwen/qwen3-8b")
+        #expect(lmstudio.body == nil)
+    }
+
+    @Test("a bot's model id finds its window through the adapter, and an unknown one finds none")
+    func adapterContextLength() async {
+        let adapter = LocalAdapter(discovery: LocalDiscovery(
+            fetch: { _ in throw URLError(.cannotConnectToHost) },
+            send: { url, _ in
+                guard url.path == "/api/show" else { throw URLError(.badServerResponse) }
+                return Data(#"{"model_info":{"qwen3.context_length":40960}}"#.utf8)
+            }))
+        #expect(await adapter.contextLength(of: "ollama:qwen3:8b") == 40960)
+        #expect(await adapter.contextLength(of: "lmstudio:qwen/qwen3-8b") == nil)
+        #expect(await adapter.contextLength(of: nil) == nil)
+    }
+}

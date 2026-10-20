@@ -93,10 +93,16 @@ extension AppModel {
         // A local model runs on codex, which writes the same session files for it.
         if bot.engine.runsOnCodex {
             let id = conversation.rawValue
+            // Codex has no metadata for most local models and writes a made-up window for them,
+            // so a local bot's window comes from its own provider instead.
+            let local = bot.engine == .local ? adapters[.local] as? LocalAdapter : nil
+            let model = bot.model
             Task { [weak self] in
                 let reading = await Task.detached(priority: .utility) { CodexSessions.latest(conversation: id) }.value
+                let window = await local?.contextLength(of: model)
                 guard let self, let reading, thread.conversationID == conversation else { return }
-                if let context = reading.context {
+                if var context = reading.context {
+                    if local != nil { context.window = window }
                     var usage = thread.latestUsage ?? Usage()
                     usage.context = context
                     thread.latestUsage = usage

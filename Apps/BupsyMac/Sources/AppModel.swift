@@ -147,7 +147,7 @@ final class AppModel {
         #endif
         return LocalHost()
     }
-    private let adapters: [EngineID: any EngineAdapter] = [
+    let adapters: [EngineID: any EngineAdapter] = [
         .claude: ClaudeAdapter(),
         .codex: CodexAdapter(),
         .local: LocalAdapter(),

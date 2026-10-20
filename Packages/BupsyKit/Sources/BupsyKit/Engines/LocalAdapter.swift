@@ -135,6 +135,29 @@ public struct LocalAdapter: EngineAdapter {
                 return [.failed(EngineFailure(kind: .notSignedIn, message: reason))]
             }
         }
+        if case .stdout(let line) = output, Self.isFallbackMetadataWarning(line) { return [] }
         return codex.normalise(output)
+    }
+
+    /// Codex's note at the start of every local turn, as an `error` item: "Model metadata for
+    /// `qwen3:8b` not found. Defaulting to fallback metadata; …". It is a warning, not a failure:
+    /// the turn goes on and answers. Shown as one, every local reply would read as broken. The
+    /// one thing it gets wrong, the context window, Bupsy asks the provider for instead.
+    static func isFallbackMetadataWarning(_ line: String) -> Bool {
+        guard line.contains("fallback metadata"),
+              let data = line.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["type"] as? String == "item.completed",
+              let item = object["item"] as? [String: Any],
+              item["type"] as? String == "error",
+              let message = item["message"] as? String
+        else { return false }
+        return message.hasPrefix("Model metadata for") && message.contains("Defaulting to fallback metadata")
+    }
+
+    /// The model's real context window, from its provider. Nil when it can't be told.
+    public func contextLength(of modelID: String?) async -> Int? {
+        guard let model = modelID.flatMap(LocalModel.init(id:)) else { return nil }
+        return await discovery.contextLength(of: model)
     }
 }
