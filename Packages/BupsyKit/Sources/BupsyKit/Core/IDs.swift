@@ -24,6 +24,9 @@ public enum EngineID: String, Sendable, Codable, CaseIterable {
     case codex
     case grok
     case opencode
+    /// A model in the person's own Ollama or LM Studio, driven through Codex CLI's local mode
+    /// (`codex exec --oss`). Not a vendor of its own: the harness is Codex, the model is theirs.
+    case local
 
     /// Plain vendor names only. Never use these marks in product or feature names —
     /// see docs/00-compliance-and-auth.md §5.
@@ -33,13 +36,22 @@ public enum EngineID: String, Sendable, Codable, CaseIterable {
         case .codex: "Codex"
         case .grok: "Grok CLI"
         case .opencode: "OpenCode"
+        case .local: "Local model"
         }
     }
+
+    /// Runs on the `codex` binary, so it shares Codex's session files (the context meter), its
+    /// custom prompts and its slash commands.
+    public var runsOnCodex: Bool { self == .codex || self == .local }
+
+    /// Whether the engine has an account plan with usage limits to show. A local model has none:
+    /// it runs on this Mac and costs nothing per turn.
+    public var hasPlanLimits: Bool { self != .local }
 
     /// The engines bupsy can actually run today. The rest are named so stored data stays readable,
     /// but offering them anywhere — a picker, the onboarding check — showed choices that do nothing
     /// and an onboarding row stuck on "Checking…" forever.
-    public static let supported: [EngineID] = [.claude, .codex]
+    public static let supported: [EngineID] = [.claude, .codex, .local]
 }
 
 public struct BotID: Sendable, Hashable, Codable, RawRepresentable {

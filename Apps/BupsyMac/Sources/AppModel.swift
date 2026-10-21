@@ -28,6 +28,10 @@ final class AppModel {
     var engineStatus: [EngineID: AuthStatus] = [:]
     /// Where each engine's CLI was found on this Mac, once checked. Nil when not found yet.
     var engineBinaryPaths: [EngineID: String] = [:]
+    /// The models installed in Ollama and LM Studio when last asked, for the local engine's model
+    /// menus. Read live (see AppModel+LocalModels.swift) because a fixed list would offer models
+    /// the person does not have, and Codex downloads a model it is pointed at but cannot find.
+    var localModels: [ModelOption] = []
     var routines: [Routine] = []
     var machines: [MachineRecord] = []
     var connectors: [MCPServer] = []
@@ -143,9 +147,10 @@ final class AppModel {
         #endif
         return LocalHost()
     }
-    private let adapters: [EngineID: any EngineAdapter] = [
+    let adapters: [EngineID: any EngineAdapter] = [
         .claude: ClaudeAdapter(),
         .codex: CodexAdapter(),
+        .local: LocalAdapter(),
     ]
 
     init(store: Store? = nil) {
@@ -631,8 +636,9 @@ final class AppModel {
         let previous = bots[index].engine
 
         bots[index].engine = engine
-        // A model name from one engine is meaningless to the other.
-        bots[index].model = nil
+        // A model name from one engine is meaningless to the other. A local model has no
+        // "default" that is safe to run, so it starts on the first one installed.
+        bots[index].model = engine == .local ? localModels.first?.id : nil
         try? store?.save(bots[index].record(sortIndex: index))
 
         threads[bot.id] = nil
@@ -648,9 +654,9 @@ final class AppModel {
         try? store?.save(bots[index].record(sortIndex: index))
     }
 
-    /// The models the bot's current engine offers.
+    /// The models the bot's current engine offers. For a local model, what is installed now.
     func models(for bot: Bot) -> [ModelOption] {
-        adapters[bot.engine]?.models ?? []
+        bot.engine == .local ? localModels : adapters[bot.engine]?.models ?? []
     }
 
     func setAutonomy(_ bot: Bot, _ level: Autonomy) {
@@ -1277,6 +1283,7 @@ final class AppModel {
         for (id, adapter) in adapters {
             let status = await adapter.authStatus(on: host)
             engineStatus[id] = status
+            if id == .local { await refreshLocalModels() }
             // Where the CLI was found, for the sign-in rows. Resolved the way runs resolve it,
             // off the main thread because the fallback asks a login shell.
             if case .notInstalled = status {
@@ -1303,6 +1310,7 @@ final class AppModel {
         case .signedInWithoutModelAccess: "noModelAccess"
         case .signedOut: "signedOut"
         case .notInstalled: "notInstalled"
+        case .notReady: "notReady"
         case .unknown: "unknown"
         }
     }
@@ -1667,7 +1675,10 @@ final class AppModel {
                 if ungated {
                     throw GateUnavailable()
                 }
-                var invocation = adapter.invocation(for: request)
+                // A local model is checked against what is installed right now, and refused
+                // rather than downloaded. Other engines take the request as it is.
+                let prepared = try await adapter.prepare(request)
+                var invocation = adapter.invocation(for: prepared)
                 invocation.environment["BUPSY_RUN_TOKEN"] = outboxToken
                 if !connectorEnvNames.isEmpty {
                     let values = await Task.detached {
@@ -1698,7 +1709,7 @@ final class AppModel {
                 }
             } catch {
                 failed = true
-                let failure = AgentEvent.failed(EngineFailure(
+                let failure = AgentEvent.failed((error as? RunRefused)?.failure ?? EngineFailure(
                     kind: .launchFailed, message: error.localizedDescription))
                 thread.apply(failure)
                 persist(failure, run: run.id, seq: seq)
@@ -2031,6 +2042,8 @@ final class AppModel {
         var bot = Bot(
             name: name, engine: engine,
             personaPrompt: job.isEmpty ? nil : job)
+        // A local bot needs a model it can actually run, and none is a safe default.
+        if engine == .local { bot.model = localModels.first?.id }
         bot.folder = folder
         if let folder { noteSection(folder) }
         bot.avatarHue = distinctHue(near: bot.avatarHue)
@@ -2600,7 +2613,7 @@ final class AppModel {
             if let wanted = EngineID(rawValue: name), EngineID.supported.contains(wanted) {
                 if wanted != target.engine { engine = wanted }
             } else {
-                refuse("There's no engine “\(name)”. Use claude or codex.")
+                refuse("There's no engine “\(name)”. Use claude, codex or local.")
             }
         }
         // The model of a new engine is set with it below.

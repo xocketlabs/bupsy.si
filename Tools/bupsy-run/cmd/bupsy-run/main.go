@@ -26,10 +26,10 @@ import (
 )
 
 func main() {
-	engineID := flag.String("engine", "claude", "engine to drive: claude or codex")
+	engineID := flag.String("engine", "claude", "engine to drive: claude, codex or local (a model in Ollama or LM Studio, through codex --oss)")
 	prompt := flag.String("prompt", "", "the prompt to run (required)")
 	dir := flag.String("dir", "", "working directory for the run")
-	model := flag.String("model", "", "model to request; empty means the CLI's own default")
+	model := flag.String("model", "", "model to request; empty means the CLI's own default. For local, \"ollama:<name>\" or \"lmstudio:<id>\", and required")
 	resume := flag.String("resume", "", "conversation to continue")
 	autonomy := flag.String("autonomy", engine.AutonomyAsk,
 		"trust level: "+strings.Join(engine.Autonomies, ", "))
@@ -63,6 +63,14 @@ func main() {
 		Model:      *model,
 		Resume:     *resume,
 		Autonomy:   *autonomy,
+	}
+
+	if local, ok := adapter.(engine.Local); ok {
+		// Never a run that would make Codex download a model: see engine.Local.
+		if req, err = local.Prepare(ctx, req); err != nil {
+			fmt.Fprintln(os.Stderr, "bupsy-run:", err)
+			os.Exit(1)
+		}
 	}
 
 	name, args := adapter.Command(req)
@@ -104,8 +112,10 @@ func adapterFor(id, binary string) (engine.Adapter, error) {
 		return engine.Claude{Binary: binary}, nil
 	case "codex":
 		return engine.Codex{Binary: binary}, nil
+	case "local":
+		return engine.Local{Binary: binary}, nil
 	default:
-		return nil, errors.New("unknown engine " + id + " (want claude or codex)")
+		return nil, errors.New("unknown engine " + id + " (want claude, codex or local)")
 	}
 }
 

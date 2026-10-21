@@ -421,10 +421,19 @@ func (r *Runner) execute(ctx context.Context, bot store.Bot, text string, run *a
 		req.GateSettings = settings
 	}
 
+	if local, ok := adapter.(engine.Local); ok {
+		// Checked against what Ollama or LM Studio has installed right now: Codex downloads a
+		// model it is not given, or one the provider does not have, without asking.
+		if req, err = local.Prepare(ctx, req); err != nil {
+			r.fail(bot.ID, run, fmt.Sprintf("%s didn't run: %v.", bot.Name, err))
+			return
+		}
+	}
+
 	name, args := adapter.Command(req)
 	path, err := host.Resolve(name)
 	if err != nil {
-		flag := "--" + bot.Engine + "-binary"
+		flag := "--" + binary + "-binary"
 		r.fail(bot.ID, run, fmt.Sprintf("%s isn't installed, or Bupsy can't find it. Install it and "+
 			"sign in, or start Bupsy with %s pointing at it.", binary, flag))
 		return
@@ -606,6 +615,9 @@ func (r *Runner) adapter(id string) (engine.Adapter, string) {
 	switch id {
 	case "codex":
 		return engine.Codex{Binary: binary}, "codex"
+	case "local":
+		// Codex's local mode, so the codex binary.
+		return engine.Local{Binary: r.opts.Binaries["codex"]}, "codex"
 	default:
 		return engine.Claude{Binary: binary}, "claude"
 	}

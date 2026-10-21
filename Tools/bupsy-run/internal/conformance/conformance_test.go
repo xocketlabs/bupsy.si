@@ -204,6 +204,8 @@ func adapterFor(t *testing.T, engineID string) engine.Adapter {
 		return engine.Claude{}
 	case "codex":
 		return engine.Codex{}
+	case "local":
+		return engine.Local{}
 	}
 	t.Fatalf("unknown engine %q", engineID)
 	return nil

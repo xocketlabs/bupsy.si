@@ -40,6 +40,15 @@ struct ConformanceTests {
         return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
     }
 
+    /// The adapter a case's `engine` option names. Claude when it names none.
+    static func adapter(_ engine: String) -> any EngineAdapter {
+        switch engine {
+        case "codex": CodexAdapter()
+        case "local": LocalAdapter()
+        default: ClaudeAdapter()
+        }
+    }
+
     // MARK: - Streams
 
     @Test("engine streams normalise to the canonical events")
@@ -49,7 +58,7 @@ struct ConformanceTests {
                 with: Data(contentsOf: directory.appendingPathComponent("case.json")))
                 as? [String: Any] ?? [:]
             let engine = (meta["options"] as? [String: Any])?["engine"] as? String ?? "claude"
-            let adapter: any EngineAdapter = engine == "codex" ? CodexAdapter() : ClaudeAdapter()
+            let adapter = Self.adapter(engine)
 
             let input = try String(
                 contentsOf: directory.appendingPathComponent("input.ndjson"), encoding: .utf8)
@@ -192,7 +201,7 @@ struct ConformanceTests {
                 with: Data(contentsOf: directory.appendingPathComponent("case.json")))
                 as? [String: Any] ?? [:]
             let engine = (meta["options"] as? [String: Any])?["engine"] as? String ?? "claude"
-            let adapter: any EngineAdapter = engine == "codex" ? CodexAdapter() : ClaudeAdapter()
+            let adapter = Self.adapter(engine)
 
             for (index, want) in try Self.expected(directory).enumerated() {
                 let spec = want["request"] as? [String: Any] ?? [:]
@@ -239,7 +248,7 @@ struct ConformanceTests {
                 with: Data(contentsOf: directory.appendingPathComponent("case.json")))
                 as? [String: Any] ?? [:]
             let engine = (meta["options"] as? [String: Any])?["engine"] as? String ?? "claude"
-            let adapter: any EngineAdapter = engine == "codex" ? CodexAdapter() : ClaudeAdapter()
+            let adapter = Self.adapter(engine)
 
             for (index, want) in try Self.expected(directory).enumerated() {
                 let line = want["line"] as? String ?? ""

@@ -76,8 +76,10 @@ extension AppModel {
     func isSignedIn(_ engine: EngineID) -> Bool {
         guard let status = engineStatus[engine] else { return false }
         switch status {
+        // A local model has no account, so there is nothing to sign out of.
+        case .signedIn(.onThisMac): return false
         case .signedIn, .signedInWithoutModelAccess: return true
-        case .signedOut, .notInstalled, .unknown: return false
+        case .signedOut, .notInstalled, .notReady, .unknown: return false
         }
     }
 
@@ -94,6 +96,7 @@ extension AppModel {
             switch method {
             case .subscription: line = "Signed in with your subscription"
             case .apiKey: line = "Signed in with an API key"
+            case .onThisMac: line = "Ready. Runs on this Mac"
             }
         case .signedInWithoutModelAccess(let detail):
             line = detail.isEmpty ? "Signed in, but this plan can't run it" : detail
@@ -101,6 +104,8 @@ extension AppModel {
             line = "Not signed in"
         case .notInstalled:
             return "Not installed on this Mac"
+        case .notReady(let detail):
+            line = detail
         case .unknown:
             line = "Couldn't check"
         }
@@ -116,10 +121,13 @@ extension AppModel {
         switch engine {
         case .claude: return ClaudeAdapter().binaryName
         case .codex: return CodexAdapter().binaryName
+        case .local: return LocalAdapter().binaryName
         default: return engine.rawValue
         }
     }
 
+    /// Nil for a local model: it has no account, and its first step (pulling a model) downloads
+    /// gigabytes, which Bupsy never starts on someone's behalf.
     private static func loginCommand(for engine: EngineID) -> LoginCommand? {
         switch engine {
         case .claude: return ClaudeAdapter().loginCommand()

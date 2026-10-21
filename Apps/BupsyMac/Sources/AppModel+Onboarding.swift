@@ -36,15 +36,18 @@ extension AppModel {
     /// The command that installs an engine's CLI, shown with a copy button when it is missing.
     static func installCommand(for engine: EngineID) -> String {
         switch engine {
-        case .codex: return "npm install -g @openai/codex"
+        // A local model runs through Codex's local mode, so Codex is what to install first.
+        case .codex, .local: return "npm install -g @openai/codex"
         default: return "npm install -g @anthropic-ai/claude-code"
         }
     }
 
-    /// The command to run once in Terminal to sign an installed engine in.
+    /// The command to run once in Terminal to sign an installed engine in. For a local model,
+    /// which has no sign-in, the command that gets a first model.
     static func signInCommand(for engine: EngineID) -> String {
         switch engine {
         case .codex: return "codex login"
+        case .local: return "ollama pull qwen3:8b"
         default: return "claude"
         }
     }

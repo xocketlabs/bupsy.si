@@ -765,7 +765,8 @@ struct NavRail: View {
     /// engine's own command in Terminal; Bupsy never handles the sign-in itself.
     @ViewBuilder
     private var accountItems: some View {
-        let engines = EngineID.supported.filter { model.engineStatus[$0] != nil }
+        // A local model has no account to sign in to or out of.
+        let engines = EngineID.supported.filter { $0 != .local && model.engineStatus[$0] != nil }
         if !engines.isEmpty {
             Rectangle().fill(palette.border).frame(height: 1).padding(.vertical, Theme.Space.xs)
             ForEach(engines, id: \.self) { engine in

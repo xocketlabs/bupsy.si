@@ -90,17 +90,26 @@ extension AppModel {
     /// engine switch never shows the old chat's size.
     func settleContext(_ bot: Bot, thread: Thread) {
         guard let conversation = thread.conversationID else { return }
-        if bot.engine == .codex {
+        // A local model runs on codex, which writes the same session files for it.
+        if bot.engine.runsOnCodex {
             let id = conversation.rawValue
+            // Codex has no metadata for most local models and writes a made-up window for them,
+            // so a local bot's window comes from its own provider instead.
+            let local = bot.engine == .local ? adapters[.local] as? LocalAdapter : nil
+            let model = bot.model
             Task { [weak self] in
                 let reading = await Task.detached(priority: .utility) { CodexSessions.latest(conversation: id) }.value
+                let window = await local?.contextLength(of: model)
                 guard let self, let reading, thread.conversationID == conversation else { return }
-                if let context = reading.context {
+                if var context = reading.context {
+                    if local != nil { context.window = window }
                     var usage = thread.latestUsage ?? Usage()
                     usage.context = context
                     thread.latestUsage = usage
                 }
-                if let limits = reading.limits { self.rememberLimits(limits, engine: .codex) }
+                if bot.engine.hasPlanLimits, let limits = reading.limits {
+                    self.rememberLimits(limits, engine: bot.engine)
+                }
                 self.rememberContext(bot.id, thread: thread)
             }
         } else {
@@ -116,8 +125,9 @@ extension AppModel {
     /// The engine's latest report of the plan's limits, remembered so the bars are there after a
     /// restart and on every bot of that engine, not only the one that last ran. A window whose
     /// reset time has passed is left out: its figure is from before the reset.
+    /// Never for a local model: it runs on this Mac, with no plan behind it.
     func planLimits(for engine: EngineID, now: Date = Date()) -> RateLimit? {
-        guard let data = AppHome.defaults.data(forKey: Self.limitsKey(engine)),
+        guard engine.hasPlanLimits, let data = AppHome.defaults.data(forKey: Self.limitsKey(engine)),
               var limits = try? JSONDecoder().decode(RateLimit.self, from: data) else { return nil }
         limits.windows = limits.windows.filter { ($0.value.resetsAt ?? .distantFuture) > now }
         return limits.windows.isEmpty ? nil : limits
@@ -126,7 +136,7 @@ extension AppModel {
     /// Keeps a bot's newest limits for its whole engine, and shows them on that engine's other
     /// bots straight away.
     func rememberLimits(_ limits: RateLimit, engine: EngineID) {
-        guard !limits.windows.isEmpty, let data = try? JSONEncoder().encode(limits) else { return }
+        guard engine.hasPlanLimits, !limits.windows.isEmpty, let data = try? JSONEncoder().encode(limits) else { return }
         AppHome.defaults.set(data, forKey: Self.limitsKey(engine))
         for bot in bots where bot.engine == engine && bot.remote == nil {
             loadedThread(bot.id)?.latestLimits = limits

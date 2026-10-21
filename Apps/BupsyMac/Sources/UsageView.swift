@@ -57,6 +57,15 @@ struct UsageSheet: View {
         }
     }
 
+    /// Local-model bots are named only when there are some: they have no plan, so nothing here
+    /// is ever charged to one.
+    private var footnote: String {
+        let base = "Dollar figures are the API price, shown for scale. You pay your plan, not this. "
+            + "Codex runs show no dollar figure."
+        guard model.bots.contains(where: { $0.engine == .local }) else { return base }
+        return base + " Local model runs on this Mac, with no plan limits."
+    }
+
     var body: some View {
         let shown = self.shown
         let rows = shown.map(\.usage)
@@ -98,8 +107,7 @@ struct UsageSheet: View {
                     }
                 }
 
-                SetupFootnote(text: "Dollar figures are the API price, shown for scale. You pay your "
-                              + "plan, not this. Codex runs show no dollar figure.")
+                SetupFootnote(text: footnote)
             }
         }
         .task(id: period) {
