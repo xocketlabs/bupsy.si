@@ -58,7 +58,7 @@ messaging cleaner.
 - **Be honest in the UI.** `survivesSleep`, `maximumEnforceableAutonomy` and the limit-burn gauge
   exist so the app can tell the truth about what it can and cannot guarantee. Do not paper over a
   limitation in copy.
-- **No telemetry.** Not opt-out, not anonymised. This is a local-first privacy tool.
+- **No app telemetry.** Not opt-out, not anonymised. The local-first app does not report what people do. Website analytics may be added only when explicitly requested by the project owner and disclosed on the privacy page; keep them out of the app.
 
 ## Security
 

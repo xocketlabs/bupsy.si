@@ -1,7 +1,7 @@
 # Working on bupsy.si: notes for AI agents
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first; its rules (no vendor credentials, clean room,
-Swift 6 strict concurrency, no telemetry) apply to agents too. This file adds how work is
+Swift 6 strict concurrency, no app telemetry) apply to agents too. This file adds how work is
 **tracked**, so the people running the project see where things stand without asking. Keep the
 trackers updated as part of the work, without being asked; a change is not finished until its
 issue, the project board and the CRM say so.

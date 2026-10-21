@@ -73,16 +73,18 @@ that, and "assign a machine" is the fix. The limitation and its remedy are the s
 ### Nothing to pay, nothing to sponsor (#18)
 
 No pricing, no Sponsors button, no paid tier, no hosted anything. Combined with #19 this makes the
-product unusually easy to describe: there is no account, no server, no telemetry, and no way to
-give us money. BSL keeps commercial licensing available later without promising or building it now.
+product unusually easy to describe: there is no account, no server for the app, no app telemetry,
+and no way to give us money. BSL keeps commercial licensing available later without promising or building it now.
 
 The honest risk: a team of 3–5 with no revenue is on someone's runway. That is a business decision,
 not an engineering one, and it is recorded here so it is not mistaken for an oversight.
 
-### No telemetry at all (#19)
+### No app telemetry (#19)
 
 The app never phones home except to check for updates. This is verifiable by anyone watching
 network traffic, which is what makes it worth saying — an unverifiable privacy claim is marketing.
+This decision is about the app; website analytics are a separate choice and must be owner-approved
+and disclosed in the website privacy policy.
 
 Cost, accepted deliberately: we fly blind on crashes and on which features get used. Prioritising
 the roadmap will depend on talking to people instead of reading dashboards.

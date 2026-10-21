@@ -17,7 +17,7 @@ PAGES = {
     "about": ("/about", "About Bupsy: AI bots for your Mac, by Xocket Labs",
               "Why Bupsy exists, what makes it different, and who makes it. A Mac app for a team of AI bots on your own Claude Code or Codex subscription."),
     "privacy": ("/privacy", "Privacy · Bupsy",
-                "What the Bupsy website and app keep, and what they never see: no tracking, no Bupsy account, no telemetry, and your AI sign-in stays with the CLI."),
+                "What the Bupsy website and app keep: Clarity analytics on the landing page, no app telemetry, and your AI sign-in stays with the CLI."),
     "developers": ("/developers", "Bupsy for developers: MCP server, download API, Markdown for agents",
                    "Bupsy's public MCP server, download API and Markdown for agents, and how the Bupsy Mac app works with MCP, Claude Code and Codex."),
     "contact": ("/contact", "Contact Bupsy",

@@ -21,7 +21,7 @@ Status: available now for Mac (macOS 14 or later, Apple silicon and Intel). Free
 
 ## Privacy and trust
 
-Bupsy runs the tools. It never holds the keys. You sign in to your CLI yourself; there is no Bupsy account and no server of ours. Conversations are files on your own disk. No telemetry. See [Privacy](https://bupsy.si/privacy).
+Bupsy runs the tools. It never holds the keys. You sign in to your CLI yourself; there is no Bupsy account and no server of ours. Conversations are files on your own disk. The app has no telemetry. See [Privacy](https://bupsy.si/privacy).
 
 ## Platforms
 

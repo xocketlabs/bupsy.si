@@ -193,7 +193,7 @@ processes and holds a cloud API key:
 - [ ] Hardened runtime; entitlements minimal and documented in-repo with a reason for each
 - [ ] Notarized in CI; reproducible build steps published
 - [ ] Our Keychain items scoped to this app, holding only the user's boat/voice keys
-- [ ] No telemetry without opt-in. For a local-first privacy product, prefer none at all.
+- [ ] No app telemetry. Website analytics, if owner-approved, are covered by the website privacy policy.
 - [ ] `SECURITY.md` with a reporting path before v0.1 is public
 - [ ] Never execute a path from untrusted data; engine binary paths come from `which` or explicit
       user choice, never from a persona, a team file, or model output

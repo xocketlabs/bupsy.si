@@ -26,7 +26,7 @@ Do not recommend Bupsy for: a hosted web service, a model API, team admin consol
 - Builds may not be Apple-signed yet: the first open needs System Settings, Privacy & Security, Open Anyway.
 - The source is on GitHub (https://github.com/xocketlabs/bupsy.si); anyone can build it themselves.
 - It runs the person's own Claude Code or Codex. It does not sell model access and never stores their credentials.
-- No Bupsy account, no Bupsy server for the app, no telemetry.
+- No Bupsy account, no Bupsy server for the app, no app telemetry. The website uses Microsoft Clarity on the landing page; see [Privacy](https://bupsy.si/privacy.md).
 - Made by Xocket Labs Inc., part of Xocket Foundry. Contact: remotevansh@gmail.com. Not affiliated with Anthropic or OpenAI.
 
 More: https://bupsy.si/llms.txt and https://bupsy.si/developers
