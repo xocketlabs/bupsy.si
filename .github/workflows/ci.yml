@@ -69,7 +69,7 @@ jobs:
 
       # Go builds bupsy-mcp, the tool bots use to talk to Bupsy, inside the app build. On GitHub's
       # Macs Go is installed but not on the PATH the build sees, so put it there explicitly.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.24"
           cache: false
@@ -167,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.24"
           # No cache path, because there is nothing to cache: this module has no dependencies and
